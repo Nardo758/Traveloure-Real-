@@ -21,6 +21,7 @@ import { dispatchModerationEvent } from "../automations/moderation/runtime";
 import { accessAuditLogs } from "@shared/schema";
 import { isTestAccount } from "./test-account";
 import { verifyLoginCredential } from "./login-credentials.service";
+import { isAdminRole } from "@shared/roles";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
@@ -51,8 +52,8 @@ export async function resetQaPasswordAsAdmin(input: {
     const admin = accounts.get(input.adminId);
     const target = accounts.get(input.targetId);
     const credentialOk = await verifyLoginCredential(input.adminPassword, admin?.password ?? null);
-    if (!credentialOk || !admin || admin.role !== "admin" || admin.isDeleted || admin.isSuspended
-      || !target || target.role === "admin" || target.isDeleted || target.isSuspended
+    if (!credentialOk || !admin || !isAdminRole(admin.role) || admin.isDeleted || admin.isSuspended
+      || !target || isAdminRole(target.role) || target.isDeleted || target.isSuspended
       || !target.password || !target.email || !isTestAccount(target)) {
       return { ok: false };
     }

@@ -113,7 +113,7 @@ let savedResendKey: string | undefined;
 
 const FAKE_ADMIN_USER = {
   id: 'admin-user-1',
-  role: 'admin',
+  role: 'owner', // slice 0: an admin's approval now waits for the owner; (B) exercises the publishing approval
   email: 'admin@example.com',
   firstName: 'Admin',
   lastName: 'User',

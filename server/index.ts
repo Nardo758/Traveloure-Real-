@@ -107,6 +107,7 @@ import { apexToWwwRedirect } from "./middleware/apex-to-www-redirect";
 import { runBackgroundJob } from "./services/background-job-runner";
 import { jitteredStartupDelay } from "./services/startup-delay";
 import { getBuildInfo, formatBuildBootLine } from "./services/build-info";
+import { isAdminRole } from "@shared/roles";
 
 const app = express();
 const httpServer = createServer(app);
@@ -1045,18 +1046,20 @@ if (process.env.NODE_ENV === "production") {
         try {
           await client.query("BEGIN");
           const { rows } = await client.query(
-            "SELECT id, role FROM users WHERE email = $1 AND role != 'admin' FOR UPDATE",
+            // Slice 0: any admin-tier role (owner, platform_admin, the `admin` alias) is left alone, so this
+            // never demotes the owner; a promotion lands on platform_admin, never owner.
+            "SELECT id, role FROM users WHERE email = $1 AND role NOT IN ('owner', 'platform_admin', 'admin') FOR UPDATE",
             [bootstrapAdminEmail],
           );
           if (rows.length > 0) {
             const { id, role: oldRole } = rows[0];
-            await client.query("UPDATE users SET role = 'admin' WHERE id = $1", [id]);
+            await client.query("UPDATE users SET role = 'platform_admin' WHERE id = $1", [id]);
             // id has no DB-side default (schema uses a client-side $defaultFn),
             // so it must be supplied explicitly in raw SQL.
             await client.query(
               `INSERT INTO access_audit_logs (id, actor_id, actor_role, action, resource_type, resource_id, target_user_id, metadata)
                VALUES ($1, $2, $3, 'role_change', 'user', $2, $2, $4)`,
-              [crypto.randomUUID(), id, "system", JSON.stringify({ oldRole, newRole: "admin", reason: "admin_email_bootstrap" })],
+              [crypto.randomUUID(), id, "system", JSON.stringify({ oldRole, newRole: "platform_admin", reason: "admin_email_bootstrap" })],
             );
             await client.query("COMMIT");
             logger.info({ email: bootstrapAdminEmail, oldRole }, "Admin bootstrap promotion from ADMIN_EMAIL (audited)");

@@ -12,7 +12,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { userRoleEnum } from "../models/auth";
-import { isEarnerRole, isStaffRole, STAFF_ROLES } from "../roles";
+import { GRANTABLE_STAFF_ROLES, canonicalStaffRole, isAdminRole, isEarnerRole, isOwnerRole, isStaffRole, STAFF_ROLES } from "../roles";
 import {
   STAFF_PERMISSIONS,
   STAFF_ROUTE_RULES,
@@ -47,16 +47,10 @@ const MODERATOR_JOBS: Array<[string, string]> = [
 
 const ADMIN_ONLY: Array<[string, string]> = [
   ["GET", "/api/admin/payouts"],
-  ["POST", "/api/admin/payouts"],
-  ["PATCH", "/api/admin/payouts/pay-1"],
   ["GET", "/api/admin/fee-bands"],
-  ["PATCH", "/api/admin/fee-bands/beta_flat"],
-  ["POST", "/api/admin/fee-config"],
   ["GET", "/api/admin/revenue"],
   ["GET", "/api/admin/bookings"],
-  ["POST", "/api/admin/bookings/book-1/exception-refund"],
   ["GET", "/api/admin/bookings/book-1/exception-refund"],
-  ["POST", "/api/admin/bookings/service/book-1/resolve"],
   ["GET", "/api/admin/bookings/service/book-1/resolve"],
   ["DELETE", "/api/admin/services/svc-1"],
   ["PATCH", "/api/admin/services/svc-1/featured"],
@@ -64,9 +58,9 @@ const ADMIN_ONLY: Array<[string, string]> = [
   ["GET", "/api/admin/bookings/stale-pending"],
 ];
 
-test("support and moderator are staff, not earners, and fit the role column", () => {
-  assert.deepEqual([...STAFF_ROLES], ["admin", "support", "moderator"]);
-  for (const role of ["support", "moderator", "admin"] as const) {
+test("the staff roles are staff, not earners, and fit the role column", () => {
+  assert.deepEqual([...STAFF_ROLES], ["owner", "platform_admin", "admin", "regional_manager", "support", "moderator"]);
+  for (const role of STAFF_ROLES) {
     assert.equal(isStaffRole(role), true);
     assert.equal(isEarnerRole(role), false);
     assert.equal(roleFamily(role), null);
@@ -79,18 +73,24 @@ test("support and moderator are staff, not earners, and fit the role column", ()
   assert.match(read("shared/models/auth.ts"), /role: varchar\("role", \{ length: 30 \}\)/);
 });
 
-test("the permission map is the fixed split, and admin holds every permission", () => {
+test("the permission map is the fixed split, and owner, platform_admin and the admin alias hold every permission", () => {
   assert.deepEqual(
     [...permissionsForRole("support")],
-    ["contact_submissions", "booking_detail_read"],
+    ["contact_submissions", "booking_detail_read", "bot_audit_read", "staff_self"],
   );
   assert.deepEqual(
     [...permissionsForRole("moderator")],
-    ["message_reports", "report_context", "listing_status"],
+    ["message_reports", "report_context", "listing_status", "bot_proposals_read", "staff_self"],
   );
-  assert.equal(permissionsForRole("admin"), "all");
+  assert.deepEqual(
+    [...permissionsForRole("regional_manager")],
+    ["listing_status", "approvals", "bot_proposals_read", "bot_proposals_decide", "bot_proposals_assign", "issue_queue", "staff_self"],
+  );
+  for (const role of ["owner", "platform_admin", "admin"]) assert.equal(permissionsForRole(role), "all", role);
   for (const permission of STAFF_PERMISSIONS) {
     assert.equal(staffHasPermission("admin", permission), true, permission);
+    assert.equal(staffHasPermission("owner", permission), true, permission);
+    assert.equal(staffHasPermission("platform_admin", permission), true, permission);
     assert.equal(staffHasPermission("user", permission), false, permission);
     assert.equal(staffHasPermission("travel_expert", permission), false, permission);
     assert.equal(staffHasPermission(null, permission), false, permission);
@@ -120,7 +120,10 @@ test("support and moderator can do their jobs and are refused on payouts, refund
   for (const [method, url] of ADMIN_ONLY) {
     assert.equal(staffMayPassBlanketGuard("support", method, url), false, `support ${method} ${url}`);
     assert.equal(staffMayPassBlanketGuard("moderator", method, url), false, `moderator ${method} ${url}`);
+    assert.equal(staffMayPassBlanketGuard("regional_manager", method, url), false, `regional_manager ${method} ${url}`);
     assert.equal(staffMayPassBlanketGuard("admin", method, url), true, `admin ${method} ${url}`);
+    assert.equal(staffMayPassBlanketGuard("platform_admin", method, url), true, `platform_admin ${method} ${url}`);
+    assert.equal(staffMayPassBlanketGuard("owner", method, url), true, `owner ${method} ${url}`);
     assert.equal(staffMayPassBlanketGuard("executive_assistant", method, url), false, `ea ${method} ${url}`);
   }
   // Mount-relative path (the shape inside some Express mounts) still resolves.
@@ -132,9 +135,11 @@ test("assigning a staff role is a legal transition and a social merge cannot lan
   assert.equal(isRoleTransitionAllowed("user", "support"), true);
   assert.equal(isRoleTransitionAllowed("service_provider", "moderator"), true);
   assert.equal(isRoleTransitionAllowed("support", "admin"), true);
+  assert.equal(isRoleTransitionAllowed("user", "regional_manager"), true);
+  assert.equal(isRoleTransitionAllowed("user", "platform_admin"), true);
   assert.equal(isRoleTransitionAllowed("moderator", "user"), true);
-  assert.deepEqual([...EMAIL_MERGE_REFUSED_ROLES], ["admin", "support", "moderator"]);
-  for (const role of ["admin", "support", "moderator"]) {
+  assert.deepEqual([...EMAIL_MERGE_REFUSED_ROLES], [...STAFF_ROLES]);
+  for (const role of STAFF_ROLES) {
     assert.deepEqual(
       decideEmailMerge({ emailVerified: true, owner: { role } }),
       { merge: false, reason: "privileged_account" },
@@ -165,6 +170,7 @@ test("the blanket guard and only the gap routes call the shared helper", () => {
   assert.match(guardBody, /user\.isDeleted/);
   assert.match(guardBody, /user\.isSuspended/);
   assert.doesNotMatch(guardBody, /user\.role !== "admin"/);
+  assert.match(guardBody, /req\.staffActor = \{/);
 
   const admin = read("server/routes/admin.routes.ts");
   const wired = [
@@ -203,7 +209,75 @@ test("the blanket guard and only the gap routes call the shared helper", () => {
     const at = admin.indexOf(marker);
     assert.ok(at > -1, marker);
     const slice = admin.slice(at, at + 500);
-    assert.match(slice, /role !== "admin"/, marker);
+    assert.match(slice, /!isAdminRole\(/, marker);
     assert.doesNotMatch(slice, /requireStaff\(/, marker);
   }
+});
+
+// Slice 0 (Addendum A v2): money, fee and settings writes, bot-key writes and staff grants are the OWNER's alone.
+const OWNER_ONLY: Array<[string, string]> = [
+  ["PATCH", "/api/admin/payouts/pay-1"],
+  ["POST", "/api/admin/payouts"],
+  ["PATCH", "/api/admin/fee-bands/beta_flat"],
+  ["POST", "/api/admin/fee-config"],
+  ["POST", "/api/admin/bookings/book-1/exception-refund"],
+  ["POST", "/api/admin/bookings/service/book-1/resolve"],
+  ["PATCH", "/api/admin/platform-settings/provider_signoff_required_for"],
+  ["PATCH", "/api/admin/platform-settings/bot_audit_retention_days"],
+  ["POST", "/api/admin/bot-accounts"],
+  ["PATCH", "/api/admin/bot-accounts/bot-1/scopes"],
+  ["POST", "/api/admin/bot-accounts/bot-1/revoke"],
+  ["POST", "/api/admin/staff/user-1/role"],
+  ["POST", "/api/admin/staff/user-1/markets"],
+];
+
+test("slice 0: owner-only writes refuse platform_admin, the admin alias and every scoped role", () => {
+  for (const [method, url] of OWNER_ONLY) {
+    assert.equal(staffMayPassBlanketGuard("owner", method, url), true, `owner ${method} ${url}`);
+    for (const role of ["platform_admin", "admin", "regional_manager", "moderator", "support", "user", null]) {
+      assert.equal(staffMayPassBlanketGuard(role, method, url), false, `${role} ${method} ${url}`);
+    }
+  }
+  // Reads of the same screens stay with platform_admin.
+  for (const url of ["/api/admin/fee-bands", "/api/admin/platform-settings", "/api/admin/bot-accounts", "/api/admin/staff"]) {
+    assert.equal(staffMayPassBlanketGuard("platform_admin", "GET", url), true, url);
+  }
+});
+
+test("slice 0: regional_manager reaches approvals, proposals and the issue queue, and nothing with money", () => {
+  for (const [method, url] of [
+    ["GET", "/api/admin/provider-applications"],
+    ["PATCH", "/api/admin/provider-applications/form-1/status"],
+    ["GET", "/api/admin/provider-services/pending"],
+    ["POST", "/api/admin/provider-services/svc-1/approve"],
+    ["POST", "/api/admin/provider-services/svc-1/reject"],
+    ["GET", "/api/admin/bot-proposals"],
+    ["POST", "/api/admin/bot-proposals/p-1/approve"],
+    ["POST", "/api/admin/bot-proposals/p-1/reject"],
+    ["POST", "/api/admin/bot-proposals/p-1/assign"],
+    ["GET", "/api/admin/issue-queue"],
+    ["GET", "/api/admin/staff/me"],
+  ] as Array<[string, string]>) {
+    assert.equal(staffMayPassBlanketGuard("regional_manager", method, url), true, `${method} ${url}`);
+  }
+  for (const [method, url] of [...ADMIN_ONLY, ...OWNER_ONLY, ["GET", "/api/admin/staff"], ["GET", "/api/admin/owner-signoff"], ["GET", "/api/admin/bot-audit"]] as Array<[string, string]>) {
+    assert.equal(staffMayPassBlanketGuard("regional_manager", method, url), false, `${method} ${url}`);
+  }
+  // A moderator reads proposals (its assigned ones, filtered server-side) and never decides or assigns them.
+  assert.equal(staffMayPassBlanketGuard("moderator", "GET", "/api/admin/bot-proposals"), true);
+  for (const url of ["/api/admin/bot-proposals/p-1/approve", "/api/admin/bot-proposals/p-1/reject", "/api/admin/bot-proposals/p-1/assign"]) {
+    assert.equal(staffMayPassBlanketGuard("moderator", "POST", url), false, url);
+  }
+});
+
+test("slice 0: admin is an alias of platform_admin for one release", () => {
+  assert.equal(canonicalStaffRole("admin"), "platform_admin");
+  assert.equal(canonicalStaffRole("platform_admin"), "platform_admin");
+  assert.equal(canonicalStaffRole("owner"), "owner");
+  for (const role of ["owner", "platform_admin", "admin"]) assert.equal(isAdminRole(role), true, role);
+  for (const role of ["regional_manager", "moderator", "support", "user", null, undefined]) assert.equal(isAdminRole(role), false, String(role));
+  assert.equal(isOwnerRole("owner"), true);
+  assert.equal(isOwnerRole("platform_admin"), false);
+  assert.equal((GRANTABLE_STAFF_ROLES as readonly string[]).includes("owner"), false);
+  assert.equal((GRANTABLE_STAFF_ROLES as readonly string[]).includes("admin"), false);
 });

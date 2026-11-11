@@ -271,7 +271,7 @@ import plancardRoutes from "./plancard.routes";
 import identityRoutes from "./identity.routes";
 import webhooksRoutes from "./webhooks.routes";
 import { affiliateClicks } from "@shared/schema";
-import { isExpertRole } from "@shared/roles";
+import { isExpertRole, isAdminRole } from "@shared/roles";
 import { travelPulseService } from "../services/travelpulse.service";
 import { omitTravelerSeasonalFields } from "../services/travelpulse-traveler-projection";
 import { travelPulseScheduler } from "../services/travelpulse-scheduler.service";
@@ -905,7 +905,7 @@ router.post("/api/ai/optimize-experience", isAuthenticated, async (req, res) => 
       const user = await storage.getUser(userId);
       // Full expert family (shared/roles.ts): bare `role !== "expert"` locked out
       // local_expert / travel_expert / event_planner.
-      if (!user || (user.role !== "admin" && !isExpertRole(user.role))) {
+      if (!user || (!isAdminRole(user.role) && !isExpertRole(user.role))) {
         return res.status(403).json({ message: "Admin or expert access required" });
       }
       const { experienceType, destination, date, selectedServices, preferences } =
@@ -1119,7 +1119,7 @@ router.get("/api/service-categories/provider-counts", async (_req, res) => {
 router.post("/api/service-categories", isAuthenticated, async (req, res) => {
     try {
       const user = await storage.getUser(getUserId(req)!);
-      if (!user || user.role !== "admin") {
+      if (!user || !isAdminRole(user.role)) {
         return res.status(403).json({ message: "Admin access required" });
       }
       const input = insertServiceCategorySchema.parse(req.body);
@@ -1145,7 +1145,7 @@ router.get("/api/service-categories/:categoryId/subcategories", async (req, res)
 router.post("/api/service-subcategories", isAuthenticated, async (req, res) => {
     try {
       const user = await storage.getUser(getUserId(req)!);
-      if (!user || user.role !== "admin") {
+      if (!user || !isAdminRole(user.role)) {
         return res.status(403).json({ message: "Admin access required" });
       }
       const input = insertServiceSubcategorySchema.parse(req.body);
@@ -2265,7 +2265,7 @@ router.get("/api/faqs", async (req, res) => {
 router.post("/api/faqs", isAuthenticated, async (req, res) => {
     try {
       const user = await storage.getUser(getUserId(req)!);
-      if (!user || user.role !== "admin") {
+      if (!user || !isAdminRole(user.role)) {
         return res.status(403).json({ message: "Admin access required" });
       }
       const input = insertFaqSchema.parse(req.body);
@@ -2284,7 +2284,7 @@ router.post("/api/faqs", isAuthenticated, async (req, res) => {
 router.patch("/api/faqs/:id", isAuthenticated, async (req, res) => {
     try {
       const user = await storage.getUser(getUserId(req)!);
-      if (!user || user.role !== "admin") {
+      if (!user || !isAdminRole(user.role)) {
         return res.status(403).json({ message: "Admin access required" });
       }
       const input = insertFaqSchema.partial().parse(req.body);
@@ -2305,7 +2305,7 @@ router.patch("/api/faqs/:id", isAuthenticated, async (req, res) => {
 
 router.delete("/api/faqs/:id", isAuthenticated, async (req, res) => {
     const user = await storage.getUser(getUserId(req)!);
-    if (!user || user.role !== "admin") {
+    if (!user || !isAdminRole(user.role)) {
       return res.status(403).json({ message: "Admin access required" });
     }
     await storage.deleteFAQ(req.params.id);
@@ -5912,7 +5912,7 @@ router.post("/api/travelpulse/seed", isAuthenticated, async (req, res) => {
       return res.status(401).json({ message: "Authentication required" });
     }
     const user = await storage.getUser(getUserId(req)!);
-    if (!user || user.role !== "admin") {
+    if (!user || !isAdminRole(user.role)) {
       return res.status(403).json({ message: "Admin access required" });
     }
     // #1434 — this copy is the ONLY admin gate in the codebase that is the SOLE gate on
@@ -8057,7 +8057,7 @@ router.get("/api/affiliate-booking-requests/expert", isAuthenticated, async (req
       const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Unauthorized" });
       const dbUser = await storage.getUser(userId);
-      if (!dbUser || (!isExpertRole(dbUser.role ?? "") && dbUser.role !== "admin")) {
+      if (!dbUser || (!isExpertRole(dbUser.role ?? "") && !isAdminRole(dbUser.role))) {
         return res.status(403).json({ message: "Expert role required" });
       }
       const tripId = typeof req.query.tripId === "string" && req.query.tripId.trim()
@@ -8108,7 +8108,7 @@ router.get("/api/affiliate-booking-requests/:id/open", isAuthenticated, async (r
       let openedBy: "user" | "expert" = "user";
       if (!isOwner) {
         const dbUser = await storage.getUser(sessionUserId);
-        const isAgent = !!dbUser && (isExpertRole(dbUser.role ?? "") || dbUser.role === "admin");
+        const isAgent = !!dbUser && (isExpertRole(dbUser.role ?? "") || isAdminRole(dbUser.role));
         if (!isAgent) {
           return res.status(403).json({ message: "Not authorized to open this booking link" });
         }
@@ -8118,7 +8118,7 @@ router.get("/api/affiliate-booking-requests/:id/open", isAuthenticated, async (r
         // is one 404 (Locked Decision 40 — "not yours" and "no such thing" are the same answer).
         const standing = bookingRequestWriteStanding({
           actorUserId: sessionUserId,
-          actorIsAdmin: dbUser!.role === "admin",
+          actorIsAdmin: isAdminRole(dbUser!.role),
           holderUserId: row.expertId ?? null,
         });
         if (standing === "not_yours") return res.status(404).json({ message: "Request not found" });
@@ -8259,7 +8259,7 @@ router.patch("/api/affiliate-booking-requests/:id", isAuthenticated, async (req,
       const sessionUserId = getUserId(req)!;
       if (!sessionUserId) return res.status(401).json({ message: "Unauthorized" });
       const dbUser = await storage.getUser(sessionUserId);
-      if (!dbUser || (!isExpertRole(dbUser.role ?? "") && dbUser.role !== "admin")) {
+      if (!dbUser || (!isExpertRole(dbUser.role ?? "") && !isAdminRole(dbUser.role))) {
         return res.status(403).json({ message: "Expert role required" });
       }
       const { id } = req.params;
@@ -8315,7 +8315,7 @@ router.patch("/api/affiliate-booking-requests/:id", isAuthenticated, async (req,
       // the same sentence (Locked Decision 40), and the pooled list never showed it to this caller.
       const standing = bookingRequestWriteStanding({
         actorUserId: sessionUserId,
-        actorIsAdmin: dbUser.role === "admin",
+        actorIsAdmin: isAdminRole(dbUser.role),
         holderUserId: prior.expertId ?? null,
       });
       if (standing === "not_yours") return res.status(404).json({ message: "Request not found" });
@@ -8553,7 +8553,7 @@ router.post("/api/affiliate-booking-requests/:id/verify", isAuthenticated, async
       const sessionUserId = getUserId(req)!;
       if (!sessionUserId) return res.status(401).json({ message: "Unauthorized" });
       const dbUser = await storage.getUser(sessionUserId);
-      if (!dbUser || (!isExpertRole(dbUser.role ?? "") && dbUser.role !== "admin")) {
+      if (!dbUser || (!isExpertRole(dbUser.role ?? "") && !isAdminRole(dbUser.role))) {
         return res.status(403).json({ message: "Expert role required" });
       }
       const { id } = req.params;
@@ -8564,7 +8564,7 @@ router.post("/api/affiliate-booking-requests/:id/verify", isAuthenticated, async
       if (!target) return res.status(404).json({ message: "Request not found" });
       const standing = bookingRequestWriteStanding({
         actorUserId: sessionUserId,
-        actorIsAdmin: dbUser.role === "admin",
+        actorIsAdmin: isAdminRole(dbUser.role),
         holderUserId: target.expertId ?? null,
       });
       if (standing === "not_yours") return res.status(404).json({ message: "Request not found" });
@@ -8708,7 +8708,7 @@ export async function registerDiscoveryRoutes() {
       return res.status(401).json({ message: "Authentication required" });
     }
     const user = await storage.getUser(getUserId(req)!);
-    if (!user || user.role !== "admin") {
+    if (!user || !isAdminRole(user.role)) {
       return res.status(403).json({ message: "Admin access required" });
     }
     next();
@@ -8864,7 +8864,7 @@ router.get("/api/discovery/jobs", isAuthenticated, async (req, res) => {
       const uid = getUserId(req)!;
       if (!uid) return false;
       const user = await storage.getUser(uid);
-      return user?.role === "admin";
+      return isAdminRole(user?.role);
     } catch {
       // Fail closed: if the admin-role lookup fails, deny access rather than accidentally granting it.
       return false;

@@ -1,4 +1,5 @@
 import { toPublicListing } from "./utils/public-service-listing";
+import { IDENTITY_EDIT_FIELDS } from "@shared/edit-split";
 import { hideBlockedListingImages } from "./services/place-photo-blocks.service";
 import { db } from "./db";
 import { scrubStoredTransportOption } from "./services/transport-option-client";
@@ -37,7 +38,7 @@ import { pendingPlanItemMarker } from "@shared/pending-plan-items";
 import { OUT_OF_BAND_REFUND_KEY, outOfBandRefundOf } from "@shared/out-of-band-refund";
 import { paymentOnRecordSql } from "./services/payment-on-record";
 import { hasPaymentOnRecord, NO_PAYMENT_ON_RECORD } from "@shared/payment-on-record";
-import { isProviderRole } from "@shared/roles";
+import { isProviderRole, isAdminRole } from "@shared/roles";
 import { externalPayoutMethod, type PayoutStatusUpdateOptions } from "./config/payout.config";
 import { lockStripeTransferDecision } from "./services/payout-setup.service";
 import { payoutEmailVerificationDenial } from "./services/verified-email-action-gate";
@@ -2180,7 +2181,7 @@ export class DatabaseStorage implements IStorage {
    * The creator-provenance projection: carries the creating account's id, email and name.
    *
    * ADMIN/AUDIT ONLY. Its two callers are the admin CSV export and the admin branch of
-   * `GET /api/vendors`; both establish `role === "admin"` from the DB first. Do not call this to
+   * `GET /api/vendors`; both establish `isAdminRole(role)` from the DB first. Do not call this to
    * serve a browse surface — that is the defect this split exists to make un-writable.
    */
   async getVendorsWithCreator(category?: string, city?: string, createdById?: string): Promise<VendorWithCreator[]> {
@@ -3114,6 +3115,8 @@ export class DatabaseStorage implements IStorage {
       approvalStatus: _as, submittedAt: _sa, reviewedAt: _ra, reviewedBy: _rb,
       rejectionReason: _rr, userId: _uid, revenueShareRate: _rsr, deliverableUploadedAt: _dua,
       pendingChanges: _pc, editReviewStatus: _ers,
+      // Slice 0 (migration 444): the staff approval stamp is written only by staff-signoff.service.
+      staffApprovedAt: _sta, staffApprovedBy: _stb,
       ...safeUpdates
     } = updates as Record<string, unknown>;
     let patch: Partial<InsertProviderService> = safeUpdates as Partial<InsertProviderService>;
@@ -3142,6 +3145,13 @@ export class DatabaseStorage implements IStorage {
     // unchanged row: the request asked for nothing the caller is allowed to change, and got it.
     if (Object.keys(patch as Record<string, unknown>).length === 0) {
       return await this.getProviderServiceById(id);
+    }
+    // Slice 0 (LD 23): an identity edit before the owner's sign-off clears the staff approval stamp — the approval was
+    // of the row as it stood. A listing not waiting for sign-off is unaffected (the WHERE is the guard).
+    const touchesIdentity = IDENTITY_EDIT_FIELDS.some((k) => Object.prototype.hasOwnProperty.call(patch, k));
+    if (touchesIdentity) {
+      (patch as any).staffApprovedAt = sql`CASE WHEN ${providerServices.approvalStatus} = 'submitted' THEN NULL ELSE ${providerServices.staffApprovedAt} END`;
+      (patch as any).staffApprovedBy = sql`CASE WHEN ${providerServices.approvalStatus} = 'submitted' THEN NULL ELSE ${providerServices.staffApprovedBy} END`;
     }
     const [updated] = await db.update(providerServices)
       .set(patch)

@@ -128,7 +128,8 @@ before(async () => {
   admin = await registerActor("admin");
   await readPool.query(`UPDATE users SET role = 'service_provider' WHERE id = $1`, [provider.id]);
   await readPool.query(`UPDATE users SET role = 'travel_expert' WHERE id = $1`, [expert.id]);
-  await readPool.query(`UPDATE users SET role = 'admin' WHERE id = $1`, [admin.id]);
+  // Slice 0: the publishing approval is the owner's; a platform_admin's waits for sign-off.
+  await readPool.query(`UPDATE users SET role = 'owner' WHERE id = $1`, [admin.id]);
 });
 
 after(async () => {

@@ -7,9 +7,12 @@
  *   · `requireBotToken`: a Bearer token, matched by its SHA-256 and compared in constant time; revoked, expired or
  *     unknown ⇒ 401; a scope the route does not name ⇒ 403. The router checks the maintenance flag itself (503).
  *   · Every response names no plan id, no traveler's item id, no email, no booking and no user id.
- *   · Each request stamps the bot's `last_used_at` and writes one log line naming the bot. The admin audit log's
- *     `actor_id` must be a `users` row and a bot is not one, so bot requests are not written there; the admin's own
- *     actions on bots and proposals are (bot-admin.routes.ts).
+ *   · Each request stamps the bot's `last_used_at`, writes one log line naming the bot, and — slice 0 — one audit row
+ *     (`recordBotAudit` → `bot_audit_logs`: action bot.read | bot.propose | bot.flag, method, path, scope, status),
+ *     reads and proposals alike, never failing the request. `access_audit_logs` needs a users row; a bot is not one.
+ *   · Slice 0: a bot ranks below every human role. It can propose and read; it can never approve, publish, hide,
+ *     grant, sign off, or write a feature flag or platform_settings — no such verb exists here, and a bot key is
+ *     refused on every /api/admin route.
  */
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { z } from "zod";
@@ -24,6 +27,8 @@ import {
   touchBotLastUsed,
 } from "../services/bot-proposals.service";
 import { BOT_API_FLAG_ENV, tokenHasScope, type BotScope } from "@shared/bot-proposals";
+import { botAuditActionFor, recordBotAudit } from "../services/bot-audit.service";
+import { botQueueProjection, listIssueQueue } from "../services/issue-queue.service";
 
 const router = Router();
 
@@ -50,6 +55,20 @@ function requireBotToken(scope: BotScope) {
     const m = /^Bearer\s+(\S+)$/i.exec(String(req.headers.authorization ?? ""));
     const bot = await authenticateBotToken(m?.[1] ?? null);
     if (!bot) return res.status(401).json({ error: "Unauthorized" });
+    // Slice 0: one audit row per call by a known key — refused scopes included — written once the response is known;
+    // it never fails the request. An unknown token is no bot, so it has no row (the 401 above).
+    res.once("finish", () => {
+      void recordBotAudit({
+        botId: bot.id,
+        action: botAuditActionFor(req.method, req.path),
+        method: req.method,
+        path: req.path,
+        scope,
+        statusCode: res.statusCode,
+        resourceType: (res.locals as any).botAuditResourceType ?? null,
+        resourceId: (res.locals as any).botAuditResourceId ?? null,
+      });
+    });
     if (!tokenHasScope(bot.scopes, scope)) return res.status(403).json({ error: "Forbidden", scope });
     (req as any).bot = { id: bot.id, name: bot.name };
     void touchBotLastUsed(bot.id);
@@ -99,10 +118,23 @@ router.post("/api/bot/proposals", botSurfaceGate, requireBotToken("proposals:wri
   try {
     const out = await fileBotProposal((req as any).bot, parsed.data);
     if (!out.ok) return res.status(422).json({ error: "Proposal refused", code: out.reason });
+    res.locals.botAuditResourceType = "bot_proposal";
+    res.locals.botAuditResourceId = (out.proposal as any)?.id ?? null;
     res.status(out.duplicate ? 200 : 201).json({ proposal: out.proposal, duplicate: out.duplicate });
   } catch (err) {
     console.error("[bot proposals]", err);
     res.status(500).json({ error: "Could not file the proposal" });
+  }
+});
+
+// Slice 0 — the Ops Bot's read of the issue queue (scope `queue:read`): ids, kinds, markets and ages, every market.
+// No proposal body, no bot name, no user id. It triages from this; it never publishes.
+router.get("/api/bot/queue", botSurfaceGate, requireBotToken("queue:read"), async (_req, res) => {
+  try {
+    res.json({ items: botQueueProjection(await listIssueQueue("all")) });
+  } catch (err) {
+    console.error("[bot queue]", err);
+    res.status(500).json({ error: "Could not read the queue" });
   }
 });
 

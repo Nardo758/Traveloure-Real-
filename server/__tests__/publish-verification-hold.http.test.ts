@@ -209,7 +209,7 @@ before(async () => {
     setRole(providerUnverified.id, "service_provider"),
     setRole(providerVerified.id, "service_provider"),
     setRole(sweepExpert.id, "expert"),
-    setRole(admin.id, "admin"),
+    setRole(admin.id, "owner"), // slice 0: the publishing approval is the owner's (a platform_admin's waits)
   ]);
 
   await Promise.all([

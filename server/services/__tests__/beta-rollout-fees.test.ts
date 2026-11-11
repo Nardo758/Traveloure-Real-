@@ -105,7 +105,7 @@ describe("admin edit gates", () => {
     const patchEnd = admin.indexOf('router.get("/api/admin/service-offering-types"');
     const patch = admin.slice(patchStart, patchEnd);
     assert.ok(patchStart > 0 && patchEnd > patchStart);
-    assert.match(patch, /user\.role !== "admin"/);
+    assert.match(patch, /!isAdminRole\(user\.role\)/); // slice 0: the blanket guard also makes this write owner-only
     assert.match(patch, /confirmation_required/);
     assert.match(patch, /feeBandPatchNeedsConfirm/);
     assert.match(patch, /percent_out_of_range/);
@@ -119,7 +119,7 @@ describe("admin edit gates", () => {
     const settingsStart = admin.indexOf('router.patch("/api/admin/platform-settings/:settingKey"');
     const settingsEnd = admin.indexOf('router.get("/api/admin/lead-routing-logs"');
     const settings = admin.slice(settingsStart, settingsEnd);
-    assert.match(settings, /user\.role !== "admin"/);
+    assert.match(settings, /!isAdminRole\(user\.role\)/); // slice 0: the blanket guard also makes this write owner-only
     assert.match(settings, /confirmation_required/);
     assert.match(settings, /FEE_POLICY_SETTING_KEYS/);
     assert.doesNotMatch(settings, /UPDATE service_bookings/);

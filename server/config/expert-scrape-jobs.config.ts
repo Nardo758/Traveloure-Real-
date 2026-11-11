@@ -1,3 +1,4 @@
+import { isAdminRole } from "@shared/roles";
 /**
  * R-bo (decision-maker ratified 2026-10-04, "aligned with the beta launch"; work plan L1-19).
  *
@@ -20,7 +21,7 @@ export type ScrapeJobsAccess =
  */
 export function scrapeJobsAccess(enabled: boolean, dbRole: string | null | undefined): ScrapeJobsAccess {
   if (!enabled) return { ok: false, status: 404, reason: "disabled" };
-  if (dbRole !== "admin") return { ok: false, status: 403, reason: "admin_only" };
+  if (!isAdminRole(dbRole)) return { ok: false, status: 403, reason: "admin_only" };
   return { ok: true };
 }
 

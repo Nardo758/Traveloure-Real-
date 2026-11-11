@@ -48,7 +48,7 @@
 
 import { test, expect, request as pwRequest, type APIRequestContext, type Page } from "@playwright/test";
 import { loginAs, registerAndSignIn } from "../../playwright/utils/auth";
-import { PERSONAS, PERSONA_PASSWORD, CI_ADMIN_EMAIL, CI_ADMIN_PASSWORD } from "../../playwright/tests/personas/_persona-helpers";
+import { PERSONAS, PERSONA_PASSWORD, CI_ADMIN_EMAIL, CI_ADMIN_PASSWORD, CI_OWNER_EMAIL, CI_OWNER_PASSWORD } from "../../playwright/tests/personas/_persona-helpers";
 import { PROVISIONAL_BOOKING_HINT } from "../../shared/booking-visibility";
 
 const STRIPE_UNAVAILABLE = process.env.JOURNEY_STRIPE_UNAVAILABLE === "1";
@@ -149,10 +149,16 @@ async function publishAndApprove(seller: APIRequestContext, c: SellerCase): Prom
   const listing = await created.json();
   expect(listing.approvalStatus, "a new listing is born submitted (migration 111)").toBe("submitted");
 
+  // Slice 0 (ledger `2026-11-10-slice0-staff-roles`): the admin's approval is a staff stamp that waits (202);
+  // the owner's confirm on the same route publishes.
   const admin = await newSession(CI_ADMIN_EMAIL, CI_ADMIN_PASSWORD);
-  const approved = await admin.post(`/api/admin/provider-services/${listing.id}/approve`);
-  expect(approved.status(), `admin approve: ${await approved.text()}`).toBe(200);
+  const staffApproved = await admin.post(`/api/admin/provider-services/${listing.id}/approve`);
+  expect(staffApproved.status(), `admin approve: ${await staffApproved.text()}`).toBe(202);
   await admin.dispose();
+  const owner = await newSession(CI_OWNER_EMAIL, CI_OWNER_PASSWORD);
+  const approved = await owner.post(`/api/admin/provider-services/${listing.id}/approve`);
+  expect(approved.status(), `owner approve: ${await approved.text()}`).toBe(200);
+  await owner.dispose();
 
   const pub = await (await seller.get(`/api/services/${listing.id}`)).json();
   expect(pub.approvalStatus).toBe("approved");

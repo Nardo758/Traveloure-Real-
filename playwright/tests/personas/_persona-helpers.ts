@@ -70,6 +70,9 @@ export const PERSONAS = {
 // new admin rail (dispatch instruction).
 export const CI_ADMIN_EMAIL = "ci-admin@traveloure.test";
 export const CI_ADMIN_PASSWORD = "CITestAdmin!99";
+/** Slice 0: the CI-only owner (seeded on the loopback CI database only) who confirms a staff approval. */
+export const CI_OWNER_EMAIL = "ci-owner@traveloure.test";
+export const CI_OWNER_PASSWORD = "CITestOwner!99";
 
 /** Canonical Kyoto market string (docs/testing/PERSONA_LANE_B_HANDOFF.md supply-pass finding #3). */
 export const KYOTO = "Kyoto";

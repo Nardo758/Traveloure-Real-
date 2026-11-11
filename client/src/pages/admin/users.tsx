@@ -33,6 +33,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Textarea } from "@/components/ui/textarea";
+import { isAdminRole } from "@shared/roles";
 
 interface AdminUserRow {
   id: string;
@@ -403,7 +404,7 @@ export default function AdminUsers() {
                               ) : (
                                 <DropdownMenuItem
                                   onClick={() => { setSuspendReason(""); setSuspendUser(user); }}
-                                  disabled={user.role === "admin"}
+                                  disabled={isAdminRole(user.role)}
                                   className="text-red-600 focus:text-red-600"
                                   data-testid={`menu-suspend-${user.id}`}
                                 >
@@ -411,7 +412,7 @@ export default function AdminUsers() {
                                   Suspend account
                                 </DropdownMenuItem>
                               )}
-                              {user.status === "active" && user.role !== "admin" && (
+                              {user.status === "active" && !isAdminRole(user.role) && (
                                 <DropdownMenuItem
                                   onClick={() => {
                                     clearQaPasswordFields();

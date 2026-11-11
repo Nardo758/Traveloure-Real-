@@ -1,6 +1,6 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
 import { getUserId } from "../utils/auth";
-import { isProviderRole } from "@shared/roles";
+import { isProviderRole, isAdminRole } from "@shared/roles";
 import { authorizeTripLogistics } from '../utils/trip-logistics-auth';
 import { checkProviderPublishGate } from '../services/provider-publish.service';
 import { withQueryTimer } from '../utils/queryTimer';
@@ -280,7 +280,7 @@ router.get("/api/expert/trips/:tripId/constraints", isAuthenticated, async (req,
       const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
-      if (!user || (user.role !== "expert" && user.role !== "admin")) {
+      if (!user || (user.role !== "expert" && !isAdminRole(user.role))) {
         return res.status(403).json({ message: "Expert access required" });
       }
       // SECURITY (§13 trip-data IDOR class): the platform-role check above is NOT authorization —
@@ -336,7 +336,7 @@ router.get("/api/expert/trips/:tripId/vendors", isAuthenticated, async (req, res
       const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
-      if (!user || (user.role !== "expert" && user.role !== "admin")) {
+      if (!user || (user.role !== "expert" && !isAdminRole(user.role))) {
         return res.status(403).json({ message: "Expert access required" });
       }
       // SECURITY (§13 trip-data IDOR class): per-trip authorization, not just "is an expert".
@@ -359,7 +359,7 @@ router.post("/api/expert/trips/:tripId/vendors", isAuthenticated, async (req, re
       const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
-      if (!user || (user.role !== "expert" && user.role !== "admin")) {
+      if (!user || (user.role !== "expert" && !isAdminRole(user.role))) {
         return res.status(403).json({ message: "Expert access required" });
       }
       // SECURITY (§13 trip-data IDOR class): per-trip authorization BEFORE the write, so an
@@ -409,7 +409,7 @@ router.put("/api/expert/vendors/:vendorId", isAuthenticated, async (req, res) =>
       const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
-      if (!user || (user.role !== "expert" && user.role !== "admin")) {
+      if (!user || (user.role !== "expert" && !isAdminRole(user.role))) {
         return res.status(403).json({ message: "Expert access required" });
       }
       // SECURITY (§13 trip-data IDOR class): there is no :tripId in this path, so resolve the
@@ -447,7 +447,7 @@ router.delete("/api/expert/vendors/:vendorId", isAuthenticated, async (req, res)
       const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
-      if (!user || (user.role !== "expert" && user.role !== "admin")) {
+      if (!user || (user.role !== "expert" && !isAdminRole(user.role))) {
         return res.status(403).json({ message: "Expert access required" });
       }
       // SECURITY (§13 trip-data IDOR class): resolve the vendor row to its OWNING trip and
@@ -483,7 +483,7 @@ router.post("/api/provider/blackout-dates", isAuthenticated, async (req, res) =>
       const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
-      if (!user || (!isProviderRole(user.role) && user.role !== "admin")) {
+      if (!user || (!isProviderRole(user.role) && !isAdminRole(user.role))) {
         return res.status(403).json({ message: "Provider access required" });
       }
       const blackoutInput = z.object({
@@ -510,7 +510,7 @@ router.delete("/api/provider/blackout-dates/:id", isAuthenticated, async (req, r
       const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
-      if (!user || (!isProviderRole(user.role) && user.role !== "admin")) {
+      if (!user || (!isProviderRole(user.role) && !isAdminRole(user.role))) {
         return res.status(403).json({ message: "Provider access required" });
       }
       // SECURITY (§13 cross-provider IDOR, class B): this handler used to gate on the provider
@@ -525,7 +525,7 @@ router.delete("/api/provider/blackout-dates/:id", isAuthenticated, async (req, r
       // than being bypassed). A row that does not exist and a row the caller does not own return
       // the SAME 404 — no cross-provider existence oracle.
       let ownerScope = userId as string;
-      if (user.role === "admin") {
+      if (isAdminRole(user.role)) {
         const row = await storage.getProviderBlackoutDateById(req.params.id);
         if (!row) return res.status(404).json({ message: "Blackout date not found" });
         ownerScope = row.providerId;
@@ -549,7 +549,7 @@ router.get("/api/provider/booking-requests", isAuthenticated, async (req, res) =
       const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
-      if (!user || (!isProviderRole(user.role) && user.role !== "admin")) {
+      if (!user || (!isProviderRole(user.role) && !isAdminRole(user.role))) {
         return res.status(403).json({ message: "Provider access required" });
       }
       const requests = await storage.getBookingRequests(userId);
@@ -565,7 +565,7 @@ router.put("/api/provider/booking-requests/:requestId/respond", isAuthenticated,
       const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
-      if (!user || (!isProviderRole(user.role) && user.role !== "admin")) {
+      if (!user || (!isProviderRole(user.role) && !isAdminRole(user.role))) {
         return res.status(403).json({ message: "Provider access required" });
       }
       const responseInput = z.object({
@@ -586,7 +586,7 @@ router.put("/api/provider/booking-requests/:requestId/respond", isAuthenticated,
       // data-layer predicate still applies rather than being bypassed. A request that does not
       // exist and one the caller does not own both return the SAME 404 — no existence oracle.
       let ownerScope = userId as string;
-      if (user.role === "admin") {
+      if (isAdminRole(user.role)) {
         const [row] = await db
           .select({ providerId: providerBookingRequests.providerId })
           .from(providerBookingRequests)
@@ -811,7 +811,7 @@ router.get("/api/expert/contracts/recent", isAuthenticated, async (req, res) => 
   const requireAdminLocal = async (req: any, res: any, next: any) => {
     if (!req.isAuthenticated()) return res.status(401).json({ message: "Authentication required" });
     const role = await getUserRole(getUserId(req)!);
-    if (role !== "admin") return res.status(403).json({ message: "Admin access required" });
+    if (!isAdminRole(role)) return res.status(403).json({ message: "Admin access required" });
     next();
   };
 

@@ -346,7 +346,7 @@ test("W5: an ADMIN passes — delta (b) — and the interim audit line is what r
   // adds none, so the durable half is pinned at the source rather than asserted as a row.
   const authSrc = src("server/utils/trip-logistics-auth.ts");
   const fn = authSrc.match(/export async function authorizeTripLogistics[\s\S]*?\n\}/)![0];
-  assert.match(fn, /user\?\.role === "admin"/);
+  assert.match(fn, /isAdminRole\(user\?\.role\)/);
   assert.match(fn, /logger\.info\(/);
   assert.match(fn, /actor: userId, route, tripId/);
   assert.match(fn, /admin-cross-trip-logistics/);

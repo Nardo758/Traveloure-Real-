@@ -91,6 +91,21 @@ export async function createBotAccount(input: { name: unknown; scopes: unknown; 
   return { ok: true, bot, token };
 }
 
+/**
+ * Slice 0: replace a live bot's scopes (owner-only route, audited). The list is validated against BOT_SCOPES — no
+ * scope approves, publishes, grants or writes settings, so no scope here can widen a bot past propose/read.
+ */
+export async function setBotScopes(id: string, scopes: unknown): Promise<{ ok: true; scopes: BotScope[] } | { ok: false; reason: "bad_scopes" | "not_found" }> {
+  if (!Array.isArray(scopes) || !scopes.length || !scopes.every(isBotScope)) return { ok: false, reason: "bad_scopes" };
+  const next = Array.from(new Set(scopes as BotScope[]));
+  const [row] = await db
+    .update(botAccounts)
+    .set({ scopes: next })
+    .where(and(eq(botAccounts.id, id), isNull(botAccounts.revokedAt)))
+    .returning({ id: botAccounts.id });
+  return row ? { ok: true, scopes: next } : { ok: false, reason: "not_found" };
+}
+
 /** Revoke a bot. One atomic conditional; revoking twice changes nothing. */
 export async function revokeBotAccount(id: string): Promise<{ revoked: boolean }> {
   const [row] = await db.update(botAccounts).set({ revokedAt: new Date() }).where(and(eq(botAccounts.id, id), isNull(botAccounts.revokedAt))).returning({ id: botAccounts.id });
@@ -297,13 +312,47 @@ export async function getBotProposal(botId: string, id: string) {
  * The review queue. Each row carries the bot's name, the source's name, and the CURRENTLY stored registry fact for
  * the same place and fact type (read live, never a stored copy), so the admin compares before approving.
  */
-export async function listBotProposalsForReview(status: string) {
+/**
+ * Slice 0: who sees which proposals. owner/platform_admin: every row (`markets: "all"`). A regional manager: rows in its
+ * assigned markets. A moderator: rows assigned to it (`assignedTo`). An empty market list sees nothing.
+ */
+export interface ProposalReviewScope {
+  markets: "all" | readonly string[];
+  assignedTo?: string | null;
+}
+
+export async function getBotProposalMarket(id: string): Promise<{ found: boolean; market: string | null; assignedTo: string | null }> {
+  const [row] = await db
+    .select({ market: botProposals.market, assignedTo: botProposals.assignedTo })
+    .from(botProposals)
+    .where(eq(botProposals.id, id))
+    .limit(1);
+  return row ? { found: true, market: row.market ?? null, assignedTo: row.assignedTo ?? null } : { found: false, market: null, assignedTo: null };
+}
+
+/** Slice 0: assign a pending draft to a moderator, or clear it (null). One atomic conditional on the row being pending. */
+export async function assignBotProposal(id: string, assignee: string | null): Promise<{ ok: boolean }> {
+  const [row] = await db
+    .update(botProposals)
+    .set({ assignedTo: assignee } as any)
+    .where(and(eq(botProposals.id, id), eq(botProposals.status, "pending")))
+    .returning({ id: botProposals.id });
+  return { ok: !!row };
+}
+
+export async function listBotProposalsForReview(status: string, scope: ProposalReviewScope = { markets: "all" }) {
+  if (scope.markets !== "all" && scope.markets.length === 0 && !scope.assignedTo) return [];
+  const scopeWhere = scope.assignedTo
+    ? eq(botProposals.assignedTo, scope.assignedTo)
+    : scope.markets === "all"
+      ? undefined
+      : inArray(botProposals.market, [...scope.markets]);
   const rows = await db
     .select({ p: botProposals, botName: botAccounts.name, sourceName: contentSources.name })
     .from(botProposals)
     .leftJoin(botAccounts, eq(botAccounts.id, botProposals.botId))
     .leftJoin(contentSources, eq(contentSources.id, botProposals.sourceId))
-    .where(eq(botProposals.status, status))
+    .where(and(eq(botProposals.status, status), scopeWhere))
     .orderBy(asc(botProposals.createdAt))
     .limit(200);
   const out = [];
@@ -327,7 +376,8 @@ export async function listBotProposalsForReview(status: string) {
           .orderBy(desc(placeFacts.fetchedAt))
           .limit(1)
       : [];
-    out.push({ ...r.p, botName: r.botName ?? null, sourceName: r.sourceName ?? null, currentFact: current ?? null });
+    // Slice 0: "proposed by {bot}" — admin-only provenance; never on a public payload.
+    out.push({ ...r.p, botName: r.botName ?? null, proposedBy: r.botName ?? null, sourceName: r.sourceName ?? null, currentFact: current ?? null });
   }
   return out;
 }

@@ -2304,4 +2304,9 @@ export const MIGRATION_FILES = [
   // FU-R4-11: published opening / closing times on four of 439's Kyoto events (factcheck tab); time of day only, date
   // untouched, fill-only; data only. Ledger 2026-11-06-kyoto-event-times.
   "443_kyoto_event_times.sql",
+  // 444 — slice 0 (Addendum A v2): staff_market_assignments, staff_approved_at/by on service_provider_forms and
+  // provider_services, bot_proposals.assigned_to, bot_audit_logs, two platform_settings rows, and admin →
+  // platform_admin. The owner statement is NOT here (Leon runs it by hand; his id never goes in a commit). Ledger
+  // 2026-11-10-slice0-staff-roles.
+  "444_slice0_staff_roles.sql",
 ] as const;

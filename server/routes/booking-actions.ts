@@ -80,6 +80,7 @@ import {
   getTravelerProfile,
 } from '../services/booking-actions.service';
 import { isManagingEaForTrip } from '../services/ea-plan-delegate.service';
+import { isAdminRole } from "@shared/roles";
 
 const router = Router();
 
@@ -965,7 +966,7 @@ router.get('/expert/bookings/:id/plan-snapshot', isAuthenticated, async (req, re
 
     if (booking.providerId !== userId) {
       const requester = await storage.getUser(userId);
-      if (requester?.role !== 'admin') {
+      if (!isAdminRole(requester?.role)) {
         return res.status(403).json({ message: 'Not your booking' });
       }
     }
@@ -2007,7 +2008,7 @@ router.get("/trips/:tripId/workspace-constraints", isAuthenticated, async (req, 
     if (!owned) {
       const user = await storage.getUser(userId);
       if (!user) return res.status(401).json({ message: "Not authenticated" });
-      if (user.role === "admin") {
+      if (isAdminRole(user.role)) {
         // admins pass through
       } else {
         const assigned = await storage.isExpertAssignedToTrip(tripId, userId);

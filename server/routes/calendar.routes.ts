@@ -52,7 +52,7 @@ import {
   tripExpertAdvisors,
   trips,
 } from "@shared/schema";
-import { isExpertRole, isProviderRole } from "@shared/roles";
+import { isExpertRole, isProviderRole, isAdminRole } from "@shared/roles";
 import { readPartnerDemandRollup } from "../services/demand-rollup.service";
 import { getMarketByKey } from "../services/trend-engine/operating-markets";
 
@@ -105,7 +105,7 @@ router.get("/api/me/calendar", isAuthenticated, async (req, res) => {
     // Role (from the DB, §2 posture) picks the agent-request lane + the owning-console hrefs.
     const dbUser = await storage.getUser(userId);
     const role = dbUser?.role ?? "";
-    const isExpert = isExpertRole(role) || role === "admin";
+    const isExpert = isExpertRole(role) || isAdminRole(role);
     const isProviderOnly = isProviderRole(role) && !isExpert;
     const hrefs = {
       slots: isProviderOnly ? "/provider/services" : "/expert/catalog",

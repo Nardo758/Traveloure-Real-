@@ -48,6 +48,7 @@ import {
   PLATFORM_DISPUTE_PAYOUT_AUTOMATION_IDS,
   PLATFORM_PAYMENT_EVENT_AUTOMATION_IDS,
 } from '../automations/payments/runtime';
+import { isAdminRole } from "@shared/roles";
 
 const router = Router();
 
@@ -124,7 +125,7 @@ router.get('/:id', isAuthenticated, async (req, res) => {
     const userRole = (await getDbRole(req)) ?? 'user';
 
     // Admin sees everything
-    if (userRole === 'admin') {
+    if (isAdminRole(userRole)) {
       return res.json(booking);
     }
 
@@ -684,7 +685,7 @@ router.post('/refund', isAuthenticated, async (req, res) => {
     let isAdmin = false;
     if (ownerId !== sessionUserId) {
       const actor = await storage.getUser(sessionUserId);
-      if (actor?.role !== 'admin') {
+      if (!isAdminRole(actor?.role)) {
         return res.status(403).json({ error: 'Not authorized to refund this booking' });
       }
       isAdmin = true;

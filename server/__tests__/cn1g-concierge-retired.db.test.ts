@@ -117,7 +117,8 @@ before(async () => {
   traveler = { id: t.id, cookie: t.cookie };
   const a = await registerAndSignIn({ baseUrl: BASE_URL, email: `${P}-admin@traveloure.test`, password: "TestPass123!", firstName: "Adm" });
   admin = { id: a.id, cookie: a.cookie };
-  await db.execute(sql`UPDATE users SET role = 'admin' WHERE id = ${admin.id}`);
+  // Slice 0: a platform_settings write is owner-only at the blanket guard.
+  await db.execute(sql`UPDATE users SET role = 'owner' WHERE id = ${admin.id}`);
   await db.execute(sql`INSERT INTO trips (id, user_id, title, destination, start_date, end_date)
     VALUES (${TRIP}, ${traveler.id}, 'Kyoto days', 'Kyoto, Japan', CURRENT_DATE + 30, CURRENT_DATE + 32)`);
   await db.execute(sql`INSERT INTO itinerary_items (id, trip_id, title, day_number, sort_order, routing_status, estimated_cost)

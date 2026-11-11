@@ -97,7 +97,7 @@ before(async () => {
   });
   adminCookie = admin.cookie;
   adminId = admin.id;
-  await pool.query(`UPDATE users SET role = 'admin' WHERE id = $1`, [adminId]);
+  await pool.query(`UPDATE users SET role = 'owner' WHERE id = $1`, [adminId]); // slice 0: AO2's out-of-band refund clear is owner-only
   await pool.query(
     `INSERT INTO users (id, email, first_name, role) VALUES ($1, $2, 'Gap8', 'user'), ($3, $4, 'Gap8', 'service_provider')`,
     [travelerId, `${travelerId}@traveloure.test`, providerId, `${providerId}@traveloure.test`],
@@ -157,7 +157,7 @@ test("AO1 — an email retry writes one audit row, dead → pending; a refused r
   assert.equal(ok.status, 200);
   const rows = await audits(EMAIL_OUTBOX_RETRY_ACTION, String(outboxDeadId));
   assert.equal(rows.length, 1);
-  assert.equal(rows[0].actor_role, "admin");
+  assert.equal(rows[0].actor_role, "owner");
   assert.equal(rows[0].resource_type, EMAIL_OUTBOX_RESOURCE);
   assert.equal(rows[0].before_status, "dead");
   assert.equal(rows[0].after_status, "pending");

@@ -50,6 +50,7 @@ import { CLOSED_BOOKING_STATUSES, EARNING_BOOKING_STATUSES } from "@shared/booki
 import { REFUND_RECORD_KEY } from "@shared/booking-refund-record";
 import { OUT_OF_BAND_REFUND_KEY } from "@shared/out-of-band-refund";
 import { paymentOnRecordSql } from "../services/payment-on-record";
+import { isAdminRole } from "@shared/roles";
 
 const router = Router();
 
@@ -212,7 +213,7 @@ router.patch("/api/short-links/:id", isAuthenticated, async (req: any, res) => {
     if (link.ownerUserId !== userId) {
       // Admin is the ONLY other authority the disposition names. Role from the DB, not the session.
       const [me] = await db.select({ role: users.role }).from(users).where(eq(users.id, userId)).limit(1);
-      if (me?.role !== "admin") {
+      if (!isAdminRole(me?.role)) {
         // Undifferentiated with "not found" on purpose — a non-owner learns nothing.
         return res.status(404).json({ message: "Short link not found" });
       }

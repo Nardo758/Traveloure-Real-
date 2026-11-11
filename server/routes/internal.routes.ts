@@ -494,7 +494,18 @@ router.post("/internal/jobs/waitlist-retention", requireInternalSecret, async (_
 router.post("/internal/jobs/guest-data-retention", requireInternalSecret, async (_req, res) => {
   const { status, body } = await runJob(
     "guest-data-retention",
-    () => runGuestDataRetention(),
+    async () => {
+      const result: any = await runGuestDataRetention();
+      // Slice 0 (Addendum A v2): the same daily pass prunes bot_audit_logs past platform_settings.bot_audit_retention_days
+      // (seeded 90). Bot rows only. A failed prune is logged and reported; it never fails the guest-data pass.
+      try {
+        const { pruneBotAudit } = await import("../services/bot-audit.service");
+        return { ...result, botAuditPruned: await pruneBotAudit() };
+      } catch (err: any) {
+        console.error("[bot audit prune]", err?.message ?? err);
+        return { ...result, botAuditPruned: null, botAuditPruneError: String(err?.message ?? err).slice(0, 200) };
+      }
+    },
     (r) => r?.status === "error",
   );
   res.status(status).json(body);

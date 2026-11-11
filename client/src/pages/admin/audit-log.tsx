@@ -27,6 +27,7 @@ import {
   type AuditLogAllFilters,
 } from "@/lib/audit-log-all";
 
+import { isAdminRole } from "@shared/roles";
 interface RoleChangeLog {
   id: string;
   created_at: string;
@@ -68,7 +69,7 @@ function userLabel(
 
 function roleBadgeVariant(role: string | null | undefined): "default" | "secondary" | "destructive" | "outline" {
   if (!role) return "outline";
-  if (role === "admin") return "destructive";
+  if (isAdminRole(role)) return "destructive";
   if (role === "local_expert" || role === "travel_expert" || role === "event_planner" || role === "executive_assistant") return "default";
   if (role === "service_provider") return "secondary";
   return "outline";

@@ -24,6 +24,7 @@ import { isTripAuthor } from "./trip-authorship";
 import { isTripAdvisor, isTripAdvisorWithWriteAccess } from "./trip-advisor";
 import { isManagingEaForTrip } from "../services/ea-plan-delegate.service";
 import { logger } from "../infrastructure/logger";
+import { isAdminRole } from "@shared/roles";
 
 /**
  * `requireWriteAccess` (ruling, Aug 7 2026 — "a PENDING advisor may not write"): defaults to
@@ -65,7 +66,7 @@ export async function authorizeTripLogistics(
 
   // Admin: allowed, but audit-logged (interim; dedicated audit-log lane filed).
   const user = await storage.getUser(userId);
-  if (user?.role === "admin") {
+  if (isAdminRole(user?.role)) {
     logger.info(
       { actor: userId, route, tripId, access: "admin-cross-trip-logistics" },
       "admin cross-trip logistics access (interim audit)",
@@ -119,7 +120,7 @@ export async function authorizeTripOwnerTier(
 
   // Admin: allowed, but audit-logged (interim; dedicated audit-log lane filed).
   const user = await storage.getUser(userId);
-  if (user?.role === "admin") {
+  if (isAdminRole(user?.role)) {
     logger.info(
       { actor: userId, route, tripId, access: "admin-cross-trip-owner-tier" },
       "admin cross-trip owner-tier access (interim audit)",

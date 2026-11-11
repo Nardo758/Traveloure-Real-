@@ -1005,6 +1005,10 @@ export const serviceProviderForms = pgTable("service_provider_forms", {
   // zod ALLOWLIST (no new .omit() schema — #PS18 ratchet untouched). Additive-nullable jsonb,
   // declared here per the publish-trap rule (deploy-push would drop an undeclared column).
   officeLocation: jsonb("office_location"),
+  // Migration 444 (slice 0, Addendum A v2): a staff approval that waits for the owner's sign-off. Nullable, no
+  // DEFAULT/CHECK/FK. approval status columns are untouched; the owner's confirm runs the existing approve route.
+  staffApprovedAt: timestamp("staff_approved_at"),
+  staffApprovedBy: varchar("staff_approved_by"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
   // Rejected/deleted/deactivated rows are retained as review/account history. The current
@@ -1672,6 +1676,12 @@ export const providerServices = pgTable("provider_services", {
   // Omitted from insertProviderServiceSchema and re-admitted by admitListingTheme
   // (§19). An approved listing stages a change here (IDENTITY_EDIT_FIELDS).
   themeId: varchar("theme_id").references(() => experienceThemes.id, { onDelete: "set null" }),
+
+  // Migration 444 (slice 0, Addendum A v2): a staff approval waiting for the owner's sign-off. Nullable, no
+  // DEFAULT/CHECK/FK. approval_status stays `submitted` until the owner confirms through the approve route; an
+  // identity edit before sign-off clears the stamp (LD 23). Server-stamped only — omitted from the insert schema.
+  staffApprovedAt: timestamp("staff_approved_at"),
+  staffApprovedBy: varchar("staff_approved_by"),
 
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -3298,6 +3308,9 @@ export const insertLocalExpertFormSchema = createInsertSchema(localExpertForms).
 // self-verify. Sole sanctioned writers: `storage.updateFormIdentityVerification` /
 // `storage.updateProviderBusinessVerificationByInquiry`, and the Stripe/Persona webhook.
 export const insertServiceProviderFormSchema = createInsertSchema(serviceProviderForms).omit({
+  // Migration 444: server-stamped by a staff approval only.
+  staffApprovedAt: true,
+  staffApprovedBy: true,
   id: true,
   userId: true,
   status: true,
@@ -3344,7 +3357,7 @@ export const insertServiceSubcategorySchema = createInsertSchema(serviceSubcateg
 // clamped, so this was a false-audit-trail write, not an approval bypass; the real admin
 // approve/reject writers below unconditionally overwrite all four the moment a real review
 // happens). Found by `scripts/check-privileged-field-completeness.cjs` (§19 "close the class").
-export const insertProviderServiceSchema = createInsertSchema(providerServices).omit({ id: true, userId: true, formStatus: true, bookingsCount: true, totalRevenue: true, averageRating: true, reviewCount: true, createdAt: true, updatedAt: true, revenueShareRate: true, deliverableUploadedAt: true, declaredArtifactDeliverable: true, pendingChanges: true, editReviewStatus: true, createdVia: true, sourceRef: true, approvalStatus: true, submittedAt: true, reviewedAt: true, reviewedBy: true, rejectionReason: true, expertOfferingTypeKey: true, priceBasis: true, themeId: true }).extend({
+export const insertProviderServiceSchema = createInsertSchema(providerServices).omit({ id: true, userId: true, formStatus: true, bookingsCount: true, totalRevenue: true, averageRating: true, reviewCount: true, createdAt: true, updatedAt: true, revenueShareRate: true, deliverableUploadedAt: true, declaredArtifactDeliverable: true, pendingChanges: true, editReviewStatus: true, createdVia: true, sourceRef: true, approvalStatus: true, submittedAt: true, reviewedAt: true, reviewedBy: true, rejectionReason: true, expertOfferingTypeKey: true, priceBasis: true, themeId: true, staffApprovedAt: true, staffApprovedBy: true }).extend({
   // service_type is varchar with no DB CHECK. This is the vocabulary check.
   // Field-level so it survives .partial() on PATCH. Null is left for the
   // route to treat as "not in this write" so an edit cannot clear a stored type.
@@ -12860,6 +12873,9 @@ export const botProposals = pgTable("bot_proposals", {
   rejectReason: text("reject_reason"),
   // Migration 380: the fact this proposal's approval wrote; a deleted fact clears it, never the proposal.
   factId: varchar("fact_id").references(() => placeFacts.id, { onDelete: "set null" }),
+  // Migration 444 (slice 0): the moderator a draft is assigned to; written by owner / platform_admin / an in-scope
+  // regional manager, audited. A deleted user clears it.
+  assignedTo: varchar("assigned_to").references(() => users.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (table) => ({
   dedupeUniq: uniqueIndex("uq_bot_proposals_dedupe").on(table.dedupeHash),
@@ -12867,6 +12883,43 @@ export const botProposals = pgTable("bot_proposals", {
   botIdx: index("idx_bot_proposals_bot").on(table.botId),
 }));
 export type BotProposal = typeof botProposals.$inferSelect;
+
+// Migration 444 (slice 0, Addendum A v2; Phase 0 F1): one row per bot key call — reads, proposals and flags alike.
+// A sibling of access_audit_logs because that table's actor_id must be a users row and a bot is not one. Written by
+// ONE recordBotAudit, never failing the bot's request; pruned after platform_settings.bot_audit_retention_days.
+export const botAuditLogs = pgTable("bot_audit_logs", {
+  id: varchar("id").primaryKey(),
+  botId: varchar("bot_id").notNull().references(() => botAccounts.id, { onDelete: "cascade" }),
+  action: varchar("action", { length: 30 }).notNull(),
+  resourceType: varchar("resource_type", { length: 50 }),
+  resourceId: varchar("resource_id", { length: 300 }),
+  method: varchar("method", { length: 10 }).notNull(),
+  path: text("path").notNull(),
+  scope: varchar("scope", { length: 40 }),
+  statusCode: integer("status_code"),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  botCreatedIdx: index("idx_bot_audit_logs_bot_created").on(table.botId, table.createdAt),
+  createdIdx: index("idx_bot_audit_logs_created").on(table.createdAt),
+}));
+export type BotAuditLog = typeof botAuditLogs.$inferSelect;
+
+// Migration 444 (slice 0, Addendum A v2): the markets a regional manager or moderator may act in. Writer: owner
+// only, audited. An empty scope acts on nothing. The partial UNIQUE keeps one live grant per user and market.
+export const staffMarketAssignments = pgTable("staff_market_assignments", {
+  id: varchar("id").primaryKey(),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  marketSlug: varchar("market_slug", { length: 64 }).notNull(),
+  grantedBy: varchar("granted_by").references(() => users.id, { onDelete: "set null" }),
+  grantedAt: timestamp("granted_at").notNull().defaultNow(),
+  revokedAt: timestamp("revoked_at"),
+  revokedBy: varchar("revoked_by").references(() => users.id, { onDelete: "set null" }),
+}, (table) => ({
+  activeUniq: uniqueIndex("uq_staff_market_assignments_active").on(table.userId, table.marketSlug).where(sql`revoked_at IS NULL`),
+  userIdx: index("idx_staff_market_assignments_user").on(table.userId),
+}));
+export type StaffMarketAssignment = typeof staffMarketAssignments.$inferSelect;
 
 // Migration 345 (ledger 2026-10-04-feedback-phase-a): feedback captured at the moments it means
 // something, as registry codes (shared/feedback.ts) plus one free-text field. One row per plan per

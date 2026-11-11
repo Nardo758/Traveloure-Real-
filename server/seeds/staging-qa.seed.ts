@@ -245,7 +245,7 @@ async function ratifyKyotoNeighbourhood(expertId: string): Promise<string | null
   const hood = await one<{ id: string; name: string }>(sql`
     SELECT id, name FROM city_neighborhoods WHERE lower(city) = 'kyoto' ORDER BY slug LIMIT 1`);
   if (!hood) return null;
-  const adminId = (await one<{ id: string }>(sql`SELECT id FROM users WHERE role = 'admin' ORDER BY created_at LIMIT 1`))?.id;
+  const adminId = (await one<{ id: string }>(sql`SELECT id FROM users WHERE role IN ('owner', 'platform_admin', 'admin') ORDER BY created_at LIMIT 1`))?.id;
   if (!adminId) return null;
   const created = await createClaim({ expertId, neighborhoodId: hood.id, actorType: "ops", actorId: adminId });
   if (!created.ok) return null;

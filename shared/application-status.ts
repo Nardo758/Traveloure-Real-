@@ -9,7 +9,7 @@
  * No database. Safe for the client.
  */
 import { PROVIDER_SIGNUP_COPY } from "./copy-2026-10-31";
-import { isEarnerRole, isExpertRole, isProviderRole } from "./roles";
+import { isEarnerRole, isExpertRole, isProviderRole, isAdminRole } from "./roles";
 
 export type StepStatus = "completed" | "in_progress" | "pending" | "failed";
 export type ApplicationPhase = "not_started" | "action_needed" | "under_review" | "approved" | "rejected";
@@ -459,7 +459,7 @@ export function accessDeniedCopy(input: AccessDeniedInput): AccessDeniedCopy {
   }
 
   const supply = input.supply;
-  const pendingSupply = supplyPage && !isEarnerRole(input.userRole) && input.userRole !== "admin";
+  const pendingSupply = supplyPage && !isEarnerRole(input.userRole) && !isAdminRole(input.userRole);
   if (pendingSupply && supply) {
     const draft = supply.canSaveDraftListing
       ? { actionHref: "/dashboard/listing", actionLabel: "Draft a listing" }

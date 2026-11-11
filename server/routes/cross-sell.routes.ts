@@ -6,6 +6,7 @@ import { crossSellEvents, serviceBookings, providerServices } from "@shared/sche
 import { db } from "../db";
 import { eq, and, inArray, sql, desc, count } from "drizzle-orm";
 import { isAuthenticated } from "../replit_integrations/auth";
+import { isAdminRole } from "@shared/roles";
 
 const router = Router();
 
@@ -15,7 +16,7 @@ async function requireAdmin(req: any, res: any): Promise<boolean> {
   const userId = getUserId(req)!;
   if (!userId) { res.status(401).json({ message: "Unauthorized" }); return false; }
   const user = await storage.getUser(userId);
-  if (!user || user.role !== "admin") { res.status(403).json({ message: "Admin access required" }); return false; }
+  if (!user || !isAdminRole(user.role)) { res.status(403).json({ message: "Admin access required" }); return false; }
   return true;
 }
 

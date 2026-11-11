@@ -121,7 +121,7 @@ import { api } from "@shared/routes";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { PAYOUT_EMAIL_VERIFICATION_BODY, payoutEmailVerificationDenial, requireVerifiedEmail } from "../services/verified-email-action-gate";
-import { isExpertRole, isProviderRole, isEarnerRole } from "@shared/roles";
+import { isExpertRole, isProviderRole, isEarnerRole, isAdminRole } from "@shared/roles";
 import { decidePayoutRequest, validatePayoutSetupWrite } from "../services/payout-setup";
 import { lockPayoutRequestDecision, readOwnPayoutSetup, readPayoutFacts, saveOwnPayoutSetup } from "../services/payout-setup.service";
 import { MIN_PAYOUT_CENTS, MIN_PAYOUT_DOLLARS, effectivePayoutMinimumCents, isPayoutStale, STALE_PAYOUT_PROCESSING_DAYS } from "../config/payout.config";
@@ -302,7 +302,7 @@ router.get("/api/revenue-splits", async (req, res) => {
       const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ error: "Not authenticated" });
       const user = await storage.getUser(userId);
-      if (!user || user.role !== "admin") {
+      if (!user || !isAdminRole(user.role)) {
         return res.status(403).json({ message: "Admin access required" });
       }
       const splits = await storage.getRevenueSplits();

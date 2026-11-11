@@ -64,6 +64,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import type { VendorCreator, VendorDirectoryRow } from "@shared/schema";
+import { isAdminRole, ADMIN_ROLES } from "@shared/roles";
 
 const vendorCategories = [
   { id: "photography", label: "Photography", icon: Camera },
@@ -96,7 +97,7 @@ type VendorFormValues = z.infer<typeof vendorFormSchema>;
  */
 type Vendor = VendorDirectoryRow;
 
-const PLANNER_ROLES = new Set(["admin", "service_provider", "provider", "local_expert", "travel_expert", "event_planner"]);
+const PLANNER_ROLES = new Set<string>([...ADMIN_ROLES, "service_provider", "provider", "local_expert", "travel_expert", "event_planner"]);
 
 /**
  * True when the SERVER disclosed creator provenance for this row (the admin projection).
@@ -137,7 +138,7 @@ export default function Vendors() {
   const [, setLocation] = useLocation();
   const { user } = useAuth();
   const isPlanner = !!user && PLANNER_ROLES.has(user.role ?? "");
-  const isAdmin = user?.role === "admin";
+  const isAdmin = isAdminRole(user?.role);
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");

@@ -45,10 +45,10 @@ import { resolveMarketSlug } from "../services/trend-engine/operating-markets";
 // §18 rule 1). This file READS the table freely; the concierge-revision grant below is a CALLER
 // of the shared upsert and never inserts the row itself.
 import { notifyExpertOfReadyMadeRevisionRequest } from "../services/ready-made-notifications.service";
-
+import { ADMIN_ROLES } from "@shared/roles";
 const router = Router();
 
-const AUTHOR_ROLES = new Set(["local_expert", "travel_expert", "admin"]); // D3 (Leon, 2026-07-25)
+const AUTHOR_ROLES = new Set<string>(["local_expert", "travel_expert", ...ADMIN_ROLES]); // D3 (Leon, 2026-07-25)
 
 function sessionUserId(req: any): string | null {
   return getUserId(req)!;

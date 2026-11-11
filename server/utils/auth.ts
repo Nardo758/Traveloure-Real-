@@ -1,5 +1,6 @@
 import type { Request } from "express";
 import { storage } from "../storage";
+import { isAdminRole } from "@shared/roles";
 
 /**
  * Normalizes user ID extraction across all three auth methods:
@@ -62,7 +63,7 @@ async function lookupDbRole(userId: string): Promise<string | null> {
  *     a week (finding 8 — `GET /api/bookings/:id` handed out the full row, Stripe payment
  *     intent ids included, off that snapshot).
  *   - It is ABSENT: the Replit OIDC session shape carries no top-level `role` at all, so a
- *     `req.user?.role !== 'admin'` check fails CLOSED for real admins (finding 14).
+ *     `!isAdminRole(req.user?.role)` check fails CLOSED for real admins (finding 14).
  *
  * A DB lookup answers both: the role is whatever the row says RIGHT NOW, on every session
  * shape. Costs one `users` read per request on the paths that need it (never in a loop —
@@ -101,7 +102,7 @@ export async function requireDbAdmin(req: any, res: any, next: any) {
     console.error("[auth] requireDbAdmin lookup failed:", err);
     return res.status(500).json({ message: "Authorization check failed" });
   }
-  if (role !== "admin") {
+  if (!isAdminRole(role)) {
     return res.status(403).json({ message: "Admin access required" });
   }
   return next();

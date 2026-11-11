@@ -33,8 +33,8 @@ import {
   scalar,
   closePool,
   PERSONAS,
-  CI_ADMIN_EMAIL,
-  CI_ADMIN_PASSWORD,
+  CI_OWNER_EMAIL,
+  CI_OWNER_PASSWORD,
   KYOTO,
   loginAs,
   driveServiceFormToSubmit,
@@ -246,10 +246,11 @@ test.describe("supply-provider — Kyoto provider persona", () => {
       });
     }
 
-    // ── Step 7: admin approves both listings via the real admin-gated endpoint ───────────────
+    // ── Step 7: the owner approves both listings via the real admin-gated endpoint ───────────
+    // Slice 0: a platform_admin's approval waits for the owner's sign-off, so the publishing approval is the owner's.
     const adminCtx = await pwRequest.newContext({ baseURL: BASE_URL });
     const adminRes = await adminCtx.post(`${BASE_URL}/api/auth/login`, {
-      data: { email: CI_ADMIN_EMAIL, password: CI_ADMIN_PASSWORD },
+      data: { email: CI_OWNER_EMAIL, password: CI_OWNER_PASSWORD },
     });
     const adminLoginOk = adminRes.status() === 200;
     for (const [name, id] of Object.entries(serviceIds)) {

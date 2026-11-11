@@ -100,7 +100,7 @@ describe("GET /api/admin/vendors/export", () => {
     );
     assert.match(
       source,
-      /const user = await storage\.getUser\(userId\);[\s\S]*?if \(!user \|\| user\.role !== "admin"\)\s*\{\s*return res\.status\(403\)\.json\(\{\s*message: "Admin access required"/,
+      /const user = await storage\.getUser\(userId\);[\s\S]*?if \(!user \|\| !isAdminRole\(user\.role\)\)\s*\{\s*return res\.status\(403\)\.json\(\{\s*message: "Admin access required"/,
       "vendor export must reject sessions whose database role is not admin",
     );
     // Ledger `2026-09-05-vendors-read-scope` split `storage.getVendors` in two: the browse reader

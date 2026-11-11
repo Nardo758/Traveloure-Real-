@@ -9,7 +9,7 @@ import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { storage } from "../storage";
 import { localExpertForms, users } from "@shared/schema";
-import { isEarnerRole } from "@shared/roles";
+import { isEarnerRole, isAdminRole } from "@shared/roles";
 import {
   buildExpertApplicationTimeline,
   buildProviderApplicationTimeline,
@@ -58,7 +58,7 @@ export async function readSupplyAccount(userId: string): Promise<SupplyAccount> 
   // (the verification gate's staff case). An unapproved application does not
   // get that pass. A missing or closed form is not an unapproved application.
   const unapprovedSupply = chosen != null && chosen.rank > 0 && chosen.status !== "approved";
-  const publishesFreely = earner || (role === "admin" && !unapprovedSupply);
+  const publishesFreely = earner || (isAdminRole(role) && !unapprovedSupply);
 
   const empty: SupplyAccount = {
     kind: null,

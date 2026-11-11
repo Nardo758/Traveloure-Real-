@@ -10,7 +10,7 @@
 
 import { db } from "../db";
 import { sql } from "drizzle-orm";
-import { isExpertRole, isProviderRole } from "@shared/roles";
+import { isExpertRole, isProviderRole, isAdminRole } from "@shared/roles";
 
 export type QACheckResult = { pass: boolean; detail: string };
 export type QAResults = Record<string, QACheckResult>;
@@ -29,7 +29,7 @@ export const QA_TEST_ROLE_GROUPS: ReadonlyArray<{ label: string; matches: (role:
   { label: "traveler", matches: (role) => role === "user" },
   { label: "expert", matches: (role) => isExpertRole(role) },
   { label: "provider", matches: (role) => isProviderRole(role) },
-  { label: "admin", matches: (role) => role === "admin" },
+  { label: "admin", matches: (role) => isAdminRole(role) },
   { label: "executive assistant", matches: (role) => role === "executive_assistant" },
 ];
 

@@ -12,9 +12,9 @@
  * Storage imports this file. This file does not import storage.
  */
 import { sql, type SQL } from "drizzle-orm";
-import { EARNER_ROLES } from "@shared/roles";
+import { EARNER_ROLES, ADMIN_ROLES } from "@shared/roles";
 
-const PUBLIC_OWNER_ROLES = [...EARNER_ROLES, "admin"] as const;
+const PUBLIC_OWNER_ROLES = [...EARNER_ROLES, ...ADMIN_ROLES] as const;
 
 /** TRUE when this owner column may be shown on a public listing read. */
 export function publicListingOwnerSql(ownerUserIdColumn: SQL | { getSQL(): SQL }): SQL {

@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 
+import { isAdminRole } from "@shared/roles";
 const EXPERT_ROLES = ["expert", "local_expert", "travel_expert", "event_planner"];
 const PROVIDER_ROLES = ["service_provider"];
 
@@ -106,7 +107,7 @@ export function UserMenu() {
   const isExpert = EXPERT_ROLES.includes(role);
   const isProvider = PROVIDER_ROLES.includes(role);
   const isEA = role === "executive_assistant";
-  const isAdmin = role === "admin";
+  const isAdmin = isAdminRole(role);
 
   const roleLabel = getRoleLabel(role);
   const displayName = getDisplayName(user);

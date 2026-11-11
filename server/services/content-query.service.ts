@@ -36,7 +36,7 @@ import { assertAiDraftEligible, itineraryItemNotPlanAnchor } from "./ai-draft-el
 import { logBannedCopyDrops, newBannedCopyDrops, sanitizeCanonicalItems, sanitizeGeneratedPlan } from "../utils/ai-draft-sanitize";
 import { coveringEventsForTrip } from "./content-facts/covering-events";
 import { livenessDatabaseReachable } from "./db-readiness";
-
+import { ADMIN_ROLES } from "@shared/roles";
 // ─── Health ───────────────────────────────────────────────────────────────────
 
 /** Single-flight SELECT 1 with the liveness budget. A burst shares one connect. */
@@ -126,7 +126,7 @@ export async function insertContactSubmission(values: {
 }
 
 export async function getAdminUserIds(): Promise<string[]> {
-  const admins = await db.select({ id: users.id }).from(users).where(eq(users.role, "admin"));
+  const admins = await db.select({ id: users.id }).from(users).where(inArray(users.role, [...ADMIN_ROLES]));
   return admins.map(a => a.id);
 }
 
