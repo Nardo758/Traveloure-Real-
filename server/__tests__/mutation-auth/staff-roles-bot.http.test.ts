@@ -200,6 +200,16 @@ test("S0-1 discovery finds the whole admin surface (GETs and mutations)", () => 
   ]) {
     assert.ok(routes.some((r) => `${r.method} ${r.path}` === must), `discovery misses ${must}`);
   }
+  // The mutation half equals the generated mounted-graph manifest's /api/admin set, so the walk cannot drift from it.
+  const manifest = JSON.parse(fs.readFileSync(path.join(process.cwd(), "generated/security/mutation-auth-manifest.json"), "utf8"));
+  const fromManifest = new Set<string>(
+    (manifest.mutations as Array<{ method: string; effectivePath: string }>)
+      .filter((m) => m.effectivePath.startsWith("/api/admin"))
+      .map((m) => `${m.method} ${m.effectivePath}`),
+  );
+  const fromScan = new Set(routes.filter((r) => r.method !== "GET").map((r) => `${r.method} ${r.path}`));
+  assert.deepEqual([...fromManifest].filter((k) => !fromScan.has(k)), [], "manifest /api/admin mutations the walk misses");
+  assert.deepEqual([...fromScan].filter((k) => !fromManifest.has(k)), [], "walked mutations the manifest does not list");
 });
 
 test("S0-1 a bot token (every scope) is refused 401 on every /api/admin route — reads, writes, settings and flags", { skip }, async () => {
