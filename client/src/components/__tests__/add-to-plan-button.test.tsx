@@ -7,7 +7,9 @@
  *   B4 added: "Added ✓", inert on the guest rail, still pressable signed in (R4b-3)
  *   B5 375px budget: one line, `whitespace-nowrap`, the longest label fits a phone card column
  *   B6 the header chip carries "View plan" from sm: up, as a sibling link (never nested)
- *   B7 the feedback host is mounted once in App and draws "Change day" / the first-add calendar with Skip for now
+ *   B7 the feedback host is mounted once in App and draws "Change day" / the first-add calendar. QA round 3 PR 1: the
+ *      calendar is a popover anchored to the pressed button from sm up and a bottom sheet otherwise; its exits are Save
+ *      and "Skip for now" ONLY ("Not now" and the sheet's close button are not drawn); Escape / outside is Skip
  *   B8 /experiences: the page's event cards carry the one add button (beside the row, never inside it); the pop-up's
  *      and a closed market's do not; an event with no source id names no row and draws none; city cards draw none
  *
@@ -21,6 +23,7 @@ import { renderToString } from "react-dom/server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Router } from "wouter";
 import { AddToPlanButton } from "../plan/AddToPlanButton";
+import { InlineDatesPanel } from "../plan/SlipAnchorPanels";
 import { __planAddRunner, setAddPending } from "@/lib/plan-add-runner";
 
 (globalThis as any).React = React;
@@ -114,10 +117,29 @@ describe("B7 the feedback host", () => {
     const host = readFileSync("client/src/components/plan/PlanAddFeedbackHost.tsx", "utf8");
     assert.match(host, /<DialogTitle>\{ADD_COPY\.changeDay\}<\/DialogTitle>/);
     assert.match(host, /changeDayOptions\(changeDay\.days, current\)/);
-    assert.match(host, /<InlineDatesPanel[\s\S]*datesConfirmed=\{false\}[\s\S]*onSkip=\{\(\) => setDates\(null\)\}/);
+    // QA round 3 PR 1: the panel captures the answer (the runner writes after it); Save and Skip are its two exits.
+    const panel = host.match(/<InlineDatesPanel[\s\S]*?\/>/)?.[0] ?? "";
+    assert.match(panel, /datesConfirmed=\{false\}/);
+    assert.match(panel, /submit=\{async \(d\) => onAnswer\(\{ kind: "save"/);
+    assert.match(panel, /onSkip=\{\(\) => onAnswer\(\{ kind: "skip" \}\)\}/);
+    assert.doesNotMatch(panel, /onCancel/, "no 'Not now' on this mount");
+    assert.match(host, /<PopoverPrimitive\.Anchor virtualRef=\{anchor\} \/>/, "the popover anchors to the pressed button");
+    assert.match(host, /if \(dates\.anchor && popoverWidth\(\)\)/, "no pressed button ⇒ the sheet at every width");
+    assert.match(host, /min-width: 640px/, "the popover starts at sm");
+    assert.match(host, /<SheetContent side="bottom"[^>]*\[&>button\]:hidden/, "the sheet's own close button is not a third exit");
+    assert.match(host, /if \(!open\) onAnswer\(\{ kind: "skip" \}\)/, "Escape / outside click is Skip");
     assert.match(host, /altText=\{ADD_COPY\.undo\}/);
     assert.match(host, /altText=\{ADD_COPY\.retry\}/);
-    assert.match(host, /max-w-\[calc\(100vw-2rem\)\]/, "both dialogs fit a phone");
+    assert.match(host, /max-w-\[calc\(100vw-2rem\)\]/, "the Change day dialog fits a phone");
+  });
+  it("the first-add panel, as the host mounts it, draws exactly two exits: Save and Skip for now", () => {
+    const out = html(
+      <InlineDatesPanel tripId="" datesConfirmed={false} testId="first-add-dates-panel" submit={async () => {}} onSkip={() => {}} />,
+    );
+    assert.match(out, /data-testid="button-slip-dates-save"/);
+    assert.match(out, /data-testid="first-add-dates-panel-calendar-skip"[^>]*>Skip for now</);
+    assert.doesNotMatch(out, /Not now/);
+    assert.doesNotMatch(out, /first-add-dates-panel-cancel/);
   });
 });
 

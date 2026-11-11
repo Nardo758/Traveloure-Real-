@@ -124,7 +124,7 @@ describe("GATE-1 + PARTNER-1", () => {
     // Lane 1 A-18 (sanctioned edit): the confirmed save's toast is "Saved to plan", or the not-on-the-map hint.
     // Cut-list #1 slice C (sanctioned edit): through the one add runner, whose toast is the server's answer.
     assert.match(browseSave, /void runGuestAdd\(job\)/);
-    assert.match(read("client/src/lib/plan-add-runner.ts"), /return saveToGuestPlan\(job\.ref, job\.city, job\.chosenDate\)\.then\(/);
+    assert.match(read("client/src/lib/plan-add-runner.ts"), /let ref = job\.ref;[\s\S]*await saveToGuestPlan\(ref, job\.city, job\.chosenDate\)/);
     assert.doesNotMatch(browseSave, /return \(\) => toast\(\{ title: WAITLIST_COPY\.savedToPlan \}\);/);
     // "Sign In Required" is never reached in waitlist mode: the dialog returns before it, and the page's add path
     // and SaveToggle never open it / the sign-in modal.

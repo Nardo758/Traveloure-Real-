@@ -25,7 +25,7 @@ describe("PLAN-2 lane 1 — save claims are confirmed writes", () => {
     const src = read("client/src/components/SaveToggle.tsx");
     // Cut-list #1 slice C: the write is the one add runner (saveToGuestPlan), whose toasts are the server's answer.
     assert.match(src, /runGuestAdd\(/, "the guest rail is the write");
-    assert.match(read("client/src/lib/plan-add-runner.ts"), /saveToGuestPlan\(job\.ref/, "the runner writes the guest rail");
+    assert.match(read("client/src/lib/plan-add-runner.ts"), /let ref = job\.ref;[\s\S]*await saveToGuestPlan\(ref, job\.city, job\.chosenDate\)/, "the runner writes the guest rail");
     assert.match(read("client/src/lib/plan-add-runner.ts"), /guestSaveErrorMessage\(err\)/, "a refusal says so");
     assert.match(src, /if \(!user && saveToPlan && !guestRef\) return null;/, "an unplaceable item draws no heart");
     assert.doesNotMatch(src, /toast\(\{\s*title:\s*WAITLIST_COPY\.savedToPlan\s*\}\)/, "no optimistic claim");

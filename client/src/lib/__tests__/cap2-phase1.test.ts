@@ -48,7 +48,7 @@ describe("CAP-2 Phase 1 (client)", () => {
     // Cut-list #1 slice C: the ref is built the same way and the write is the one add runner over saveToGuestPlan.
     assert.match(save, /const ref = city \? guestItemFromFeedItem\(item as any, city\) : null;/);
     assert.match(save, /void runGuestAdd\(job\)/);
-    assert.match(read("client/src/lib/plan-add-runner.ts"), /saveToGuestPlan\(job\.ref, job\.city, job\.chosenDate\)/);
+    assert.match(read("client/src/lib/plan-add-runner.ts"), /let ref = job\.ref;[\s\S]*await saveToGuestPlan\(ref, job\.city, job\.chosenDate\)/);
     const body = browseAddBody({ id: "g1", kind: "gem", name: "Garden", lat: 35, lng: 135.7 } as any, 2, "Kyoto, Japan") as any;
     assert.deepEqual(body.ref, { kind: "gem", source_id: "g1", city: "Kyoto", placement: { day_number: 2 } });
     assert.ok(!("latitude" in body) && !("longitude" in body));

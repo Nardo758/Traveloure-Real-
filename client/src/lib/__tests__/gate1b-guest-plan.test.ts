@@ -125,7 +125,7 @@ describe("GATE-1B guest plan (client)", () => {
     // CAP-2 (sanctioned edit): the save also carries the feed's chosen day.
     // Cut-list #1 slice C: the press runs through the one add runner, whose toast is the server's answer.
     assert.match(save, /void runGuestAdd\(job\)/);
-    assert.match(read("client/src/lib/plan-add-runner.ts"), /return saveToGuestPlan\(job\.ref, job\.city, job\.chosenDate\)\.then\(/);
+    assert.match(read("client/src/lib/plan-add-runner.ts"), /let ref = job\.ref;[\s\S]*await saveToGuestPlan\(ref, job\.city, job\.chosenDate\)/);
     const page = read("client/src/pages/guest-plan-map.tsx");
     assert.match(page, /if \(!isLoading && !user && mode === "waitlist"\) return <WaitlistGuestPlan \/>;/);
     const waitlistBody = page.slice(page.indexOf("function WaitlistGuestPlan()"));

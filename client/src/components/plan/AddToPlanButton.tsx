@@ -15,7 +15,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { Link } from "wouter";
 import { Loader2 } from "lucide-react";
 import { addLabel } from "@/lib/add-to-plan";
-import { useAddPending } from "@/lib/plan-add-runner";
+import { notePressedAdd, useAddPending } from "@/lib/plan-add-runner";
 
 export interface AddToPlanButtonProps {
   testId: string;
@@ -64,7 +64,7 @@ export function AddToPlanButton({
   );
   if (href && !added && !disabled) {
     return (
-      <Link href={href} className={className} style={style} data-testid={testId} onClick={(e: any) => { e?.stopPropagation?.(); onClick?.(); }} {...attrs}>
+      <Link href={href} className={className} style={style} data-testid={testId} onClick={(e: any) => { e?.stopPropagation?.(); notePressedAdd(pendingKey, e?.currentTarget ?? null); onClick?.(); }} {...attrs}>
         {body}
       </Link>
     );
@@ -83,6 +83,8 @@ export function AddToPlanButton({
         // A tile is often itself a link: the press is this action's, never the card's.
         e.preventDefault();
         e.stopPropagation();
+        // QA round 3 PR 1: the first-add calendar anchors to this button (from `sm` up).
+        notePressedAdd(pendingKey, e.currentTarget);
         onClick?.();
       }}
       {...attrs}

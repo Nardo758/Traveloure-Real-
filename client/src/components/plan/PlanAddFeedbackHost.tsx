@@ -4,8 +4,10 @@
  *   added            toast "Added to Day {n}." with Undo and Change day
  *   failed           recovery toast (the approved failure sentence) with Retry
  *   change_day       a dialog titled "Change day" listing the plan's days ("Day {n}")
- *   first_add_dates  the ONE dates panel (the slice B range calendar) with "Skip for now" — the first add on a plan
- *                    whose dates were never chosen. Skip leaves the item where it landed (Day 1 of an undated plan).
+ *   first_add_dates  the ONE dates panel (the slice B range calendar) — the first add on a plan whose dates were never
+ *                    chosen, drawn BEFORE the item lands (QA round 3 PR 1, Leon, Nov 11, 2026): a popover anchored to
+ *                    the pressed button from `sm` up, a bottom sheet below it or when no button was pressed. Two exits:
+ *                    Save and "Skip for now"; Escape or a click outside is Skip. The runner writes on the answer.
  *
  * It also runs a press that waited in the one slot (`plan-add-runner.ts`) once the session and mode reads answer, and
  * gives a press that waited too long the recovery toast instead of committing it late.
@@ -15,12 +17,16 @@ import { Loader2 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { toast } from "@/hooks/use-toast";
 import { ToastAction, type ToastActionElement } from "@/components/ui/toast";
+import * as PopoverPrimitive from "@radix-ui/react-popover";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { PopoverContent } from "@/components/ui/popover";
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { InlineDatesPanel } from "@/components/plan/SlipAnchorPanels";
+import { PLAN_DATES_CALENDAR_TITLE } from "@/components/plan/PlanDatesCalendar";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { browseSavePath } from "@/lib/browse-save";
 import { useSignupMode } from "@/lib/signup-mode";
-import { GUEST_PLAN_QUERY_KEY, guestSaveErrorMessage, updateGuestPlan, type GuestPlanView } from "@/lib/waitlist-guest-plan";
+import { GUEST_PLAN_QUERY_KEY, guestSaveErrorMessage, type GuestPlanView } from "@/lib/waitlist-guest-plan";
 import { ADD_COPY, PENDING_ADD_MAX_AGE_MS, addedMessage, changeDayOptions, pendingAddIsStale, planDayCount, planItemPath, type PlanAddRail } from "@/lib/add-to-plan";
 import {
   emitPlanAddFeedback,
@@ -35,6 +41,7 @@ import {
   takeQueuedPlanAdd,
   undoPlanAdd,
   type AddedEvent,
+  type FirstAddAnswer,
 } from "@/lib/plan-add-runner";
 
 function addedActions(e: AddedEvent): ToastActionElement {
@@ -74,7 +81,19 @@ export function PlanAddFeedbackHost() {
   const { user, isLoading: authLoading } = useAuth();
   const [changeDay, setChangeDay] = useState<{ event: AddedEvent; days: number } | null>(null);
   const [moving, setMoving] = useState(false);
-  const [dates, setDates] = useState<{ rail: PlanAddRail; planId: string; startDate: string | null; endDate: string | null } | null>(null);
+  const [dates, setDates] = useState<{
+    startDate: string | null;
+    endDate: string | null;
+    anchor: HTMLElement | null;
+    answer: (a: FirstAddAnswer) => void;
+  } | null>(null);
+  // The ONE way the first-add panel closes: the answer goes to the runner (which then writes) and the panel goes.
+  const finishDates = (a: FirstAddAnswer) => {
+    setDates((d) => {
+      d?.answer(a);
+      return null;
+    });
+  };
 
   useEffect(
     () =>
@@ -98,7 +117,7 @@ export function PlanAddFeedbackHost() {
             () => setChangeDay({ event: f.event, days: Math.max(1, f.event.dayNumber ?? 1) }),
           );
         } else if (f.kind === "first_add_dates") {
-          setDates({ rail: f.rail, planId: f.planId, startDate: f.startDate, endDate: f.endDate });
+          setDates({ startDate: f.startDate, endDate: f.endDate, anchor: f.anchor, answer: f.answer });
         }
       }),
     [],
@@ -183,35 +202,61 @@ export function PlanAddFeedbackHost() {
           </div>
         </DialogContent>
       </Dialog>
-      <Dialog open={!!dates} onOpenChange={(o) => !o && setDates(null)}>
-        <DialogContent className="w-auto max-w-[calc(100vw-2rem)] p-0" data-testid="first-add-dates-dialog">
-          {dates ? (
-            <InlineDatesPanel
-              tripId={dates.planId}
-              startDate={dates.startDate}
-              endDate={dates.endDate}
-              datesConfirmed={false}
-              testId="first-add-dates-panel"
-              {...(dates.rail.kind === "guest"
-                ? {
-                    submit: async (d: { startDate: string; endDate: string }) => {
-                      await updateGuestPlan({ startDate: d.startDate, endDate: d.endDate });
-                    },
-                  }
-                : {})}
-              onSaved={() => {
-                if (dates.rail.kind === "trip") {
-                  void queryClient.invalidateQueries({ queryKey: ["/api/trips"] });
-                  void queryClient.invalidateQueries({ queryKey: [`/api/trips/${dates.planId}/plancard`] });
-                }
-                setDates(null);
-              }}
-              onCancel={() => setDates(null)}
-              onSkip={() => setDates(null)}
-            />
-          ) : null}
-        </DialogContent>
-      </Dialog>
+      {dates ? <FirstAddDates dates={dates} onAnswer={finishDates} /> : null}
     </>
+  );
+}
+
+/** From `sm` (640px) up a popover anchors to the pressed button; below it, or with no pressed button, a bottom sheet. */
+function popoverWidth(): boolean {
+  try {
+    return typeof window !== "undefined" && window.matchMedia("(min-width: 640px)").matches;
+  } catch {
+    return false;
+  }
+}
+
+function FirstAddDates({
+  dates,
+  onAnswer,
+}: {
+  dates: { startDate: string | null; endDate: string | null; anchor: HTMLElement | null };
+  onAnswer: (a: FirstAddAnswer) => void;
+}) {
+  // The panel only CAPTURES the range here: nothing is written until the runner has the answer (the plan may not exist
+  // yet). No `onCancel` ⇒ no "Not now"; Save and "Skip for now" are the two exits.
+  const panel = (
+    <InlineDatesPanel
+      tripId=""
+      startDate={dates.startDate}
+      endDate={dates.endDate}
+      datesConfirmed={false}
+      testId="first-add-dates-panel"
+      submit={async (d) => onAnswer({ kind: "save", startDate: d.startDate, endDate: d.endDate })}
+      onSkip={() => onAnswer({ kind: "skip" })}
+    />
+  );
+  const skip = (open: boolean) => {
+    if (!open) onAnswer({ kind: "skip" });
+  };
+  if (dates.anchor && popoverWidth()) {
+    const anchor = { current: dates.anchor };
+    return (
+      <PopoverPrimitive.Root open onOpenChange={skip}>
+        <PopoverPrimitive.Anchor virtualRef={anchor} />
+        <PopoverContent align="start" className="w-auto p-0" data-testid="first-add-dates-popover">
+          {panel}
+        </PopoverContent>
+      </PopoverPrimitive.Root>
+    );
+  }
+  return (
+    <Sheet open onOpenChange={skip}>
+      {/* The sheet's own close button is hidden: Escape and a click outside are Skip, never a third exit. */}
+      <SheetContent side="bottom" className="p-3 pt-4 [&>button]:hidden" aria-describedby={undefined} data-testid="first-add-dates-sheet">
+        <SheetTitle className="sr-only">{PLAN_DATES_CALENDAR_TITLE}</SheetTitle>
+        {panel}
+      </SheetContent>
+    </Sheet>
   );
 }

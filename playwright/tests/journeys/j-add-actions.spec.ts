@@ -1,6 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { testid } from "../../../e2e/supply-demand/lib/ui";
 import { assertDisposableDb, closePool, pool, rows, uid } from "./_journey-helpers";
+import { pickPlanDates } from "../_plan-dates-calendar";
 
 /**
  * CUT-LIST #1 SLICE C — the add action on the guest rail, end to end (ledger `2026-11-11-cutlist1-slice-c-add-actions`).
@@ -8,8 +9,10 @@ import { assertDisposableDb, closePool, pool, rows, uid } from "./_journey-helpe
  * In waitlist mode a signed-out traveler with a guest plan opens the map, finds a fixture listing and adds it:
  *
  *   A1 the one add button reads "Add to plan"; the press shows the spinner (aria-busy) while the save is in flight
- *   A2 the first add on a plan whose dates were never chosen opens the range calendar ("When are you going?") with
- *      "Skip for now"; Skip leaves the item on Day 1 and the calendar does not reopen on the next add
+ *   A2 the first add on a plan whose dates were never chosen opens the range calendar ("When are you going?") BEFORE
+ *      the item lands (QA round 3 PR 1, Leon, Nov 11, 2026): at 375px a bottom sheet; its two exits are Save and
+ *      "Skip for now" (no "Not now"); nothing is sent until the answer; Skip writes the item on Day 1, and the
+ *      calendar does not reopen on the next add
  *   A3 the toast reads "Added to Day 1." with Undo and Change day; the button reads "Added ✓" (inert on the guest rail)
  *   A4 Undo removes the row on the server and the button returns to "Add to plan"
  *   A5 a failed save is the recovery toast with "Retry"; Retry adds the row
@@ -100,8 +103,10 @@ test("slice C — guest add: spinner, first-add calendar with Skip, Added to Day
   let release!: () => void;
   const held = new Promise<void>((r) => (release = r));
   let failNext = true;
+  let posts = 0;
   await page.route("**/api/guest-plans/current/items", async (route) => {
     if (route.request().method() !== "POST") return route.continue();
+    posts++;
     await held;
     if (failNext) {
       failNext = false;
@@ -110,6 +115,21 @@ test("slice C — guest add: spinner, first-add calendar with Skip, Added to Day
     return route.continue();
   });
   await add.click();
+
+  // A2 (QA round 3 PR 1): the first add on an undated plan opens the one calendar FIRST — a sheet at 375px — and
+  // nothing is sent until it is answered. Two exits: Save and Skip for now.
+  const dates = testid(page, "first-add-dates-sheet");
+  await expect(dates).toBeVisible({ timeout: 10_000 });
+  await expect(dates).toContainText("When are you going?");
+  await expect(testid(page, "first-add-dates-panel-calendar-skip")).toHaveText("Skip for now");
+  await expect(dates.getByTestId("button-slip-dates-save")).toBeVisible();
+  await expect(dates.getByText("Not now")).toHaveCount(0);
+  expect(posts, "no POST before Save/Skip").toBe(0);
+  expect(await guestItems(planId)).toHaveLength(0);
+  await testid(page, "first-add-dates-panel-calendar-skip").click();
+  await expect(dates).toHaveCount(0);
+
+  // Skip writes: the spinner while the save is in flight, then (the held save fails once) Retry.
   await expect(add).toHaveAttribute("aria-busy", "true");
   await expect(testid(page, "map-browse-add-spinner")).toBeVisible();
   release();
@@ -118,13 +138,7 @@ test("slice C — guest add: spinner, first-add calendar with Skip, Added to Day
   await expect(testid(page, "toast-add-retry")).toHaveText("Retry");
   expect(await guestItems(planId), "a failed save writes nothing").toHaveLength(0);
   await testid(page, "toast-add-retry").click();
-
-  // A2: the first add on an undated plan opens the one calendar with Skip for now.
-  const dates = testid(page, "first-add-dates-dialog");
-  await expect(dates).toBeVisible({ timeout: 10_000 });
-  await expect(dates).toContainText("When are you going?");
-  await expect(testid(page, "first-add-dates-panel-calendar-skip")).toHaveText("Skip for now");
-  await testid(page, "first-add-dates-panel-calendar-skip").click();
+  // The calendar was asked once for this plan: Retry does not reopen it.
   await expect(dates).toHaveCount(0);
 
   // A3: the toast and the done state; the row is on Day 1.
@@ -168,6 +182,56 @@ test("slice C — guest add: spinner, first-add calendar with Skip, Added to Day
 });
 
 /**
+ * A2 desktop (QA round 3 PR 1, Leon, Nov 11, 2026): from `sm` up the first-add calendar is a POPOVER anchored to the
+ * pressed button; Save writes the chosen dates first, then the item (the pressed day, Day 1, is inside the range).
+ */
+test("QA round 3 — desktop first add: the calendar is a popover at the button; Save writes the dates, then the item", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const listing = await fixtureListing();
+  const made = await page.request.post("/api/guest-plans", { data: { destination: "Kyoto, Japan", title: "Kyoto trip" } });
+  expect(made.ok(), `guest plan create answered ${made.status()}`).toBe(true);
+  const planId: string = (await made.json()).plan.id;
+
+  await page.goto("/plans/new?view=map");
+  await openBrowseRow(page, listing);
+  const add = testid(page, "map-browse-add");
+  let posts = 0;
+  page.on("request", (r) => {
+    if (r.method() === "POST" && new URL(r.url()).pathname === "/api/guest-plans/current/items") posts++;
+  });
+  await add.click();
+  const pop = testid(page, "first-add-dates-popover");
+  await expect(pop).toBeVisible({ timeout: 10_000 });
+  await expect(testid(page, "first-add-dates-sheet")).toHaveCount(0);
+  // Anchored at the pressed button: the panel opens beside it, not centred on the page.
+  const [btn, box] = [await add.boundingBox(), await pop.boundingBox()];
+  expect(btn && box, "rendered").toBeTruthy();
+  expect(Math.abs(box!.x - btn!.x), "aligned to the button's start").toBeLessThan(40);
+  expect(box!.y >= btn!.y + btn!.height - 2 || box!.y + box!.height <= btn!.y + 2, "above or below the button").toBe(true);
+  await expect(pop.getByText("Not now")).toHaveCount(0);
+  expect(posts, "no POST before Save/Skip").toBe(0);
+
+  const day = (n: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() + n);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  };
+  await pickPlanDates(pop, day(30), day(32));
+  await pop.getByTestId("button-slip-dates-save").click();
+  await expect(pop).toHaveCount(0);
+  await expect(testid(page, "toast-added")).toContainText("Added to Day 1.", { timeout: 10_000 });
+  const [trip] = await rows<{ start_date: string; end_date: string; confirmed: boolean }>(
+    `SELECT start_date::text, end_date::text, dates_confirmed_at IS NOT NULL AS confirmed FROM trips WHERE id = $1`,
+    [planId],
+  );
+  expect(trip).toEqual({ start_date: day(30), end_date: day(32), confirmed: true });
+  const items = await guestItems(planId);
+  expect(items).toHaveLength(1);
+  expect(items[0].day_number).toBe(1);
+});
+
+/**
  * A7 /experiences (Leon, Nov 11): the start page's event cards carry the same add button. Starting a plan around an
  * event is unchanged; the add puts the event itself on the guest plan, with the same toast, first-add calendar and
  * "Added ✓", inside the 375px viewport.
@@ -186,8 +250,9 @@ test("slice C — /experiences event card: Add to plan → first-add calendar �
   await expect(testid(page, `plan-entry-event-${eventId}`)).toBeVisible();
 
   await add.click();
-  // A guest's first add makes the guest plan with no chosen dates, so the calendar opens with Skip for now.
-  const dates = testid(page, "first-add-dates-dialog");
+  // A guest's first add (no guest plan yet) is asked first — QA round 3 PR 1: the calendar opens BEFORE the plan and
+  // the item are created; Skip for now then creates both (an undated plan, the item on Day 1).
+  const dates = testid(page, "first-add-dates-sheet");
   await expect(dates).toBeVisible({ timeout: 15_000 });
   await testid(page, "first-add-dates-panel-calendar-skip").click();
   await expect(dates).toHaveCount(0);

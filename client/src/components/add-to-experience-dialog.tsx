@@ -1,4 +1,4 @@
-import { announceTripAdd } from "@/lib/plan-add-runner";
+import { announceTripAdd, askFirstAddDates, dayInsideChosenRange, saveTripDatesForFirstAdd } from "@/lib/plan-add-runner";
 import { useEffect, useRef } from "react";
 import { planSaveRefusalMessage } from "@/lib/plan-save-refusal";
 import { useMutation } from "@tanstack/react-query";
@@ -98,11 +98,28 @@ export function AddToExperienceDialog({
   const addToTripMutation = useMutation({
     mutationFn: async (plan: PickablePlan) => {
       if (!item) return;
+      // QA round 3 PR 1: the first add on a plan whose dates were never chosen asks for them BEFORE the item lands. No
+      // pressed button travels from this picker row, so the panel is the sheet at every width.
+      const answer = await askFirstAddDates({
+        rail: { kind: "trip", tripId: plan.id },
+        planId: plan.id,
+        datesConfirmed: (plan as any).datesConfirmedAt ? true : false,
+        startDate: plan.startDate ?? null,
+        endDate: plan.endDate ?? null,
+        anchor: null,
+      });
+      let body = feedItemBody(plan.startDate, plan);
+      if (answer?.kind === "save") {
+        await saveTripDatesForFirstAdd(plan.id, answer);
+        // The press's own day only when it is inside the chosen range; otherwise Day 1.
+        body = feedItemBody(answer.startDate, { ...plan, endDate: answer.endDate });
+        body.dayNumber = dayInsideChosenRange(body.dayNumber as number, answer) ?? 1;
+      }
       const res = await fetch(`/api/trips/${plan.id}/itinerary-items`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify(feedItemBody(plan.startDate, plan)),
+        body: JSON.stringify(body),
       });
       // R4b-1: the refusal's body travels in the error so the toast can name an out-of-dates event's day.
       if (!res.ok) throw new Error(`${res.status}: ${await res.text().catch(() => "")}`);
@@ -115,7 +132,7 @@ export function AddToExperienceDialog({
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${plan.id}/plancard`] });
       queryClient.invalidateQueries({ queryKey: ["/api/trips"] });
       // Cut-list #1 slice C: the one add toast — "Added to Day {n}." with Undo and Change day.
-      if ((res as any)?.id) announceTripAdd(plan.id, res as any, plan as any);
+      if ((res as any)?.id) announceTripAdd(plan.id, res as any);
       else
         toast({
           title: ADDED_TO_PLAN_TITLE,
