@@ -12,8 +12,9 @@
  *   W6  The body is an allowlist: an unknown key (a market, a referrer) is refused 400; a bad email is refused 400
  *       with F1's error line; a traveler sending provider fields is refused; an unknown source is stored as the
  *       page's own value.
- *   W7  A provider row: name and service type required; the traveler half stays NULL; a later traveler sign-up
- *       with the same email replaces the role and NULLs the provider half.
+ *   W7  A provider row: name and service type required; the traveler half stays NULL. A later traveler
+ *       sign-up with the same email adds a traveler row and leaves the provider row in place
+ *       (one email, several roles in one market).
  *   W8  GET /api/admin/waitlist: anonymous 401, non-admin 403, admin 200 with travelers (by trip type, by source)
  *       and providers (by service type) counted apart.
  *   W9  GET /api/admin/waitlist/export: non-admin 403; admin gets CSV with the field-name header; `?role=provider`
@@ -193,24 +194,28 @@ test("W6 — the body is an allowlist", async () => {
   assert.equal((await rowsFor(email))[0].source, src().page);
 });
 
-test("W7 — a provider row, and a later traveler sign-up replaces the role", async () => {
+test("W7 — a provider row, and a later traveler sign-up sits beside it", async () => {
   const email = W_EMAIL("w7");
   assert.equal((await call("POST", "/api/waitlist", null, { email, role: "provider", serviceType: "transport" })).status, 400, "name required");
   assert.equal((await call("POST", "/api/waitlist", null, { email, role: "provider", contactName: "Aki" })).status, 400, "service type required");
   const r = await call("POST", "/api/waitlist", null, { email, role: "provider", contactName: "Aki", businessName: "Aki Rides", serviceType: "transport" });
   assert.equal(r.status, 200, r.text);
-  let row = (await rowsFor(email))[0];
-  assert.equal(row.role, "provider");
-  assert.equal(row.contact_name, "Aki");
-  assert.equal(row.business_name, "Aki Rides");
-  assert.equal(row.service_type, "transport");
-  assert.equal(row.trip_type, null);
+  let rows = await rowsFor(email);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].role, "provider");
+  assert.equal(rows[0].contact_name, "Aki");
+  assert.equal(rows[0].business_name, "Aki Rides");
+  assert.equal(rows[0].service_type, "transport");
+  assert.equal(rows[0].trip_type, null);
   await call("POST", "/api/waitlist", null, { email, tripType: "other" });
-  row = (await rowsFor(email))[0];
-  assert.equal(row.role, "traveler");
-  assert.equal(row.contact_name, null, "the provider half is cleared");
-  assert.equal(row.service_type, null);
-  assert.equal(row.trip_type, "other");
+  rows = await rowsFor(email);
+  assert.equal(rows.length, 2, "the traveler row sits beside the provider row");
+  const provider = rows.find((row) => row.role === "provider");
+  const traveler = rows.find((row) => row.role === "traveler");
+  assert.equal(provider.contact_name, "Aki", "the provider row stays");
+  assert.equal(provider.service_type, "transport");
+  assert.equal(traveler.trip_type, "other");
+  assert.equal(traveler.contact_name, null);
   await call("POST", "/api/waitlist", null, { email: W_EMAIL("w7p"), role: "provider", contactName: "Mei", serviceType: "guide_planner" });
 });
 

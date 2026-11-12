@@ -59,6 +59,11 @@ export function invalidatePlatformFlagCache(key?: string): void {
   else cache.clear();
 }
 
+/** Pin one cached setting so a handler test can choose a mode without a database. */
+export function pinPlatformFlagForTests(key: string, value: string | null): void {
+  cache.set(key, { value, expiresAt: Date.now() + TTL_MS });
+}
+
 async function getSettingValue(key: string): Promise<string | null> {
   const now = Date.now();
   const hit = cache.get(key);

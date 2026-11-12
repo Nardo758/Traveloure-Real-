@@ -2311,6 +2311,6 @@ export const MIGRATION_FILES = [
   "444_slice0_staff_roles.sql",
   // 445 — launch_waitlist unique index becomes (email, market_slug, role) so one address can
   // hold a traveler row and an expert or provider row in the same market. Index only.
-  // Migration 445 SQL approved — Leon (Nov 11, 2026).
+  // Leon approved this file on Nov 11, 2026, and restated that on the pull request on Nov 12.
   "445_launch_waitlist_email_market_role.sql",
 ] as const;
