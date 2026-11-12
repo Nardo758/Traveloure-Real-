@@ -654,12 +654,12 @@ test.describe('city-feed bento ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ�
     await expect(page.getByTestId('bento-section-ohara')).not.toBeAttached();
     await expect(page.getByTestId('bento-section-arashiyama')).not.toBeAttached();
     const gionTiles = page.locator('[data-testid="bento-section-gion"] [data-testid^="bento-tile-"]');
-    // The expert is not an Eat tile, so the hero falls through to Wanted and the one matching gem
-    // stays beside it.
+    // RULING (Nov 12 2026): the expert is not an Eat tile and there is no Wanted hero to fall
+    // through to, so the filtered section shows only the matching gem — and NO anchor.
     await expect(gionTiles).toHaveCount(1);
     await expect(
       page.locator('[data-testid="bento-section-gion"] [data-bento-role="anchor"]'),
-    ).toHaveAttribute('data-testid', 'bento-tile-lead-expert');
+    ).toHaveCount(0);
     await expect(
       page.locator('[data-testid="bento-section-gion"] [data-testid="feed-card-gem-g-gion-3"]'),
     ).toHaveCount(1);
