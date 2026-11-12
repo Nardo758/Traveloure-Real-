@@ -1748,14 +1748,14 @@ export default function DiscoverLocationPage() {
     : [];
 
   // ── QA round 3 ruling 2: no recruit cards on the traveler feed ──────────
-  // The wanted/recruitment slots (one "Local guide wanted in {nb}" per uncovered offering), the
-  // single `/earn` card near position 9, the unstocked-neighbourhood "Wanted" hero and the
-  // empty-market "Local experts wanted in {City}" section are all gone from this page. The
-  // COMPONENTS are kept by the ruling (`components/feed/wanted-slot-card.tsx`,
-  // `earn-card.tsx`, `neighbourhood-wanted-card.tsx`), for an /earn lane to mount or delete —
-  // nothing on this page renders them any more, so the two reads that only fed them
-  // (`/api/offering-types/experts`, `/api/services/demand`) are gone as well: a query with no
-  // reader is the §18c shape.
+  // The wanted/recruitment slots (one recruitment tile per uncovered offering), the single `/earn`
+  // card near position 9, the unstocked-neighbourhood "Wanted" hero and the empty-market expert
+  // recruitment section are all gone from this page. The COMPONENTS are kept by the ruling
+  // (`components/feed/wanted-slot-card.tsx`, `earn-card.tsx`, `neighbourhood-wanted-card.tsx`), for
+  // an /earn lane to mount or delete — nothing on this page renders them any more, so the two reads
+  // that only fed them (`/api/offering-types/experts`, `/api/services/demand`) are gone as well: a
+  // query with no reader is the §18c shape. NOTE: the retired copy is deliberately not quoted here
+  // — the source pins assert it is absent from this file, comments included.
 
   // ── One interleaved stream ──────────────────────────────────────────────
   // The composition layer PLACES the injected elements into the organic
@@ -1987,11 +1987,11 @@ export default function DiscoverLocationPage() {
             {/* Lead expert, wanted slots, and engine recommendations are no
                 longer stacked blocks here — the feed-composition layer
                 interleaves them into the organic stream below.
-                QA3 ruling 2 (d): the empty-market "Local experts wanted in {City}"
-                recruitment card is gone too. A city with no experts and no
-                neighbourhoods now shows the page's own non-recruitment empty state
-                (the feed's honest "nothing here yet" read); no replacement string was
-                introduced. */}
+                QA3 ruling 2 (d): the empty-market expert recruitment card is gone too
+                (retired copy is not quoted here: the source pin asserts its absence).
+                A city with no experts and no neighbourhoods now shows the page's own
+                non-recruitment empty state (the feed's honest "nothing here yet" read);
+                no replacement string was introduced. */}
 
             {/* Trailhead T4.4: the headline over published external content now reads
                 "Discover ‹Market›" (approved copy, ledger 2026-10-31-four-copy-strings). It names the

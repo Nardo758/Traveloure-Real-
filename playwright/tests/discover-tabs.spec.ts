@@ -477,8 +477,10 @@ test.describe('city-feed bento — /discover/location', () => {
     });
     await expect(page.getByTestId('city-feed')).toBeVisible({ timeout: 15_000 });
     await expect(page.getByTestId('bento-section-gion')).toBeVisible();
-    await expect(page.getByTestId('bento-section-ohara')).toBeVisible();
+    // QA3 ruling 2 (c): the fixture's empty neighbourhood (ohara) is OMITTED, not filled with a
+    // recruit tile — so the stocked sections are what every test here may wait on.
     await expect(page.getByTestId('bento-section-arashiyama')).toBeVisible();
+    await expect(page.getByTestId('bento-section-nishiki')).toBeVisible();
   });
 
   test('1. order preserved — non-anchor tiles render in ascending stream order per neighbourhood', async ({ page }) => {
@@ -651,12 +653,12 @@ test.describe('city-feed bento — /discover/location', () => {
     await expect(page.getByTestId('bento-section-ohara')).not.toBeAttached();
     await expect(page.getByTestId('bento-section-arashiyama')).not.toBeAttached();
     const gionTiles = page.locator('[data-testid="bento-section-gion"] [data-testid^="bento-tile-"]');
-    // The expert is not an Eat tile, so the hero falls through to Wanted and
-    // the one matching gem stays beside it.
-    await expect(gionTiles).toHaveCount(2);
+    // QA3 ruling 2 (c): the expert is not an Eat tile and there is no Wanted hero to fall through
+    // to any more, so the section shows the one matching gem with NO anchor.
+    await expect(gionTiles).toHaveCount(1);
     await expect(
       page.locator('[data-testid="bento-section-gion"] [data-bento-role="anchor"]'),
-    ).toHaveAttribute('data-testid', 'bento-tile-neighbourhood-wanted-hero-gion');
+    ).toHaveCount(0);
     await expect(
       page.locator('[data-testid="bento-section-gion"] [data-testid="feed-card-gem-g-gion-3"]'),
     ).toHaveCount(1);
@@ -664,10 +666,10 @@ test.describe('city-feed bento — /discover/location', () => {
     await expect(
       page.locator('[data-testid="bento-section-gion"] [data-testid^="feed-card-vendor-svc-"]'),
     ).toHaveCount(0);
-    // Back to All gems: both sections return.
+    // Back to All gems: the stocked sections return (ohara stays out — it has no listings).
     await page.getByTestId('spine-chip-all').click();
     await expect(page.getByTestId('bento-section-gion')).toBeVisible();
-    await expect(page.getByTestId('bento-section-ohara')).toBeVisible();
+    await expect(page.getByTestId('bento-section-nishiki')).toBeVisible();
     await expect(page.getByTestId('bento-section-arashiyama')).toBeVisible();
   });
 
@@ -967,13 +969,16 @@ test.describe('city-feed bento — /discover/location', () => {
     await page.keyboard.press('Escape');
   });
 
-  test('15. empty neighbourhood — heading, one Wanted tile, order preserved, stocked sections unchanged', async ({ page }) => {
+  test('15. an EMPTY neighbourhood is omitted — no heading, no Wanted tile, stocked sections unchanged', async ({ page }) => {
+    // QA3 ruling 2 (c) SUPERSEDES this test's old expectation. Ohara has no gems, services, expert
+    // or ready-made in the fixture, so the recruit hero that used to fill it is gone and the section
+    // is not rendered at all. What this test still proves: the empty neighbourhood adds nothing to
+    // the stream, and the stocked sections around it are untouched.
     const sectionIds = await page.locator('[data-testid^="bento-section-"]').evaluateAll((els) =>
       els.map((el) => el.getAttribute('data-testid')),
     );
     expect(sectionIds).toEqual([
       'bento-section-gion',
-      'bento-section-ohara',
       'bento-section-arashiyama',
       'bento-section-nishiki',
     ]);
@@ -981,23 +986,13 @@ test.describe('city-feed bento — /discover/location', () => {
     const jumpIds = await page.locator('[data-testid^="jump-"]').evaluateAll((els) =>
       els.map((el) => el.getAttribute('data-testid')),
     );
-    expect(jumpIds).toEqual(['jump-gion', 'jump-ohara', 'jump-arashiyama', 'jump-nishiki']);
+    expect(jumpIds).toEqual(['jump-gion', 'jump-arashiyama', 'jump-nishiki']);
 
-    await expect(page.getByTestId('bento-heading-ohara')).toHaveText('Ohara');
-    await expect(page.getByTestId('bento-eyebrow-ohara')).toHaveText('OHARA · 1');
-    await expect(page.getByTestId('neighbourhood-wanted-ohara')).toContainText(
-      "Know Ohara well? We're looking for local experts and providers here.",
-    );
-    const oharaTiles = page.locator('[data-testid="bento-section-ohara"] [data-testid^="bento-tile-"]');
-    await expect(oharaTiles).toHaveCount(1);
-    const wanted = page.getByTestId('bento-tile-neighbourhood-wanted-hero-ohara');
-    await expect(wanted).toHaveAttribute('data-bento-role', 'anchor');
-    await expect(wanted).toHaveAttribute('data-col-span', '2');
-    await expect(wanted).toHaveAttribute('data-row-span', '1');
-    const join = page.getByTestId('link-neighbourhood-join-ohara');
-    await expect(join).toHaveText('Apply');
-    await expect(join).toHaveAttribute('href', '/earn');
-    await expect(page.getByTestId('section-recruitment-ohara')).toHaveCount(0);
+    // Omitted means omitted: no section, heading, Wanted tile or Apply link for the empty one.
+    await expect(page.getByTestId('bento-section-ohara')).not.toBeAttached();
+    await expect(page.getByTestId('bento-heading-ohara')).not.toBeAttached();
+    await expect(page.getByTestId('bento-tile-neighbourhood-wanted-hero-ohara')).not.toBeAttached();
+    await expect(page.getByTestId('link-neighbourhood-join-ohara')).not.toBeAttached();
 
     await expect(
       page.locator('[data-testid="bento-section-gion"] [data-bento-role="anchor"]'),
@@ -1011,9 +1006,11 @@ test.describe('city-feed bento — /discover/location', () => {
     await expect(
       page.locator('[data-testid="bento-section-gion"] [data-testid="feed-card-rec-0"]'),
     ).toHaveCount(1);
+    // QA3 ruling 2 (c): arashiyama has no eligible expert and no Wanted hero any more, so it has
+    // no anchor at all — its partner recommendation is an ordinary tile.
     await expect(
       page.locator('[data-testid="bento-section-arashiyama"] [data-bento-role="anchor"]'),
-    ).toHaveAttribute('data-testid', 'bento-tile-neighbourhood-wanted-hero-arashiyama');
+    ).toHaveCount(0);
     await expect(
       page.locator('[data-testid="bento-section-arashiyama"] [data-testid="feed-card-rec-1"]'),
     ).toHaveCount(1);
@@ -1028,7 +1025,7 @@ test.describe('city-feed bento — /discover/location', () => {
     );
     expect(anchorIds.length).toBeGreaterThan(0);
     for (const id of anchorIds) {
-      expect(id).toMatch(/lead-expert|package-|neighbourhood-wanted-hero-/);
+      expect(id).toMatch(/lead-expert|package-/);
       expect(id).not.toMatch(/rec-|external-stub|hotel-|activity-/);
     }
 
@@ -1051,7 +1048,7 @@ test.describe('city-feed bento — /discover/location', () => {
 
     await expect(
       page.locator('[data-testid="bento-section-arashiyama"] [data-bento-role="anchor"]'),
-    ).toHaveAttribute('data-testid', 'bento-tile-neighbourhood-wanted-hero-arashiyama');
+    ).toHaveCount(0);
     const platform = page.getByTestId('bento-tile-rec-1');
     await expect(platform).toHaveAttribute('data-bento-role', 'tile');
     await expect(platform).toHaveAttribute('data-col-span', '1');
