@@ -416,6 +416,12 @@ jobs:
           GIT_COMMIT: ${{ github.sha }}
           NODE_ENV: development
           PORT: 5000
+          # THE SERVER NEEDS THIS TOO. `scripts/seed-fixture-kyoto-expert.ts` writes its expert on
+          # the `traveloure-qa.test` seed domain, and the shared routability predicate refuses that
+          # domain unless `SHOW_DEMO_EXPERTS=1` — the fixture's own docblock says so ("CI"). The
+          # Playwright process had the flag; the server it talks to did not, so the door's chooser
+          # never saw the fixture and slip-rail A4's availability poll could not turn true.
+          SHOW_DEMO_EXPERTS: '1'
           # Loopback-only rate-limit exemption. The cart-redirect gate ran without it; with one
           # login per test it never needed it, and the exemption only removes 429s.
           RATE_LIMIT_LOOPBACK_SKIP: '1'
