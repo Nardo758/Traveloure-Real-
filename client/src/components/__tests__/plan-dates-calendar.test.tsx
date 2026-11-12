@@ -3,7 +3,9 @@
  *
  *   C1 the title is "When are you going?"; nothing picked reads "Add dates"
  *   C2 "Skip for now" renders only when the caller passes onSkip
- *   C3 leave before arrive shows the approved refusal and Save is disabled; a same-day range saves
+ *   C3 leave before arrive shows the approved refusal and Save is disabled; a same-day range saves. QA round 3
+ *      option A: the refused pair is the one the taps produce (`nextRange` — the calendar's own `onDayClick`), from an
+ *      arrive day alone and from a prefilled range, and a tap while refused clears it
  *   C4 the slip's dates panel draws the calendar, not two date fields
  *   C5 no prefill when the dates were never chosen; confirmed dates prefill
  *   C6 375px budget: one month, seven 36px cells + 12px padding each side ≤ 343px; the header
@@ -27,6 +29,7 @@ import {
   PlanDatesCalendar,
 } from "../plan/PlanDatesCalendar";
 import { InlineDatesPanel } from "../plan/SlipAnchorPanels";
+import { nextRange } from "@/lib/plan-dates-range";
 
 (globalThis as any).React = React;
 
@@ -70,6 +73,24 @@ describe("C3 leave before arrive, and same-day", () => {
     const out = text(html(<PlanDatesCalendar value={{ start: "2026-11-15", end: "2026-11-12" }} onChange={noop} onSave={noop} />));
     assert.match(out, /role="alert"[^>]*>Leave date can't be before your arrive date\.</);
     assert.match(out, /<button[^>]*disabled=""[^>]*data-testid="button-slip-dates-save"/);
+  });
+  it("option A: the taps themselves produce the refused pair, and a tap while refused clears it", () => {
+    const refusal = /role="alert"[^>]*>Leave date can't be before your arrive date\.</;
+    const saveOff = /<button[^>]*disabled=""[^>]*data-testid="button-slip-dates-save"/;
+    const render = (value: { start: string | null; end: string | null }) =>
+      text(html(<PlanDatesCalendar value={value} onChange={noop} onSave={noop} />));
+    // The calendar's onDayClick is `onChange(nextRange(value, day))`; drive the same function.
+    const fromArrive = nextRange({ start: "2026-11-15", end: null }, "2026-11-12");
+    assert.match(render(fromArrive), refusal, "arrive only, earlier tap");
+    assert.match(render(fromArrive), saveOff);
+    const fromPrefilled = nextRange({ start: "2026-12-01", end: "2026-12-04" }, "2026-11-28");
+    assert.match(render(fromPrefilled), refusal, "a prefilled range follows the same rule");
+    const cleared = nextRange(fromPrefilled, "2026-12-03");
+    assert.doesNotMatch(render(cleared), refusal, "an after-arrive tap while refused clears it");
+    assert.doesNotMatch(render(cleared), saveOff);
+    const restarted = nextRange(fromPrefilled, "2026-11-28");
+    assert.deepEqual(restarted, { start: "2026-11-28", end: null });
+    assert.doesNotMatch(render(restarted), refusal);
   });
   it("a same-day range has no refusal and Save is enabled", () => {
     const out = text(html(<PlanDatesCalendar value={{ start: "2026-11-12", end: "2026-11-12" }} onChange={noop} onSave={noop} />));

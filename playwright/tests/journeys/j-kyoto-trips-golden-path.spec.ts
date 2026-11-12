@@ -587,6 +587,9 @@ test.describe("2 · where are you staying", () => {
     await expect(testid(page, "slip-travel-anchor-arrival-flight")).toHaveText("JL 061 · lands KIX 09:05 · entered by you");
     await expect(testid(page, "slip-anchor-label-travel-arrival")).toHaveText("Anchor · fixed · from Getting there");
     // Smoke 8 item 5: the departure row is the last row inside the last day, ABOVE its add control.
+    // TEST EDIT (QA round 3 major 8, Leon, Nov 11, 2026): this fixture's dates are confirmed, so the plan draws every
+    // day of its window and the last day is no longer day 1. The list opens its first day only; open the last one.
+    await page.locator('[data-testid^="slip-day-toggle-"]').last().click();
     const departure = testid(page, "slip-travel-anchor-departure");
     await expect(departure).toBeVisible();
     const order = await departure.evaluate((dep) => {

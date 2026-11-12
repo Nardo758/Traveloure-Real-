@@ -164,6 +164,28 @@ function planNightCount(startDate: string | null | undefined, endDate: string | 
 }
 
 /**
+ * QA round 3 major 8 (Leon, Nov 11, 2026): the day numbers a plan page draws. On a plan whose dates are CONFIRMED,
+ * every day of `start_date..end_date` is drawn — empty days included — 1-based from `start_date`; an item's own day
+ * fills it. `start_date`/`end_date` are calendar DATE columns already in the plan's zone, so the window is counted in
+ * calendar days and no instant or zone conversion is involved. An item on a day outside the window keeps its day (an
+ * item is never hidden by this rule). An unconfirmed plan is unchanged: the days its items occupy (a placeholder
+ * window is not a range — LD 30 / 42 D12). Pure; ascending.
+ */
+export function planDayNumbers(
+  itemDayNumbers: Array<number | null | undefined>,
+  plan: { startDate: unknown; endDate: unknown; datesConfirmed: boolean },
+): number[] {
+  const days = new Set<number>();
+  for (const d of itemDayNumbers) if (typeof d === "number" && Number.isFinite(d)) days.add(d);
+  if (plan.datesConfirmed) {
+    const asDay = (v: unknown) => (v instanceof Date ? v.toISOString() : String(v ?? "")).slice(0, 10);
+    const nights = planNightCount(asDay(plan.startDate), asDay(plan.endDate));
+    if (nights !== null) for (let n = 1; n <= nights + 1; n++) days.add(n);
+  }
+  return Array.from(days).sort((a, b) => a - b);
+}
+
+/**
  * THE DAY COUNT ALONE — "5 days" for Nov 11–15 (smoke test 4, B5, ledger
  * `2026-10-02-smoke4-draft-fixes`). The slip header printed the range and a separator with an empty
  * slot after it; it now prints this. Same calendar-date rule as `planSpanLabel` (§18 rule 1), and
@@ -224,20 +246,67 @@ export function phaseShown(datesConfirmed: boolean | null | undefined): boolean 
 }
 
 /**
- * R4b-1 (round 4b, Nov 6, 2026): an event whose day is outside a plan's CONFIRMED dates cannot be placed on it — both
- * save rails refuse it as `event_outside_dates`. A plan whose dates are not confirmed accepts it, and the event sets its
- * own day (R3-17). Pure; days are `YYYY-MM-DD` (a longer string is read for its first ten characters).
+ * An event's days as the save rails read them: its start day and, when the row states one, its end day (`YYYY-MM-DD`,
+ * a longer string is read for its first ten characters). A bare string is a start with no end.
  */
-export function eventOutsideConfirmedDates(
-  eventDate: string | null | undefined,
-  plan: { startDate: unknown; endDate: unknown; datesConfirmed: boolean },
-): boolean {
-  if (!plan.datesConfirmed || !eventDate || !/^\d{4}-\d{2}-\d{2}/.test(eventDate)) return false;
-  const day = eventDate.slice(0, 10);
+export type EventDays = { start: string | null | undefined; end?: string | null | undefined };
+
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}/;
+
+/** The event's first and last day; an absent, malformed or earlier-than-start end reads as the start (one day). */
+function eventSpan(event: string | EventDays | null | undefined): { start: string; end: string; hasEnd: boolean } | null {
+  const e: EventDays = typeof event === "string" || event == null ? { start: event ?? null } : event;
+  if (!e.start || !ISO_DAY.test(e.start)) return null;
+  const start = e.start.slice(0, 10);
+  const end = e.end && ISO_DAY.test(e.end) && e.end.slice(0, 10) >= start ? e.end.slice(0, 10) : null;
+  return { start, end: end ?? start, hasEnd: end != null };
+}
+
+function planSpan(plan: { startDate: unknown; endDate: unknown }): { start: string; end: string } | null {
   const start = String(plan.startDate ?? "").slice(0, 10);
   const end = String(plan.endDate ?? "").slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end)) return false;
-  return day < start || day > end;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end)) return null;
+  return { start, end };
+}
+
+/**
+ * R4b-1 (round 4b, Nov 6, 2026), amended QA round 3 major 1 (Leon, Nov 11, 2026 — "any overlap, first overlapping
+ * day"): an event that shares NO day with a plan's CONFIRMED dates cannot be placed on it — every save rail refuses it
+ * as `event_outside_dates`. An event with a start AND an end is inside when any of its days is inside the window; an
+ * event with no end keeps the start-only rule. A plan whose dates are not confirmed accepts it, and the event sets its
+ * own day (R3-17). Pure.
+ */
+export function eventOutsideConfirmedDates(
+  event: string | EventDays | null | undefined,
+  plan: { startDate: unknown; endDate: unknown; datesConfirmed: boolean },
+): boolean {
+  if (!plan.datesConfirmed) return false;
+  const ev = eventSpan(event);
+  const win = planSpan(plan);
+  if (!ev || !win) return false;
+  return ev.end < win.start || ev.start > win.end;
+}
+
+/**
+ * R3-17, amended QA round 3 major 1 — where an event lands on a plan, read beside the refusal above so the two cannot
+ * disagree. Returns the item's `scheduled_date` and that day's number inside the plan's window (null when the window
+ * does not hold it — the item keeps day 1). No event day ⇒ null (the ordinary day 1).
+ *   confirmed plan, multi-day event that starts before the window and overlaps it ⇒ the FIRST overlapping day (day 1)
+ *   otherwise ⇒ the event's own start day (an unconfirmed plan always keeps the event on its own start)
+ */
+export function eventPlanPlacement(
+  event: string | EventDays | null | undefined,
+  plan: { startDate: unknown; endDate: unknown; datesConfirmed: boolean },
+): { scheduledDate: string; dayNumber: number | null } | null {
+  const ev = eventSpan(event);
+  if (!ev) return null;
+  const win = planSpan(plan);
+  if (!win) return { scheduledDate: ev.start, dayNumber: null };
+  const day =
+    plan.datesConfirmed && ev.hasEnd && ev.start < win.start && ev.end >= win.start ? win.start : ev.start;
+  if (day < win.start || day > win.end) return { scheduledDate: day, dayNumber: null };
+  const n = Math.round((Date.parse(`${day}T00:00:00Z`) - Date.parse(`${win.start}T00:00:00Z`)) / 86_400_000) + 1;
+  return { scheduledDate: day, dayNumber: n };
 }
 
 /** R4b-1: the refusal's toast. Wording approved — Leon (Nov 6, 2026). `day` is `YYYY-MM-DD`. */

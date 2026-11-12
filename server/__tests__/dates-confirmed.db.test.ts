@@ -34,6 +34,10 @@
  *   K7  §13 ON THE READERS — the `.ics` exporter emits NO pinned `…Z` DTSTART for an unconfirmed
  *       plan even when the zone is known (it keeps Locked Decision 30's floating output), and the
  *       plancard DTO carries `datesConfirmed: false`.
+ *   K8  QA round 3 major 8 (Leon, Nov 11, 2026) — the plan page's days: a CONFIRMED 4-day plan with every item on
+ *       day 1 draws FOUR days (three empty, each with its own date); the same window UNCONFIRMED draws ONE day (the
+ *       placeholder is not a range); an item on day 3 of a confirmed plan lands in Day 3. Read through the real
+ *       `assembleTripPlan` the plancard route serves.
  *
  * THE NEGATIVE. K3 and K7 both FAIL on `origin/main`: there is no column, so the clone's
  * placeholder window is indistinguishable from a chosen one and the exporter pins a confident
@@ -393,4 +397,30 @@ test("K7 · §13 on the readers — no pinned .ics instant and an explicit dates
   const confirmedTripId = await mint({}, { datesChosenByTraveler: true });
   const confirmedPayload: any = await assembleTripPlan(confirmedTripId, "full");
   assert.equal(confirmedPayload.plancard.trip.datesConfirmed, true);
+});
+
+test("K8 · a confirmed plan draws every day of its window; an unconfirmed plan draws the days its items hold", async () => {
+  const addItem = (tripId: string, dayNumber: number, title: string) =>
+    storage.createItineraryItem({ tripId, title, dayNumber, status: "planned", itemType: "activity" } as any);
+
+  // Confirmed Apr 10–13 (four days), every item on day 1 — TB1's shape (Dec 1–4, seven items on day 1).
+  const confirmed = await mint({ startDate: "2027-04-10", endDate: "2027-04-13" }, { datesChosenByTraveler: true });
+  for (const n of [1, 2, 3]) await addItem(confirmed, 1, `K8 stop ${n}`);
+  const c: any = await assembleTripPlan(confirmed, "full");
+  assert.deepEqual(c.days.map((d: any) => d.dayNumber), [1, 2, 3, 4], "four days, not one");
+  assert.deepEqual(c.days.map((d: any) => d.activities.length), [3, 0, 0, 0], "items fill their day; three days are empty");
+  assert.deepEqual(c.days.map((d: any) => d.dateIso), ["2027-04-10", "2027-04-11", "2027-04-12", "2027-04-13"], "1-based from start_date");
+  assert.equal(c.meta.dayCount, 4);
+
+  // The same window, NOT confirmed ⇒ unchanged: one placeholder day.
+  const unconfirmed = await mint({ startDate: "2027-04-10", endDate: "2027-04-13" });
+  for (const n of [1, 2]) await addItem(unconfirmed, 1, `K8 placeholder stop ${n}`);
+  const u: any = await assembleTripPlan(unconfirmed, "full");
+  assert.deepEqual(u.days.map((d: any) => d.dayNumber), [1], "an unconfirmed plan draws only the day its items hold");
+
+  // An item on day 3 lands in Day 3.
+  const third = await mint({ startDate: "2027-04-10", endDate: "2027-04-13" }, { datesChosenByTraveler: true });
+  await addItem(third, 3, "K8 day-three stop");
+  const t: any = await assembleTripPlan(third, "full");
+  assert.deepEqual(t.days.map((d: any) => d.activities.map((a: any) => a.title)), [[], [], ["K8 day-three stop"], []]);
 });

@@ -14,6 +14,7 @@
  *    (FU-9C-1): every shown leg renders between its two stops through `renderLegBetween`
  *    (`slipLegBetween`, step 9c D5), so no leg loses its render.
  */
+import { defaultOpenDayIndex, slipDayOpenByDefault } from "@/lib/slip-day-open";
 import { savePlanView } from "@/lib/plan-view-preference";
 import { planEyebrowLabel, phaseShown } from "@shared/plan-dates";
 import { SaveToPlanButton } from "@/components/plan/SaveToPlanButton";
@@ -2340,8 +2341,11 @@ export function SlipView({
   const momentAnchorDayNum = momentAnchor ? days.find((d) => d.activities.some((a) => a.id === momentAnchor.id))?.dayNum ?? null : null;
   const momentAnchorDateIso = momentAnchorDayNum != null ? daySlots.find((sl) => sl.dayNum === momentAnchorDayNum)?.dateIso ?? null : null;
   // Expand all (Main board): the same open rule each day already reads, applied to every day.
+  // QA round 3 PR 1 (Leon, Nov 11, 2026): the default open day is the first day holding an item, else Day 1; the
+  // highlighted item still opens its own day, and a day the traveler toggled keeps their choice.
+  const defaultOpenIdx = defaultOpenDayIndex(daySlots.map((slot) => slot.groups.flatMap((g) => g.items).length));
   const dayIsOpen = (key: string, idx: number, items: readonly { id: string }[]) =>
-    dayOpen[key] ?? (idx === 0 || (!!highlightItemId && items.some((a) => a.id === highlightItemId)));
+    dayOpen[key] ?? slipDayOpenByDefault({ index: idx, defaultIndex: defaultOpenIdx, items, highlightItemId });
   const allDaysOpen =
     daySlots.length > 0 && daySlots.every((slot, idx) => dayIsOpen(slot.key, idx, slot.groups.flatMap((g) => g.items)));
   const setAllDaysOpen = (open: boolean) =>
