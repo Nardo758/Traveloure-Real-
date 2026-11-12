@@ -45,6 +45,8 @@ import { CityFeedCardExternalStub } from "@/components/city-feed-card-external-s
 import { CityFeedCardExpert } from "@/components/city-feed-card-expert";
 import { CityFeedCardRecommendation } from "@/components/city-feed-card-recommendation";
 import { ExpertCard } from "@/components/expert-card";
+import { FeedWantedSlotCard } from "@/components/feed/wanted-slot-card";
+import { FeedNeighbourhoodWantedCard } from "@/components/feed/neighbourhood-wanted-card";
 import { FeedReadyMadeCard } from "@/components/feed/ready-made-card";
 import { TileDetailPanel } from "@/components/feed/tile-detail-panel";
 import { collectTileActions, opensTileDetail, tileDisplayName, tileOpensDetailPanel, type TilePanelAction } from "@/lib/tile-detail";
@@ -581,9 +583,21 @@ function BentoTile({
           compactActionState={compactActionState}
         />
       );
-    // QA3 ruling 2: `wanted-slot` and `earn-card` no longer reach this switch — nothing composes
-    // them for the traveler feed any more. Their components are kept by the ruling for an /earn
-    // lane; this page draws neither.
+    // QA3 ruling 2: the `/earn` card is gone from the traveler feed, and nothing composes a plain
+    // wanted-slot any more. The Wanted HERO branch stays because `bento-spans` still mints one as the
+    // anchor of a STOCKED neighbourhood with no expert or ready-made — that is the section's own
+    // face, not a partner recruit card. An EMPTY neighbourhood never reaches here: its section is
+    // omitted whole (the unstocked early return).
+    case "wanted-slot":
+      if (item.data?.neighbourhoodWantedHero) {
+        return (
+          <FeedNeighbourhoodWantedCard
+            name={String(item.data.name ?? "")}
+            slug={String(item.data.slug ?? "")}
+          />
+        );
+      }
+      return <FeedWantedSlotCard item={item} density="compact" />;
     case "package":
       return (
         <FeedReadyMadeCard

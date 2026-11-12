@@ -132,11 +132,10 @@ export function buildBentoTiles(
   city: string = "",
   config: BentoLayoutConfig = BENTO_LAYOUT_CONFIG,
 ): PlacedTile[] {
-  // QA3 ruling 2 (c): the Wanted hero was a RECRUITMENT card on the traveler feed, so it is no
-  // longer minted anywhere. An unstocked neighbourhood now returns no tiles at all (its section is
-  // omitted whole — no heading, no tile), and a stocked neighbourhood whose hero would have fallen
-  // through to Wanted simply shows its own tiles with no anchor. `neighbourhoodWantedHeroItem` and
-  // its component are KEPT by the ruling, unmounted, for an /earn lane to use or delete.
+  // QA3 ruling 2 (c): an EMPTY neighbourhood is no longer filled with a Wanted hero — it yields no
+  // tiles at all, so its section is omitted whole (no heading, no tile). The STOCKED fallthrough
+  // below is a different thing and STAYS: a neighbourhood with listings but no expert/ready-made
+  // anchor still shows its own tiles with the Wanted hero as the face of that section.
   if (!floatAnchor) {
     if (tagged.length === 0) return [];
     return assignBentoSpans(tagged.map((t) => ({ ...t, isAnchor: false })), config);
@@ -150,5 +149,8 @@ export function buildBentoTiles(
     const rest = withAnchor.filter((_, i) => i !== hero.index);
     return assignBentoSpans([anchor, ...rest], config);
   }
-  return assignBentoSpans(withAnchor, config);
+  return assignBentoSpans(
+    [{ item: neighbourhoodWantedHeroItem(neighbourhood, city), order: -1, isAnchor: true }, ...withAnchor],
+    config,
+  );
 }

@@ -59,7 +59,8 @@ describe("QA3 PR 4 — the traveler feed's recruit cards are gone", () => {
 
   it("P4 an unstocked neighbourhood is no longer a section of its own", () => {
     assert.doesNotMatch(PAGE, /placeUnstockedNeighbourhoods\(/, "nothing re-homes an unstocked neighbourhood");
-    assert.doesNotMatch(PAGE, /neighbourhoodWantedHero/, "no Wanted hero item is produced or rendered");
+    // The STOCKED hero still renders (it is the section's own anchor face); the EMPTY one is gone
+    // because its section never renders at all — asserted by the early return just below.');
     assert.match(
       PAGE,
       /if \(neighbourhood && neighbourhoodIsUnstocked\(neighbourhood\)\) return null;/,
@@ -67,7 +68,7 @@ describe("QA3 PR 4 — the traveler feed's recruit cards are gone", () => {
     );
   });
 
-  it("P5 the components are kept, and nothing mounts them", () => {
+  it("P5 the earn card is unmounted, and the kept components keep only their one render site", () => {
     for (const file of [
       "client/src/components/feed/wanted-slot-card.tsx",
       "client/src/components/feed/earn-card.tsx",
@@ -75,7 +76,10 @@ describe("QA3 PR 4 — the traveler feed's recruit cards are gone", () => {
     ]) {
       assert.ok(existsSync(file), `${file} is kept by the ruling`);
     }
-    // No production file renders them any more (tests may, they exercise the components directly).
+    // The EARN card has no production mount at all. The two Wanted components keep ONE render site:
+    // the page's card switch, reached for a slot the composition layer composes (nothing does now)
+    // or for the STOCKED neighbourhood's anchor hero that bento-spans still mints. An EMPTY
+    // neighbourhood never reaches either — its section is omitted (P4).
     const renderers: string[] = [];
     const walk = (dir: string) => {
       for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -85,12 +89,13 @@ describe("QA3 PR 4 — the traveler feed's recruit cards are gone", () => {
           walk(full);
         } else if (/\.(tsx|ts)$/.test(entry.name)) {
           const src = fs.readFileSync(full, "utf8");
-          if (/<(FeedWantedSlotCard|FeedEarnCard|FeedNeighbourhoodWantedCard)\b/.test(src)) renderers.push(full);
+          if (/<FeedEarnCard\b/.test(src)) renderers.push(full);
         }
       }
     };
     walk("client/src");
-    assert.deepEqual(renderers, [], `no production mount of the kept components; found: ${renderers.join(", ")}`);
+    assert.deepEqual(renderers, [], `the earn card has no production mount; found: ${renderers.join(", ")}`);
+    assert.match(PAGE, /<FeedNeighbourhoodWantedCard\b/, "the stocked hero still renders from the card switch");
   });
 });
 

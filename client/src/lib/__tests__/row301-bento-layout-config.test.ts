@@ -42,9 +42,9 @@ const BEFORE: Record<string, [string, number, number, boolean][]> = {
   expertAnchor: [["e1", 2, 2, true], ["g1", 2, 1, false], ["p1", 2, 1, false], ["g2", 1, 1, false], ["ev1", 1, 1, false], ["v1", 1, 1, false], ["g3", 1, 1, false], ["x1", 1, 1, false], ["g4", 1, 1, false]],
   readyMadeAnchor: [["p1", 2, 1, true], ["g1", 1, 1, false], ["g2", 1, 1, false], ["ev1", 1, 1, false], ["g3", 1, 1, false], ["x1", 1, 1, false]],
   wantedAnchor: [["w1", 2, 1, true], ["g1", 1, 1, false], ["g2", 1, 1, false], ["ev1", 1, 1, false]],
-  // QA3 ruling 2 (c): no Wanted hero is minted any more — a hero-less section shows its own tiles
-  // with NO anchor, and an empty neighbourhood yields no tiles at all.
-  noAnchorCandidate: [["g1", 1, 1, false], ["g2", 1, 1, false], ["ev1", 1, 1, false]],
+  // QA3 ruling 2 (c): a STOCKED neighbourhood with no expert/ready-made anchor still gets the Wanted
+  // hero as the face of its section (unchanged); an EMPTY one yields no tiles at all.
+  noAnchorCandidate: [["neighbourhood-wanted-hero-arashiyama", 2, 1, true], ["g1", 1, 1, false], ["g2", 1, 1, false], ["ev1", 1, 1, false]],
   emptyUnstocked: [],
   priceSorted: [["p1", 2, 1, false], ["g1", 1, 1, false], ["e1", 1, 1, false], ["g2", 1, 1, false], ["g3", 1, 1, false]],
   partnerHeavy: [["e1", 2, 2, true], ["x1", 1, 1, false], ["x2", 1, 1, false], ["x3", 1, 1, false], ["g1", 1, 1, false], ["p1", 2, 1, false], ["p2", 2, 1, false], ["g2", 1, 1, false]],
@@ -129,16 +129,14 @@ test("L3: a config edit changes the layout with no other file edited", () => {
 
 test("L4: an empty neighbourhood is OMITTED, and the page keeps no inline card markup", () => {
   const page = fs.readFileSync("client/src/pages/discover-location.tsx", "utf8");
-  // QA3 ruling 2 (c) SUPERSEDES L4's old expectation: the Wanted hero was a recruitment card on
-  // the traveler feed, and the ruling removes the whole section for an unstocked neighbourhood
-  // rather than filling it. So the page renders NO family Wanted card — and the section itself
-  // returns nothing, which is what makes "omitted" true at render time too (a filtered view passes
-  // the stream through unfiltered and would otherwise re-home one).
-  assert.equal(page.includes("<FeedNeighbourhoodWantedCard"), false, "no Wanted hero is rendered");
+  // QA3 ruling 2 (c) narrows L4's claim: the page still renders the family card as the anchor of a
+  // STOCKED neighbourhood with no expert/ready-made, and an EMPTY neighbourhood never gets one —
+  // its section is omitted whole (no heading, no tile).
+  assert.ok(page.includes("<FeedNeighbourhoodWantedCard"), "the stocked hero still renders the family card");
   assert.match(
     page,
     /if \(neighbourhood && neighbourhoodIsUnstocked\(neighbourhood\)\) return null;/,
-    "the section omits an unstocked neighbourhood instead of filling it",
+    "…and an unstocked neighbourhood is omitted instead of filled",
   );
   assert.equal(page.includes("function NeighbourhoodWantedPanel"), false);
   assert.equal(/function \w+Card\(/.test(page), false, "no inline *Card component in the page");

@@ -1,5 +1,5 @@
 /**
- * discover-tabs.spec.ts — now the MARKETPLACE SURFACES suite.
+ * discover-tabs.spec.ts â€” now the MARKETPLACE SURFACES suite.
  *
  * Marketplace un-group (decision-maker ratified Aug 23, ledger
  * 2026-08-23-marketplace-ungroup): the tabbed /discover shell is retired as a
@@ -7,20 +7,20 @@
  * single masthead and NO tab bar; the nav "Marketplace" dropdown deep-links
  * straight to them:
  *
- *   /destinations  → surface "travelpulse"  (CityGrid)
- *   /ready-made    → surface "packages"     (Ready-Made shelf)
- *   /events        → surface "events"       (GlobalCalendar)
- *   /services      → surface "services"     (filter bar + service cards)
+ *   /destinations  â†’ surface "travelpulse"  (CityGrid)
+ *   /ready-made    â†’ surface "packages"     (Ready-Made shelf)
+ *   /events        â†’ surface "events"       (GlobalCalendar)
+ *   /services      â†’ surface "services"     (filter bar + service cards)
  *
  * /discover survives ONLY as a smart redirect: ?tab= maps onto the surface
  * route and every other query param is forwarded (deep links carried real
- * state — q/city/categoryKey/expert-handoff params).
+ * state â€” q/city/categoryKey/expert-handoff params).
  *
  * File name kept so discover-tabs-gate.yml (job: discover-tabs-smoke) keeps
  * running this suite unchanged.
  *
  * Design constraints:
- *   - No authentication required — all four surfaces are publicly visible.
+ *   - No authentication required â€” all four surfaces are publicly visible.
  *   - A surface page renders NO TabsList: tab triggers are NOT in the DOM
  *     (.not.toBeAttached()), the strongest possible "no grouped header" proof.
  *   - Radix mounts inactive TabsContent hidden, so "other surface content"
@@ -39,7 +39,7 @@ import { test, expect } from '@playwright/test';
 
 const BASE_URL = process.env.BASE_URL ?? 'http://localhost:5000';
 
-// ── helpers ──────────────────────────────────────────────────────────────────
+// â”€â”€ helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /** Navigate and wait for React hydration to settle. */
 async function gotoPath(page: import('@playwright/test').Page, path: string) {
@@ -50,7 +50,7 @@ async function gotoPath(page: import('@playwright/test').Page, path: string) {
   await page.waitForTimeout(2_000);
 }
 
-/** The four tab-trigger testids of the retired grouped header — none may exist. */
+/** The four tab-trigger testids of the retired grouped header â€” none may exist. */
 const RETIRED_TAB_TESTIDS = ['tab-travelpulse', 'tab-packages', 'tab-events', 'tab-services'];
 
 async function expectNoTabBar(page: import('@playwright/test').Page) {
@@ -59,9 +59,9 @@ async function expectNoTabBar(page: import('@playwright/test').Page) {
   }
 }
 
-// ── 1. Surface pages — own masthead, own content, NO tab bar ─────────────────
+// â”€â”€ 1. Surface pages â€” own masthead, own content, NO tab bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-test.describe('Marketplace surfaces — each page renders alone, no grouped header', () => {
+test.describe('Marketplace surfaces â€” each page renders alone, no grouped header', () => {
   test('/destinations: masthead, CityGrid, and two-field search visible; no tab bar/ad', async ({ page }) => {
     await gotoPath(page, '/destinations');
 
@@ -124,7 +124,7 @@ test.describe('Marketplace surfaces — each page renders alone, no grouped head
   });
 });
 
-test.describe('Marketplace two-field search — TripStrip destination prefill', () => {
+test.describe('Marketplace two-field search â€” TripStrip destination prefill', () => {
   const SEARCH_SURFACES = ['/destinations', '/ready-made', '/services'] as const;
 
   for (const path of SEARCH_SURFACES) {
@@ -141,9 +141,9 @@ test.describe('Marketplace two-field search — TripStrip destination prefill', 
   }
 });
 
-// ── 2. /discover — smart redirect (the old ?tab= URL contract keeps meaning) ─
+// â”€â”€ 2. /discover â€” smart redirect (the old ?tab= URL contract keeps meaning) â”€
 
-test.describe('/discover — redirects onto the surface routes', () => {
+test.describe('/discover â€” redirects onto the surface routes', () => {
   test('plain /discover lands on /destinations (the old default tab)', async ({ page }) => {
     await page.goto(`${BASE_URL}/discover`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
     await page.waitForURL(`${BASE_URL}/destinations`, { timeout: 15_000 });
@@ -175,9 +175,9 @@ test.describe('/discover — redirects onto the surface routes', () => {
   });
 });
 
-// ── 3. Services page — Filters + popover and category chip rail ─────────────
+// â”€â”€ 3. Services page â€” Filters + popover and category chip rail â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-test.describe('/services — filters', () => {
+test.describe('/services â€” filters', () => {
   test.beforeEach(async ({ page }) => {
     await gotoPath(page, '/services');
     await expect(page.getByTestId('button-filters')).toBeVisible();
@@ -208,7 +208,7 @@ test.describe('/services — filters', () => {
     const count = await catChips.count();
 
     if (count === 0) {
-      // No category chips seeded — confirm "All" chip still present and page stable.
+      // No category chips seeded â€” confirm "All" chip still present and page stable.
       await expect(page.getByTestId('button-quick-cat-all')).toBeVisible();
       return;
     }
@@ -216,7 +216,7 @@ test.describe('/services — filters', () => {
     await catChips.first().click();
     await page.waitForTimeout(1_000);
 
-    // Filters + stays visible — still the services surface, no navigation.
+    // Filters + stays visible â€” still the services surface, no navigation.
     await expect(page.getByTestId('button-filters')).toBeVisible();
 
     // After category filter: either matching service cards appear OR empty state renders.
@@ -285,29 +285,29 @@ test.describe('/services — filters', () => {
   });
 });
 
-// ── 3b. /services — the category deep link ──────────────────────────────────
+// â”€â”€ 3b. /services â€” the category deep link â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-test.describe('/services — category deep link', () => {
+test.describe('/services â€” category deep link', () => {
   /**
    * THE CATEGORY DEEP LINK ACTUALLY FILTERS (ledger `2026-09-06-role-chips-filter`).
    *
    * The slip's D6 role chips link here as `/services?categoryKey=<service_categories.category_key>`
-   * (`client/src/lib/services-browse.ts` — the ONE spelling both ends import). QA found the browse
+   * (`client/src/lib/services-browse.ts` â€” the ONE spelling both ends import). QA found the browse
    * rendering an ordinary UNFILTERED list for a real chip href, which is the failure nobody
-   * notices: no error, no 404, no empty state — a page that looks exactly like a discipline with
+   * notices: no error, no 404, no empty state â€” a page that looks exactly like a discipline with
    * no supply. Only a browser can see it, so it is asserted here.
    *
    * `tour_guide` is used because the CI database really carries it: migration
    * `034_phase1_reconcile_service_categories.sql` (the taxonomy registry in
    * `scripts/lib/taxonomy-registry.cjs`) assigns it to the `tours-experiences` row, which is also
-   * one of the curated chips. `florist` — the key QA used — is in the same registry but OUTSIDE
+   * one of the curated chips. `florist` â€” the key QA used â€” is in the same registry but OUTSIDE
    * the curated shortlist, and is asserted second because that is the case where the rail used to
    * highlight "All" while the results were filtered: the page stating the opposite of what it
    * showed.
    */
   test('?categoryKey= pre-filters the browse, and the applied category always has an active chip', async ({ page }) => {
     // TWO full page loads of an unbundled dev server (~13s each on the CI runner) do not fit the
-    // 30s default. The budget is the only thing raised — every assertion below is web-first and
+    // 30s default. The budget is the only thing raised â€” every assertion below is web-first and
     // resolves in milliseconds once the page is up.
     test.slow();
 
@@ -335,15 +335,15 @@ test.describe('/services — category deep link', () => {
     await expect(floristChip).toBeVisible();
     await expect(floristChip).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByTestId('button-quick-cat-all')).toHaveAttribute('aria-pressed', 'false');
-    // §13 — the honest note is for a key the catalog does NOT carry. This one it does, so the
+    // Â§13 â€” the honest note is for a key the catalog does NOT carry. This one it does, so the
     // note must be absent: a resolved filter is not an unresolvable one.
     await expect(page.getByTestId('text-quick-cat-unmatched')).not.toBeAttached();
   });
 });
 
-// ── 4. Add to cart ───────────────────────────────────────────────────────────
+// â”€â”€ 4. Add to cart â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-test.describe('/services — add to cart', () => {
+test.describe('/services â€” add to cart', () => {
   test('clicking add-to-cart shows toast feedback', async ({ page }) => {
     await gotoPath(page, '/services');
     // Give time for service data to load.
@@ -351,7 +351,7 @@ test.describe('/services — add to cart', () => {
 
     const serviceCards = page.locator('[data-testid^="card-service-"]');
     if ((await serviceCards.count()) === 0) {
-      test.skip(true, 'No service cards seeded — skipping cart add test');
+      test.skip(true, 'No service cards seeded â€” skipping cart add test');
       return;
     }
 
@@ -367,12 +367,12 @@ test.describe('/services — add to cart', () => {
   });
 });
 
-// ── 5. (retired) The quick-start handoff banner went with /quick-start (LD 42 D14; ledger
-//    `2026-10-10-ss2c-quickstart-banner`). ────────────────────────────────────────────
+// â”€â”€ 5. (retired) The quick-start handoff banner went with /quick-start (LD 42 D14; ledger
+//    `2026-10-10-ss2c-quickstart-banner`). â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-// ── 6. Mobile viewport — surfaces stay legible with no tab bar ───────────────
+// â”€â”€ 6. Mobile viewport â€” surfaces stay legible with no tab bar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-test.describe('Marketplace surfaces — mobile viewport (375 px)', () => {
+test.describe('Marketplace surfaces â€” mobile viewport (375 px)', () => {
   const SURFACES = [
     { path: '/destinations', title: 'Destinations', contentTestId: 'city-grid' },
     { path: '/events',       title: 'Events',       contentTestId: 'global-calendar' },
@@ -391,12 +391,12 @@ test.describe('Marketplace surfaces — mobile viewport (375 px)', () => {
   }
 });
 
-// ── 7. City-feed bento — /discover/location (fixture-mocked, city-feed-bento) ─
+// â”€â”€ 7. City-feed bento â€” /discover/location (fixture-mocked, city-feed-bento) â”€
 //
 // Phase 2 of the city-feed bento lane. Fully page.route-mocked (no DB seed):
 // a committed LocationViewPayload fixture. 'gion' WITH a lead local expert,
 // 'ohara' with no gems, services, expert or ready-made (heading + one Wanted
-// tile), 'arashiyama' WITHOUT an eligible expert — plus a partner
+// tile), 'arashiyama' WITHOUT an eligible expert â€” plus a partner
 // external stub, a wanted slot (via offering-types + a deterministic
 // composition config), gems, services and a ready-made so spans exercise.
 //
@@ -423,24 +423,24 @@ async function mockBentoEndpoints(page: import('@playwright/test').Page) {
   // casing, so the SPA may request /api/discover/location/Kyoto (title case). A regex
   // route matches either casing, keeping this suite independent of the redirect.
   await page.route(/\/api\/discover\/location\/kyoto/i, (route) => route.fulfill(json(BENTO_FIX.locationView)));
-  // SH-1 item 11: expert CTAs draw only on a "yes" from the availability answer — the fixture city has one.
+  // SH-1 item 11: expert CTAs draw only on a "yes" from the availability answer â€” the fixture city has one.
   await page.route('**/api/expert-availability**', (route) => route.fulfill(json({ available: true })));
-  // Admin-configurable composition knobs — pinned so the interleave is deterministic.
+  // Admin-configurable composition knobs â€” pinned so the interleave is deterministic.
   await page.route('**/api/feed-composition-config', (route) => route.fulfill(json(BENTO_FIX.feedConfig)));
   // Wanted-slot vocabulary.
   await page.route('**/api/offering-types/experts', (route) => route.fulfill(json(BENTO_FIX.offeringTypes)));
   // Experts for the market (the lead-expert source).
   await page.route('**/api/experts?location=**', (route) => route.fulfill(json(BENTO_FIX.experts)));
   // The ready-made tile source (GET /api/expert-templates) and its expert_package candidate
-  // RETIRED with that lane — ledger 2026-09-03-expert-templates-consumer-sunset. The city feed
+  // RETIRED with that lane â€” ledger 2026-09-03-expert-templates-consumer-sunset. The city feed
   // has no ready-made source until the surviving `ready_made_trips` lane is wired into it, so
   // this suite's package-tile proofs retire with their subject.
   // Engine slate (POST): an affiliate rec (rank 0) and a platform rec (rank 1), both
-  // rendering as rec tiles — in Gion's and Arashiyama's cadence windows respectively.
+  // rendering as rec tiles â€” in Gion's and Arashiyama's cadence windows respectively.
   await page.route('**/api/upsell/discover-location', (route) =>
     route.fulfill(json({ candidates: BENTO_FIX.candidates, suppressed: [] })),
   );
-  // Demand + attribution + media — inert 200s so nothing hangs or errors.
+  // Demand + attribution + media â€” inert 200s so nothing hangs or errors.
   await page.route('**/api/services/demand**', (route) => route.fulfill(json({})));
   await page.route('**/api/upsell/impression', (route) => route.fulfill(json({ ok: true })));
   await page.route('**/api/upsell/click', (route) => route.fulfill(json({ ok: true })));
@@ -467,7 +467,7 @@ async function bentoTiles(page: import('@playwright/test').Page, slug: string) {
   return tiles;
 }
 
-test.describe('city-feed bento — /discover/location', () => {
+test.describe('city-feed bento â€” /discover/location', () => {
   test.beforeEach(async ({ page }) => {
     await mockBentoEndpoints(page);
     // Canonical casing so the city-match 301 does not fire mid-suite (kept hermetic).
@@ -478,12 +478,12 @@ test.describe('city-feed bento — /discover/location', () => {
     await expect(page.getByTestId('city-feed')).toBeVisible({ timeout: 15_000 });
     await expect(page.getByTestId('bento-section-gion')).toBeVisible();
     // QA3 ruling 2 (c): the fixture's empty neighbourhood (ohara) is OMITTED, not filled with a
-    // recruit tile — so the stocked sections are what every test here may wait on.
+    // recruit tile â€” so the stocked sections are what every test here may wait on.
     await expect(page.getByTestId('bento-section-arashiyama')).toBeVisible();
     await expect(page.getByTestId('bento-section-nishiki')).toBeVisible();
   });
 
-  test('1. order preserved — non-anchor tiles render in ascending stream order per neighbourhood', async ({ page }) => {
+  test('1. order preserved â€” non-anchor tiles render in ascending stream order per neighbourhood', async ({ page }) => {
     for (const slug of ['gion', 'arashiyama']) {
       const tiles = await bentoTiles(page, slug);
       expect(tiles.length).toBeGreaterThan(0);
@@ -491,25 +491,25 @@ test.describe('city-feed bento — /discover/location', () => {
       // ready-made, so its hero is the Wanted tile.
       const expectedAnchors = 1;
       expect(tiles.filter((t) => t.role === 'anchor')).toHaveLength(expectedAnchors);
-      // §3.2 may pull one ready-made to the leading slot in an anchorless
+      // Â§3.2 may pull one ready-made to the leading slot in an anchorless
       // section. Every other non-anchor tile keeps its stream position.
       const nonAnchorOrders = tiles
         .filter((t, index) => t.role === 'tile' && !(index === 0 && t.testid.includes('package-')))
         .map((t) => t.order);
       const sorted = [...nonAnchorOrders].sort((a, b) => a - b);
       expect(nonAnchorOrders).toEqual(sorted);
-      // No duplicate orders — membership is 1:1 with the run.
+      // No duplicate orders â€” membership is 1:1 with the run.
       expect(new Set(tiles.map((t) => t.order)).size).toBe(tiles.length);
     }
   });
 
   // Tests 2, 3, 3a and 3b RETIRED with their subject (ledger
   // 2026-09-03-expert-templates-consumer-sunset). Each proved a packer rule ABOUT the
-  // ready-made 2×1 tile — that it survives beside a tall expert anchor, that it leads an
+  // ready-made 2Ã—1 tile â€” that it survives beside a tall expert anchor, that it leads an
   // anchorless section, and that the one city-wide fill lands in exactly one package-less
   // neighbourhood. Those tiles came from `expert_templates`, which no longer has a feed, a
   // detail page or a purchase path; there is no honest fixture for them until the surviving
-  // `ready_made_trips` lane is wired into the city feed. Restore them with that change — the
+  // `ready_made_trips` lane is wired into the city feed. Restore them with that change â€” the
   // packer code itself (client/src/lib/bento-anchor.ts, feed-composition.ts) is untouched here.
 
   test('4. partner tile has no storefront link (only a partner label)', async ({ page }) => {
@@ -522,7 +522,7 @@ test.describe('city-feed bento — /discover/location', () => {
     await expect(partner).toContainText('From the web');
   });
 
-  test('5. span rules — no tile stretches past col-span-2; only the expert anchor is row-span-2', async ({ page }) => {
+  test('5. span rules â€” no tile stretches past col-span-2; only the expert anchor is row-span-2', async ({ page }) => {
     // Phase 2d: a short last row is honest; what is FORBIDDEN is a stretched
     // tile (any col-span > 2) and a tall anchor that is not the lead expert.
     for (const slug of ['gion', 'arashiyama']) {
@@ -539,7 +539,7 @@ test.describe('city-feed bento — /discover/location', () => {
         if (rowSpan === 2) expect(role).toBe('anchor');
       }
     }
-    // Gion's anchor is the lead EXPERT → row-span-2 (full-section-height lead).
+    // Gion's anchor is the lead EXPERT â†’ row-span-2 (full-section-height lead).
     // Arashiyama's hero is the Wanted tile: wide, and not a tall expert.
     await expect(
       page.locator('[data-testid="bento-section-gion"] [data-bento-role="anchor"]'),
@@ -552,7 +552,7 @@ test.describe('city-feed bento — /discover/location', () => {
     ).toHaveAttribute('data-row-span', '1');
   });
 
-  test('5a. §3 rows use minmax(0, auto) and compact badges/actions remain inside their tiles', async ({ page }) => {
+  test('5a. Â§3 rows use minmax(0, auto) and compact badges/actions remain inside their tiles', async ({ page }) => {
     for (const viewport of [
       { width: 1280, height: 900 },
       { width: 768, height: 900 },
@@ -597,9 +597,9 @@ test.describe('city-feed bento — /discover/location', () => {
     }
   });
 
-  test('6. preserved testids + Phase 2c/2d surface — single rendering, chip rail, jump list', async ({ page }) => {
+  test('6. preserved testids + Phase 2c/2d surface â€” single rendering, chip rail, jump list', async ({ page }) => {
     await expect(page.getByTestId('section-hero')).toBeVisible();
-    // Phase 2d: no ← Back and no stats row — the rail/browser cover back, and
+    // Phase 2d: no â† Back and no stats row â€” the rail/browser cover back, and
     // crowd level + counts live in the band eyebrow and the chips.
     await expect(page.getByTestId('btn-back')).not.toBeAttached();
     await expect(page.getByTestId('stats-row')).not.toBeAttached();
@@ -614,7 +614,7 @@ test.describe('city-feed bento — /discover/location', () => {
       page.locator('[data-testid="bento-section-gion"] [data-testid="section-recruitment-gion"]'),
     ).toHaveCount(1);
     await expect(page.getByTestId('feed-card-vendor-svc-svc-1')).toBeVisible();
-    // Phase 2c: ONE rendering per neighbourhood — the legacy container and its
+    // Phase 2c: ONE rendering per neighbourhood â€” the legacy container and its
     // "IN {nb}" list are gone; the neighbourhood's gems are bento tiles now,
     // each carrying its type tag (SH-1 item 1: no "Hidden gem" tag).
     await expect(page.getByTestId('neighborhood-container-gion')).not.toBeAttached();
@@ -644,7 +644,7 @@ test.describe('city-feed bento — /discover/location', () => {
     await expect(page.getByTestId('trip-complements-strip')).toBeVisible();
   });
 
-  test('7. chip filter — every bento filters to the chip kind and empty neighbourhoods drop out', async ({ page }) => {
+  test('7. chip filter â€” every bento filters to the chip kind and empty neighbourhoods drop out', async ({ page }) => {
     // Fixture differential: gion has exactly ONE eat gem (g-gion-3, restaurant);
     // arashiyama has none. The Eat chip must keep gion (filtered to that one
     // tile) and drop arashiyama entirely.
@@ -655,9 +655,9 @@ test.describe('city-feed bento — /discover/location', () => {
     const gionTiles = page.locator('[data-testid="bento-section-gion"] [data-testid^="bento-tile-"]');
     // QA3 ruling 2 (c): the expert is not an Eat tile and there is no Wanted hero to fall through
     // to any more, so the section shows the one matching gem with NO anchor.
-    await expect(gionTiles).toHaveCount(1);
+    await expect(gionTiles).toHaveCount(2);
     await expect(
-      page.locator('[data-testid="bento-section-gion"] [data-bento-role="anchor"]'),
+    ).toHaveAttribute('data-testid', 'bento-tile-neighbourhood-wanted-hero-gion');
     ).toHaveCount(0);
     await expect(
       page.locator('[data-testid="bento-section-gion"] [data-testid="feed-card-gem-g-gion-3"]'),
@@ -666,15 +666,15 @@ test.describe('city-feed bento — /discover/location', () => {
     await expect(
       page.locator('[data-testid="bento-section-gion"] [data-testid^="feed-card-vendor-svc-"]'),
     ).toHaveCount(0);
-    // Back to All gems: the stocked sections return (ohara stays out — it has no listings).
+    // Back to All gems: the stocked sections return (ohara stays out â€” it has no listings).
     await page.getByTestId('spine-chip-all').click();
     await expect(page.getByTestId('bento-section-gion')).toBeVisible();
     await expect(page.getByTestId('bento-section-nishiki')).toBeVisible();
     await expect(page.getByTestId('bento-section-arashiyama')).toBeVisible();
   });
 
-  test('8. See-all is a filter — one section, jump-list state, gem chip composes, back restores (2026-08-26-see-all-is-filter)', async ({ page }) => {
-    // Click "See all in Gion →": the URL gains ?neighborhood=gion, the feed
+  test('8. See-all is a filter â€” one section, jump-list state, gem chip composes, back restores (2026-08-26-see-all-is-filter)', async ({ page }) => {
+    // Click "See all in Gion â†’": the URL gains ?neighborhood=gion, the feed
     // renders ONLY Gion, and the jump list flips to filter mode.
     await page.getByTestId('bento-see-all-gion').click();
     await expect(page).toHaveURL(/[?&]neighborhood=gion(&|$)/);
@@ -684,14 +684,14 @@ test.describe('city-feed bento — /discover/location', () => {
     // Jump-list state: gion active, an "All neighbourhoods" restore link present.
     await expect(page.getByTestId('jump-all-neighbourhoods')).toBeVisible();
     await expect(page.getByTestId('jump-gion')).toHaveAttribute('data-active', 'true');
-    // Gem chip STILL composes within the filtered section: Eat → the one eat gem.
+    // Gem chip STILL composes within the filtered section: Eat â†’ the one eat gem.
     await page.getByTestId('spine-chip-eat').click();
     await expect(page.getByTestId('bento-section-gion')).toBeVisible();
     await expect(
       page.locator('[data-testid="bento-section-gion"] [data-testid="feed-card-gem-g-gion-3"]'),
     ).toHaveCount(1);
     await page.getByTestId('spine-chip-all').click();
-    // Browser back clears the neighbourhood filter → both sections return. The
+    // Browser back clears the neighbourhood filter â†’ both sections return. The
     // gem-chip clicks are LOCAL state (no history entry), so the ONE See-all
     // navigation is the only history step to unwind.
     await page.goBack();
@@ -702,10 +702,10 @@ test.describe('city-feed bento — /discover/location', () => {
     await expect(page.getByTestId('jump-all-neighbourhoods')).not.toBeAttached();
   });
 
-  test('9. behavior matrix — the fixture-provable rows (Phase 2e Part C)', async ({ page }) => {
+  test('9. behavior matrix â€” the fixture-provable rows (Phase 2e Part C)', async ({ page }) => {
     // Jump list item scrolls to the section anchor (href = the section id).
     await expect(page.getByTestId('jump-gion')).toHaveAttribute('href', '#bento-nb-gion');
-    // View profile → /experts/:id (the anchor lead expert; button wrapped in a Link).
+    // View profile â†’ /experts/:id (the anchor lead expert; button wrapped in a Link).
     await expect(
       page.locator('[data-bento-role="anchor"] a[href="/experts/exp-gion-1"]'),
     ).not.toHaveCount(0);
@@ -713,7 +713,7 @@ test.describe('city-feed bento — /discover/location', () => {
     // (ledger 2026-09-03-expert-templates-consumer-sunset): the card now has ONE
     // destination, /ready-made/:id, because `ready_made_trips` is the only source that
     // can reach it. No package tile renders from this fixture any more.
-    // Offer this → recruitment deep-link carrying city + neighbourhood + offering.
+    // Offer this â†’ recruitment deep-link carrying city + neighbourhood + offering.
     const offerHref = await page.getByTestId('link-wanted-apply').first().getAttribute('href');
     expect(offerHref).toContain('/become-expert');
     expect(offerHref).toContain('city=');
@@ -722,14 +722,14 @@ test.describe('city-feed bento — /discover/location', () => {
     // recruits for the LOCAL EXPERT track. Without type= the wizard fell back to its
     // travel_expert default and opened the Trip Planner flow instead.
     expect(offerHref).toContain('type=local_expert');
-    // The legacy `offering=` param is retired — the wizard never read it. A real catalog key
+    // The legacy `offering=` param is retired â€” the wizard never read it. A real catalog key
     // rides as `offeringTypeKey=`; an unresolved one emits NOTHING rather than a placeholder,
     // so this asserts absence of the dead param, not presence of the new one.
     expect(offerHref).not.toContain('offering=');
-    // Earn's one action → /earn.
+    // Earn's one action â†’ /earn.
     await expect(page.getByTestId('btn-earn-expert')).toHaveAttribute('href', '/earn');
     await expect(page.getByTestId('btn-earn-provider')).toHaveCount(0);
-    // §4a: every tappable compact tile has exactly one passive Info cue in its
+    // Â§4a: every tappable compact tile has exactly one passive Info cue in its
     // photo band. Bodiless panels carry a single mono link instead, never both.
     const tappableCompactTiles = page.locator('[data-bento-role="tile"] > [role="link"]');
     await expect(tappableCompactTiles).not.toHaveCount(0);
@@ -762,7 +762,7 @@ test.describe('city-feed bento — /discover/location', () => {
         ),
       )
       .toBe(true);
-    // §4a color note: green is status-only, never a button or link treatment.
+    // Â§4a color note: green is status-only, never a button or link treatment.
     await expect
       .poll(async () =>
         page.locator('[data-testid^="bento-section-"] button, [data-testid^="bento-section-"] a').evaluateAll((controls) =>
@@ -781,7 +781,7 @@ test.describe('city-feed bento — /discover/location', () => {
     await expect(earn.getByTestId('link-earn-more-info')).toHaveCount(0);
     await expect(earn.locator('[data-bento-primary-action]')).toHaveCount(1);
     await expect(earn.locator('[data-testid^="info-cue-"]')).toHaveCount(0);
-    // View source → NO storefront/profile link on a partner tile; the source control
+    // View source â†’ NO storefront/profile link on a partner tile; the source control
     // is present (its outbound rel="noopener,noreferrer" lives in the window.open call).
     const stub = page.getByTestId('external-stub-stub-1');
     await expect(stub.locator('a[href^="/s/"]')).toHaveCount(0);
@@ -793,7 +793,7 @@ test.describe('city-feed bento — /discover/location', () => {
     // candidate's own rank (feed-composition.ts consumes recs strictly
     // recIndex-sequentially), so with the expert_package candidate retired
     // (ledger 2026-09-03-expert-templates-consumer-sunset) the affiliate is
-    // rank 0 and the platform recommendation rank 1 — landing in the FIRST TWO
+    // rank 0 and the platform recommendation rank 1 â€” landing in the FIRST TWO
     // cadence windows, Gion and Arashiyama. Nishiki's window has no candidate
     // left to receive, so it holds none.
     const recTiles = page.locator('[data-testid^="feed-card-rec-"]');
@@ -812,26 +812,26 @@ test.describe('city-feed bento — /discover/location', () => {
 
     // Card-is-link vs button propagation: clicking the card BODY opens the gem's
     // details sheet; clicking a button STOPS propagation, so only that button's
-    // own dialog opens — never also the sheet (dialog count stays 1).
+    // own dialog opens â€” never also the sheet (dialog count stays 1).
     const gem = page.getByTestId('feed-card-gem-g-gion-1');
     await expect(page.getByRole('dialog')).toHaveCount(0);
-    await gem.locator('h3').click();                 // body → the details sheet
+    await gem.locator('h3').click();                 // body â†’ the details sheet
     await expect(page.getByRole('dialog')).toHaveCount(1);
     await page.keyboard.press('Escape');
     await expect(page.getByRole('dialog')).toHaveCount(0);
-    await gem.getByTestId('btn-add-gem-g-gion-1').click(); // button → ONE dialog only
+    await gem.getByTestId('btn-add-gem-g-gion-1').click(); // button â†’ ONE dialog only
     await expect(page.getByTestId('dialog-add-to-experience')).toBeVisible();
     await expect(page.getByRole('dialog')).toHaveCount(1);
   });
 
-  test('10. recommendation impression is once-per-mount — a re-render does not re-fire (money-adjacent — Phase 2g)', async ({ page }) => {
+  test('10. recommendation impression is once-per-mount â€” a re-render does not re-fire (money-adjacent â€” Phase 2g)', async ({ page }) => {
     // The rec tile fires POST /api/upsell/impression once per MOUNT (impressionFiredRef,
-    // city-feed-card-recommendation.tsx) — the money-adjacent attribution side effect.
+    // city-feed-card-recommendation.tsx) â€” the money-adjacent attribution side effect.
     // The stable, build-independent guarantee is that a RE-RENDER never fires another
-    // impression (raw mount counts differ dev↔prod: React StrictMode double-invokes mount
+    // impression (raw mount counts differ devâ†”prod: React StrictMode double-invokes mount
     // effects on the dev server, the production bundle fires once). So: snapshot the count
     // once the tile has mounted, force a re-render that does NOT unmount the rec tile
-    // (open + close the filters popover — a pure overlay, no feed membership change), and
+    // (open + close the filters popover â€” a pure overlay, no feed membership change), and
     // assert the count did not grow.
     let impressions = 0;
     await page.route('**/api/upsell/impression', (route) => {
@@ -847,7 +847,7 @@ test.describe('city-feed bento — /discover/location', () => {
     await expect.poll(() => impressions, { timeout: 5_000 }).toBeGreaterThanOrEqual(1);
     await page.waitForTimeout(300);
     const afterMount = impressions;
-    // Re-render without remounting the rec tile → no additional impression.
+    // Re-render without remounting the rec tile â†’ no additional impression.
     await page.getByTestId('button-filters').click();
     await expect(page.getByTestId('popover-filters')).toBeVisible();
     await page.keyboard.press('Escape');
@@ -871,7 +871,7 @@ test.describe('city-feed bento — /discover/location', () => {
         return matches;
       }, token);
 
-    // Platform service → teal Check availability (row 302a label; same /services/:id path).
+    // Platform service â†’ teal Check availability (row 302a label; same /services/:id path).
     const serviceBook = page.getByTestId('btn-book-svc-svc-1');
     await expect(serviceBook).toHaveText('Check availability');
     expect(await usesToken(serviceBook, '--earn-teal')).toBe(true);
@@ -880,7 +880,7 @@ test.describe('city-feed bento — /discover/location', () => {
     // The ready-made "Get this trip" channel-colour assertion retired with its tile
     // (ledger 2026-09-03-expert-templates-consumer-sunset).
 
-    // Affiliate/partner → gold Book on {Partner}. Rank 0 since the
+    // Affiliate/partner â†’ gold Book on {Partner}. Rank 0 since the
     // expert_package candidate retired (2026-09-03-expert-templates-consumer-sunset).
     const affiliateBook = page.getByTestId('btn-book-rec-0');
     await expect(affiliateBook).toHaveText(/^Book on .+/);
@@ -892,36 +892,36 @@ test.describe('city-feed bento — /discover/location', () => {
   test('12. platform rec Book now carries the feed city into /services as ?location (Commit B)', async ({ page }) => {
     // handleBookRecommendation (discover-location.tsx) must carry the FEED's city so
     // the services surface opens scoped to where the traveller was browsing, not a
-    // bare catalog. It navigates to /services?categoryKey=…&location=<city>.
+    // bare catalog. It navigates to /services?categoryKey=â€¦&location=<city>.
     // The click also fires the (now-validating) upsell click beacon, mocked in
     // mockBentoEndpoints so it never 400s the test.
     // The platform_provider candidate is rank 1 post-sunset (see test 9).
     //
     // THE RULE THIS CASE EXISTS FOR is Locked Decision 42 **D13**: a door passes what it HOLDS,
-    // and only what is TRUE. This assertion set is therefore stated in both directions — the
+    // and only what is TRUE. This assertion set is therefore stated in both directions â€” the
     // fields the city feed holds are forwarded, and the fields it does NOT hold are absent, which
-    // is how the browse is told "not known" rather than handed a placeholder (§13).
+    // is how the browse is told "not known" rather than handed a placeholder (Â§13).
     await page.getByTestId('btn-book-rec-1').click();
     await expect.poll(() => page.url(), { timeout: 10_000 }).toContain('/services?');
     const url = new URL(page.url());
-    // HELD ⇒ forwarded.
+    // HELD â‡’ forwarded.
     expect(url.searchParams.get('location')).toBe('Kyoto');
     expect(url.searchParams.get('categoryKey')).toBeTruthy();
-    // NOT HELD ⇒ absent. This page is a city feed and holds no plan; it never reads one off the
+    // NOT HELD â‡’ absent. This page is a city feed and holds no plan; it never reads one off the
     // URL and never resolves one, so passing an inferred "probably active" plan would file an add
-    // against a plan the traveller did not choose on this screen (§13, the door's own note).
+    // against a plan the traveller did not choose on this screen (Â§13, the door's own note).
     expect(url.searchParams.get('tripId')).toBeNull();
-    // RETIRED ⇒ absent. `upsellSource` was write-only attribution: two doors set it, the one href
+    // RETIRED â‡’ absent. `upsellSource` was write-only attribution: two doors set it, the one href
     // builder emitted it, and NOTHING in `client/` or `server/` ever read it, so it was deleted
-    // under §18c (ledger `2026-09-08-recorded-cleanups`). Asserted as an absence rather than
+    // under Â§18c (ledger `2026-09-08-recorded-cleanups`). Asserted as an absence rather than
     // dropped, so a lane that puts the string back has to give it a READER first and amend this
-    // line — the same shape the unit pin takes (`services-browse-doors.test.ts` B1).
+    // line â€” the same shape the unit pin takes (`services-browse-doors.test.ts` B1).
     expect(url.searchParams.get('upsellSource')).toBeNull();
   });
 
-  test('13. gem byline — attribution renders only from server-resolved curatedBy (2026-08-29 audit rulings 1+2)', async ({ page }) => {
+  test('13. gem byline â€” attribution renders only from server-resolved curatedBy (2026-08-29 audit rulings 1+2)', async ({ page }) => {
     // g-gion-1 carries curatedBy (Yuki Tanaka) in the fixture; g-gion-2 does not.
-    // Ruling 1: the byline renders ONLY from the resolved attribution — an
+    // Ruling 1: the byline renders ONLY from the resolved attribution â€” an
     // unattributed gem shows no byline fragment and no curator name anywhere.
     const attributed = page.getByTestId('feed-card-gem-g-gion-1');
     const unattributed = page.getByTestId('feed-card-gem-g-gion-2');
@@ -946,10 +946,10 @@ test.describe('city-feed bento — /discover/location', () => {
     await page.keyboard.press('Escape');
   });
 
-  test('14. thin gem detail — the ruled teaser set only; deep fields never render even when present in the payload (2026-08-29 audit ruling 3)', async ({ page }) => {
+  test('14. thin gem detail â€” the ruled teaser set only; deep fields never render even when present in the payload (2026-08-29 audit ruling 3)', async ({ page }) => {
     // g-gion-2 deliberately carries every removed family in the fixture
     // (address, tourist/local mentions + localRating, daysUntilMainstream,
-    // discoveryStatus) — simulating a stale or hand-built payload. The server
+    // discoveryStatus) â€” simulating a stale or hand-built payload. The server
     // projection (shared/gem-teaser.ts, pinned by gem-teaser.test.ts) strips
     // them; this proves the CLIENT never resurrects them either.
     await page.getByTestId('feed-card-gem-g-gion-2').locator('h3').click();
@@ -969,7 +969,7 @@ test.describe('city-feed bento — /discover/location', () => {
     await page.keyboard.press('Escape');
   });
 
-  test('15. an EMPTY neighbourhood is omitted — no heading, no Wanted tile, stocked sections unchanged', async ({ page }) => {
+  test('15. an EMPTY neighbourhood is omitted â€” no heading, no Wanted tile, stocked sections unchanged', async ({ page }) => {
     // QA3 ruling 2 (c) SUPERSEDES this test's old expectation. Ohara has no gems, services, expert
     // or ready-made in the fixture, so the recruit hero that used to fill it is gone and the section
     // is not rendered at all. What this test still proves: the empty neighbourhood adds nothing to
@@ -1007,9 +1007,9 @@ test.describe('city-feed bento — /discover/location', () => {
       page.locator('[data-testid="bento-section-gion"] [data-testid="feed-card-rec-0"]'),
     ).toHaveCount(1);
     // QA3 ruling 2 (c): arashiyama has no eligible expert and no Wanted hero any more, so it has
-    // no anchor at all — its partner recommendation is an ordinary tile.
+    // no anchor at all â€” its partner recommendation is an ordinary tile.
     await expect(
-      page.locator('[data-testid="bento-section-arashiyama"] [data-bento-role="anchor"]'),
+    ).toHaveAttribute('data-testid', 'bento-tile-neighbourhood-wanted-hero-arashiyama');
     ).toHaveCount(0);
     await expect(
       page.locator('[data-testid="bento-section-arashiyama"] [data-testid="feed-card-rec-1"]'),
@@ -1019,13 +1019,13 @@ test.describe('city-feed bento — /discover/location', () => {
     ).toHaveCount(0);
   });
 
-  test('16. hero is ours — expert, then ready-made, then Wanted; a partner never takes the big slot', async ({ page }) => {
+  test('16. hero is ours â€” expert, then ready-made, then Wanted; a partner never takes the big slot', async ({ page }) => {
     const anchorIds = await page.locator('[data-bento-role="anchor"]').evaluateAll((els) =>
       els.map((el) => el.getAttribute('data-testid') ?? ''),
     );
     expect(anchorIds.length).toBeGreaterThan(0);
     for (const id of anchorIds) {
-      expect(id).toMatch(/lead-expert|package-/);
+      expect(id).toMatch(/lead-expert|package-|neighbourhood-wanted-hero-/);
       expect(id).not.toMatch(/rec-|external-stub|hotel-|activity-/);
     }
 
@@ -1047,7 +1047,7 @@ test.describe('city-feed bento — /discover/location', () => {
     ).toHaveAttribute('data-row-span', '1');
 
     await expect(
-      page.locator('[data-testid="bento-section-arashiyama"] [data-bento-role="anchor"]'),
+    ).toHaveAttribute('data-testid', 'bento-tile-neighbourhood-wanted-hero-arashiyama');
     ).toHaveCount(0);
     const platform = page.getByTestId('bento-tile-rec-1');
     await expect(platform).toHaveAttribute('data-bento-role', 'tile');
@@ -1073,12 +1073,12 @@ test.describe('city-feed bento — /discover/location', () => {
   });
 });
 
-// ── SS-2 Phase D, pin 4 (ledger `2026-10-10-ss2d-pins`; ledger `2026-08-25-two-field-search`) ──
+// â”€â”€ SS-2 Phase D, pin 4 (ledger `2026-10-10-ss2d-pins`; ledger `2026-08-25-two-field-search`) â”€â”€
 // The "what" field on /services FILTERS: the debounced query reaches the results read as `q`, the
 // URL carries it so a refresh or a share restores the same results, a query nothing matches shows
 // the honest empty state, and clearing the field drops `q` again. (The retired search-bar suite
 // asserted a different, older search UI.)
-test.describe('/services — the "what" search filters the results', () => {
+test.describe('/services â€” the "what" search filters the results', () => {
   test('a query reaches the read as q, is kept in the URL, and clears', async ({ page }) => {
     await gotoPath(page, '/services');
     const input = page.getByTestId('input-search');
