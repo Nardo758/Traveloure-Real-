@@ -253,7 +253,11 @@ async function switchKyotoExpertsOn(page: Page): Promise<() => void> {
         if (!body?.available) console.log(`[A4 probe] ${res.status()} ${JSON.stringify(body)}`);
         return body?.available;
       },
-      { timeout: 45_000 },
+      // THE SERVER CACHES THIS ANSWER FOR 60s (`AVAILABILITY_TTL_MS`, expert-door.routes.ts:53), and
+      // an earlier test in this lane has almost always asked about Kyoto before the fixture exists.
+      // The old 45s poll could not outlast that cached `false` — and A4's 30s test budget truncated it
+      // anyway, so the wait never even ran to its own limit. Poll past the TTL, with margin.
+      { timeout: 80_000, intervals: [2_000] },
     )
     .toBe(true);
   return () => {
@@ -263,6 +267,9 @@ async function switchKyotoExpertsOn(page: Page): Promise<() => void> {
 }
 
 test("A4: Hand off to a local expert opens the ONE handoff chooser (R324)", async ({ page }) => {
+  // This test seeds a fixture and then waits out the server's 60s availability cache before the
+  // chooser can answer yes, so it needs more than the default 30s budget.
+  test.setTimeout(180_000);
   const tripId = await registerAndCreateTrip(page, "hire");
   const restore = await switchKyotoExpertsOn(page);
   try {
