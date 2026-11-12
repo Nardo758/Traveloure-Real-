@@ -56,6 +56,8 @@ import { travelersForSave } from "@/lib/plan-vocabulary";
 import {
   EVENT_OCCASION_SLUG,
   canStartPlan,
+  startOfferedOnAround,
+  stepAfterAround,
   choosePlanEntryGroup,
   chosenOccasionSlug,
   doorChoseGroup,
@@ -461,9 +463,9 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
 
   /** E-2: Step 1 → the next question. A known occasion (an event, a door's, a chosen group) goes to the party. */
   const advanceFromAround = () => {
-    if (!state.market) return;
-    const known = !!state.event || !!state.occasionSlug || groupChosen || !!source?.askDatesAndParty;
-    setStep(known ? "details" : "occasion");
+    // QA round 3 PR 2: the ONE rule (`stepAfterAround`, lib/plan-entry.ts) — no occasion carried ⇒ Step 2.
+    const next = stepAfterAround({ state, groupChosen, askDatesAndParty: source?.askDatesAndParty });
+    if (next) setStep(next);
   };
 
   const typedResult = typedCity(typed, isOpenMarket);
@@ -880,7 +882,7 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
             ) : (
               <span />
             )}
-            {(inline || step === "occasion" || step === "details" || (state.market && state.occasionSlug)) && (
+            {(step !== "around" || startOfferedOnAround({ inline, state })) && (
               <button
                 type="button"
                 // E-2: on Step 1, Continue moves to the next question — never a plan minted on an occasion nobody chose.

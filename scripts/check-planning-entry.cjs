@@ -195,6 +195,15 @@ const REQUIRED_SOURCE_FIELDS = [
     forbid: ["city", "destination"],
     why: "Home's doors create a NEW plan; the destinations Home holds belong to existing ones (§13)",
   },
+  // QA round 3 PR 2 (Leon, Nov 11, 2026). The console sidebar's "Start a plan" linked to the /ai-assistant chat page;
+  // it now opens PlanEntry for a NEW plan through the one opener. Like Home's doors it holds no city of the new plan
+  // (the console is not an answer to "where"), so it passes `newPlan` and nothing that names a place (D13 second clause).
+  {
+    file: "client/src/components/dashboard-sidebar.tsx",
+    require: ["newPlan"],
+    forbid: ["city", "destination"],
+    why: "the console's Start a plan starts a NEW plan in PlanEntry; the console holds no city for it (§13)",
+  },
   // Ledger `2026-09-07-start-with-ai-door` (L5, brief §9). The AI planner's draft panel is a DOOR:
   // "Continue in the planner" opens the ONE modal with what the TripContext draft holds —
   // `destination` and `experienceSlug`, both exact-vocabulary matches, passed conditionally.

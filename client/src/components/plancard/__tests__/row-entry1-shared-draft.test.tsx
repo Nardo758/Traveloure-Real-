@@ -9,7 +9,9 @@
  *   T6 PlanEntry: no group chip is drawn chosen until one is picked (or a door carried the group or an occasion); the footer reads the held label
  *   T7 the pop-up's URL: ?start=1 (+ &step=), other params kept; the provider pushes, removes and reads it
  *   T8 a neighbourhood with id + slug homes its wanted tile in its own section; the tile names its neighbourhood
- *   T9 every Start-a-plan control on the landing page and in the nav/footer is a real <a href> link
+ *   T9 every Start-a-plan control on the landing page and in the nav/footer is a real <a href> link. QA round 3 PR 2:
+ *      the footer's gates on the start state like the nav's (three gates in layout.tsx), and the console sidebar's
+ *      "Start a plan" is the pop-up's URL opening PlanEntry for a NEW plan — never the /ai-assistant chat page
  *
  * Harness: pure helpers, react-dom/server for the chips, and source asserts where a click or a browser
  * history call would need a DOM (none here).
@@ -217,5 +219,13 @@ describe("T9 Start-a-plan controls are links", () => {
     const layoutSrc = src("client/src/components/layout.tsx");
     assert.doesNotMatch(layoutSrc, /HeaderPlanCTA/, "the nav chip is gone (header fix v2)");
     assert.equal((layoutSrc.match(/\{navShowsStart && \(/g) ?? []).length, 2, "both header mounts gate on the start state");
+    // QA round 3 PR 2: the footer's entry is the third gate — with a plan, the Trip Strip is the way back.
+    assert.match(layoutSrc, /navShowsStart && \(\s*<li key=\{`action-\$\{link\.action\}`\}>[\s\S]*?data-testid="button-footer-start-plan"/);
+    assert.equal((layoutSrc.match(/navShowsStart && \(/g) ?? []).length, 3, "nav, phone menu and footer all gate on the start state");
+    // QA round 3 PR 2: the console sidebar's door is the pop-up's URL and opens PlanEntry for a new plan.
+    const sidebar = src("client/src/components/dashboard-sidebar.tsx");
+    assert.match(sidebar, /\{ title: PLAN_ASSISTANT_COPY\.startDoor, href: PLAN_START_HREF, icon: Bot, startPlan: true \}/);
+    assert.match(sidebar, /onClick: planStartClick\(\(\) => openPlanning\(\{ newPlan: true \}\)\)/);
+    assert.doesNotMatch(sidebar, /"\/ai-assistant"/, "the door no longer links the chat page");
   });
 });

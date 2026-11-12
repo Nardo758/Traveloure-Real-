@@ -1261,16 +1261,20 @@ export function Layout({ children }: { children: React.ReactNode }) {
                         </Link>
                       </li>
                     ) : (
-                      <li key={`action-${link.action}`}>
-                        {/* E2: "Start a plan" starts a NEW plan in PlanEntry, never the bound plan's edit window. */}
-                        <Link href={PLAN_START_HREF}
-                          onClick={planStartClick(openNewPlan)}
-                          className={cn("text-left transition-colors hover:text-[color:var(--earn-teal-ink)] hover:underline underline-offset-2", FOCUS_RING)}
-                          data-testid="button-footer-start-plan"
-                        >
-                          {tr(link.i18nKey, link.label)}
-                        </Link>
-                      </li>
+                      // QA round 3 PR 2 (Leon, Nov 11, 2026): the footer's "Start a plan" gates on the start state like
+                      // the nav's — with a plan (or while it loads) the Trip Strip is the way back, and the footer draws none.
+                      navShowsStart && (
+                        <li key={`action-${link.action}`}>
+                          {/* E2: "Start a plan" starts a NEW plan in PlanEntry, never the bound plan's edit window. */}
+                          <Link href={PLAN_START_HREF}
+                            onClick={planStartClick(openNewPlan)}
+                            className={cn("text-left transition-colors hover:text-[color:var(--earn-teal-ink)] hover:underline underline-offset-2", FOCUS_RING)}
+                            data-testid="button-footer-start-plan"
+                          >
+                            {tr(link.i18nKey, link.label)}
+                          </Link>
+                        </li>
+                      )
                     ),
                   )}
                 </ul>

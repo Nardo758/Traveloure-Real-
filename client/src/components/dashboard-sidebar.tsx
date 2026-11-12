@@ -1,5 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { PLAN_ASSISTANT_COPY } from "@/lib/plan-assistant-copy";
+import { usePlanning } from "@/contexts/PlanningContext";
+import { PLAN_START_HREF, planStartClick } from "@/lib/plan-entry";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { useUnreadMessageCount } from "@/hooks/use-message-read";
@@ -54,7 +56,10 @@ const menuGroups = [
       { title: "Home", href: "/dashboard", icon: Home },
       { title: "My Plans", href: "/my-trips", icon: Calendar },
       // Ledger `2026-09-07-start-with-ai-door` (brief §9): the label names the DOOR, not the tool.
-      { title: PLAN_ASSISTANT_COPY.startDoor, href: "/ai-assistant", icon: Bot },
+      // QA round 3 PR 2 (Leon, Nov 11, 2026): the door opens PlanEntry — a NEW plan through the ONE opener
+      // (the planning context's open, with newPlan; ruling 2026-08-28-single-planning-entry) — never the
+      // `/ai-assistant` chat page it linked to. The href is the pop-up's own URL, so the row is still a real link.
+      { title: PLAN_ASSISTANT_COPY.startDoor, href: PLAN_START_HREF, icon: Bot, startPlan: true },
     ],
   },
   {
@@ -87,6 +92,9 @@ const menuGroups = [
 export function DashboardSidebar() {
   const [location] = useLocation();
   const { user, logout } = useAuth();
+  // QA round 3 PR 2: "Start a plan" starts a NEW plan in PlanEntry. A console door holds no city: the page is not the
+  // traveler's answer to "where" (Locked Decision 42 D13), so it passes nothing but `newPlan`.
+  const { open: openPlanning } = usePlanning();
 
   const initials = ((user?.firstName?.[0] || "") + (user?.lastName?.[0] || "")).toUpperCase() || "U";
 
@@ -122,7 +130,8 @@ export function DashboardSidebar() {
             <SidebarGroupContent>
               <SidebarMenu>
                 {group.items.map((item) => {
-                  const isActive = location === item.href ||
+                  const startPlan = "startPlan" in item && item.startPlan === true;
+                  const isActive = !startPlan && (location === item.href ||
                     (item.href === "/dashboard" && location === "/dashboard") ||
                     (item.href === "/my-trips" && (
                       location.startsWith("/my-trips") ||
@@ -130,7 +139,7 @@ export function DashboardSidebar() {
                       location.startsWith("/my-itinerary") ||
                       location.startsWith("/plans")
                     )) ||
-                    (item.href !== "/dashboard" && item.href !== "/my-trips" && location.startsWith(item.href));
+                    (item.href !== "/dashboard" && item.href !== "/my-trips" && location.startsWith(item.href)));
 
                   return (
                     <SidebarMenuItem key={item.title}>
@@ -144,7 +153,11 @@ export function DashboardSidebar() {
                             : "text-[var(--console-mid)] hover:text-[var(--console-ink)] hover:bg-[hsl(var(--muted))]"
                         }
                       >
-                        <Link href={item.href} data-testid={`link-sidebar-${item.title.toLowerCase().replace(/\s+/g, '-')}`}>
+                        <Link
+                          href={item.href}
+                          {...(startPlan ? { onClick: planStartClick(() => openPlanning({ newPlan: true })) } : {})}
+                          data-testid={`link-sidebar-${item.title.toLowerCase().replace(/\s+/g, '-')}`}
+                        >
                           <item.icon className="w-4 h-4" style={{ opacity: isActive ? 1 : 0.7 }} />
                           <span className="text-[13px] flex-1">{item.title}</span>
                           {item.href === "/inbox" && inboxUnreadCount > 0 && (
