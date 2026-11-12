@@ -487,9 +487,10 @@ test.describe('city-feed bento ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â�
     for (const slug of ['gion', 'arashiyama']) {
       const tiles = await bentoTiles(page, slug);
       expect(tiles.length).toBeGreaterThan(0);
-      // Gion's hero is the lead expert. Arashiyama has no expert and no
-      // ready-made, so its hero is the Wanted tile.
-      const expectedAnchors = 1;
+      // RULING (Leon, Nov 12 2026): the Wanted hero is gone, so a section's anchor is only ever its
+      // own expert or ready-made. Gion has the lead expert; arashiyama has neither, so it has NO
+      // anchor and simply renders its tiles in stream order.
+      const expectedAnchors = slug === 'gion' ? 1 : 0;
       expect(tiles.filter((t) => t.role === 'anchor')).toHaveLength(expectedAnchors);
       // ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§3.2 may pull one ready-made to the leading slot in an anchorless
       // section. Every other non-anchor tile keeps its stream position.
