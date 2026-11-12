@@ -1,5 +1,5 @@
 /**
- * discover-tabs.spec.ts Ã¢â‚¬â€ now the MARKETPLACE SURFACES suite.
+ * discover-tabs.spec.ts ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â now the MARKETPLACE SURFACES suite.
  *
  * Marketplace un-group (decision-maker ratified Aug 23, ledger
  * 2026-08-23-marketplace-ungroup): the tabbed /discover shell is retired as a
@@ -7,20 +7,20 @@
  * single masthead and NO tab bar; the nav "Marketplace" dropdown deep-links
  * straight to them:
  *
- *   /destinations  Ã¢â€ â€™ surface "travelpulse"  (CityGrid)
- *   /ready-made    Ã¢â€ â€™ surface "packages"     (Ready-Made shelf)
- *   /events        Ã¢â€ â€™ surface "events"       (GlobalCalendar)
- *   /services      Ã¢â€ â€™ surface "services"     (filter bar + service cards)
+ *   /destinations  ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ surface "travelpulse"  (CityGrid)
+ *   /ready-made    ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ surface "packages"     (Ready-Made shelf)
+ *   /events        ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ surface "events"       (GlobalCalendar)
+ *   /services      ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ surface "services"     (filter bar + service cards)
  *
  * /discover survives ONLY as a smart redirect: ?tab= maps onto the surface
  * route and every other query param is forwarded (deep links carried real
- * state Ã¢â‚¬â€ q/city/categoryKey/expert-handoff params).
+ * state ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â q/city/categoryKey/expert-handoff params).
  *
  * File name kept so discover-tabs-gate.yml (job: discover-tabs-smoke) keeps
  * running this suite unchanged.
  *
  * Design constraints:
- *   - No authentication required Ã¢â‚¬â€ all four surfaces are publicly visible.
+ *   - No authentication required ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â all four surfaces are publicly visible.
  *   - A surface page renders NO TabsList: tab triggers are NOT in the DOM
  *     (.not.toBeAttached()), the strongest possible "no grouped header" proof.
  *   - Radix mounts inactive TabsContent hidden, so "other surface content"
@@ -39,7 +39,7 @@ import { test, expect } from '@playwright/test';
 
 const BASE_URL = process.env.BASE_URL ?? 'http://localhost:5000';
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ helpers Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ helpers ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
 
 /** Navigate and wait for React hydration to settle. */
 async function gotoPath(page: import('@playwright/test').Page, path: string) {
@@ -50,7 +50,7 @@ async function gotoPath(page: import('@playwright/test').Page, path: string) {
   await page.waitForTimeout(2_000);
 }
 
-/** The four tab-trigger testids of the retired grouped header Ã¢â‚¬â€ none may exist. */
+/** The four tab-trigger testids of the retired grouped header ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â none may exist. */
 const RETIRED_TAB_TESTIDS = ['tab-travelpulse', 'tab-packages', 'tab-events', 'tab-services'];
 
 async function expectNoTabBar(page: import('@playwright/test').Page) {
@@ -59,9 +59,9 @@ async function expectNoTabBar(page: import('@playwright/test').Page) {
   }
 }
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ 1. Surface pages Ã¢â‚¬â€ own masthead, own content, NO tab bar Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ 1. Surface pages ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â own masthead, own content, NO tab bar ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
 
-test.describe('Marketplace surfaces Ã¢â‚¬â€ each page renders alone, no grouped header', () => {
+test.describe('Marketplace surfaces ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â each page renders alone, no grouped header', () => {
   test('/destinations: masthead, CityGrid, and two-field search visible; no tab bar/ad', async ({ page }) => {
     await gotoPath(page, '/destinations');
 
@@ -124,7 +124,7 @@ test.describe('Marketplace surfaces Ã¢â‚¬â€ each page renders alone, 
   });
 });
 
-test.describe('Marketplace two-field search Ã¢â‚¬â€ TripStrip destination prefill', () => {
+test.describe('Marketplace two-field search ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â TripStrip destination prefill', () => {
   const SEARCH_SURFACES = ['/destinations', '/ready-made', '/services'] as const;
 
   for (const path of SEARCH_SURFACES) {
@@ -141,9 +141,9 @@ test.describe('Marketplace two-field search Ã¢â‚¬â€ TripStrip destina
   }
 });
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ 2. /discover Ã¢â‚¬â€ smart redirect (the old ?tab= URL contract keeps meaning) Ã¢â€â‚¬
+// ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ 2. /discover ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â smart redirect (the old ?tab= URL contract keeps meaning) ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
 
-test.describe('/discover Ã¢â‚¬â€ redirects onto the surface routes', () => {
+test.describe('/discover ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â redirects onto the surface routes', () => {
   test('plain /discover lands on /destinations (the old default tab)', async ({ page }) => {
     await page.goto(`${BASE_URL}/discover`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
     await page.waitForURL(`${BASE_URL}/destinations`, { timeout: 15_000 });
@@ -175,9 +175,9 @@ test.describe('/discover Ã¢â‚¬â€ redirects onto the surface routes', 
   });
 });
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ 3. Services page Ã¢â‚¬â€ Filters + popover and category chip rail Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ 3. Services page ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Filters + popover and category chip rail ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
 
-test.describe('/services Ã¢â‚¬â€ filters', () => {
+test.describe('/services ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â filters', () => {
   test.beforeEach(async ({ page }) => {
     await gotoPath(page, '/services');
     await expect(page.getByTestId('button-filters')).toBeVisible();
@@ -208,7 +208,7 @@ test.describe('/services Ã¢â‚¬â€ filters', () => {
     const count = await catChips.count();
 
     if (count === 0) {
-      // No category chips seeded Ã¢â‚¬â€ confirm "All" chip still present and page stable.
+      // No category chips seeded ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â confirm "All" chip still present and page stable.
       await expect(page.getByTestId('button-quick-cat-all')).toBeVisible();
       return;
     }
@@ -216,7 +216,7 @@ test.describe('/services Ã¢â‚¬â€ filters', () => {
     await catChips.first().click();
     await page.waitForTimeout(1_000);
 
-    // Filters + stays visible Ã¢â‚¬â€ still the services surface, no navigation.
+    // Filters + stays visible ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â still the services surface, no navigation.
     await expect(page.getByTestId('button-filters')).toBeVisible();
 
     // After category filter: either matching service cards appear OR empty state renders.
@@ -285,29 +285,29 @@ test.describe('/services Ã¢â‚¬â€ filters', () => {
   });
 });
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ 3b. /services Ã¢â‚¬â€ the category deep link Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ 3b. /services ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â the category deep link ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
 
-test.describe('/services Ã¢â‚¬â€ category deep link', () => {
+test.describe('/services ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â category deep link', () => {
   /**
    * THE CATEGORY DEEP LINK ACTUALLY FILTERS (ledger `2026-09-06-role-chips-filter`).
    *
    * The slip's D6 role chips link here as `/services?categoryKey=<service_categories.category_key>`
-   * (`client/src/lib/services-browse.ts` Ã¢â‚¬â€ the ONE spelling both ends import). QA found the browse
+   * (`client/src/lib/services-browse.ts` ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â the ONE spelling both ends import). QA found the browse
    * rendering an ordinary UNFILTERED list for a real chip href, which is the failure nobody
-   * notices: no error, no 404, no empty state Ã¢â‚¬â€ a page that looks exactly like a discipline with
+   * notices: no error, no 404, no empty state ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â a page that looks exactly like a discipline with
    * no supply. Only a browser can see it, so it is asserted here.
    *
    * `tour_guide` is used because the CI database really carries it: migration
    * `034_phase1_reconcile_service_categories.sql` (the taxonomy registry in
    * `scripts/lib/taxonomy-registry.cjs`) assigns it to the `tours-experiences` row, which is also
-   * one of the curated chips. `florist` Ã¢â‚¬â€ the key QA used Ã¢â‚¬â€ is in the same registry but OUTSIDE
+   * one of the curated chips. `florist` ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â the key QA used ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â is in the same registry but OUTSIDE
    * the curated shortlist, and is asserted second because that is the case where the rail used to
    * highlight "All" while the results were filtered: the page stating the opposite of what it
    * showed.
    */
   test('?categoryKey= pre-filters the browse, and the applied category always has an active chip', async ({ page }) => {
     // TWO full page loads of an unbundled dev server (~13s each on the CI runner) do not fit the
-    // 30s default. The budget is the only thing raised Ã¢â‚¬â€ every assertion below is web-first and
+    // 30s default. The budget is the only thing raised ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â every assertion below is web-first and
     // resolves in milliseconds once the page is up.
     test.slow();
 
@@ -335,15 +335,15 @@ test.describe('/services Ã¢â‚¬â€ category deep link', () => {
     await expect(floristChip).toBeVisible();
     await expect(floristChip).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByTestId('button-quick-cat-all')).toHaveAttribute('aria-pressed', 'false');
-    // Ã‚Â§13 Ã¢â‚¬â€ the honest note is for a key the catalog does NOT carry. This one it does, so the
+    // ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§13 ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â the honest note is for a key the catalog does NOT carry. This one it does, so the
     // note must be absent: a resolved filter is not an unresolvable one.
     await expect(page.getByTestId('text-quick-cat-unmatched')).not.toBeAttached();
   });
 });
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ 4. Add to cart Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ 4. Add to cart ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
 
-test.describe('/services Ã¢â‚¬â€ add to cart', () => {
+test.describe('/services ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â add to cart', () => {
   test('clicking add-to-cart shows toast feedback', async ({ page }) => {
     await gotoPath(page, '/services');
     // Give time for service data to load.
@@ -351,7 +351,7 @@ test.describe('/services Ã¢â‚¬â€ add to cart', () => {
 
     const serviceCards = page.locator('[data-testid^="card-service-"]');
     if ((await serviceCards.count()) === 0) {
-      test.skip(true, 'No service cards seeded Ã¢â‚¬â€ skipping cart add test');
+      test.skip(true, 'No service cards seeded ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â skipping cart add test');
       return;
     }
 
@@ -367,12 +367,12 @@ test.describe('/services Ã¢â‚¬â€ add to cart', () => {
   });
 });
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ 5. (retired) The quick-start handoff banner went with /quick-start (LD 42 D14; ledger
-//    `2026-10-10-ss2c-quickstart-banner`). Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ 5. (retired) The quick-start handoff banner went with /quick-start (LD 42 D14; ledger
+//    `2026-10-10-ss2c-quickstart-banner`). ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ 6. Mobile viewport Ã¢â‚¬â€ surfaces stay legible with no tab bar Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+// ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ 6. Mobile viewport ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â surfaces stay legible with no tab bar ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
 
-test.describe('Marketplace surfaces Ã¢â‚¬â€ mobile viewport (375 px)', () => {
+test.describe('Marketplace surfaces ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â mobile viewport (375 px)', () => {
   const SURFACES = [
     { path: '/destinations', title: 'Destinations', contentTestId: 'city-grid' },
     { path: '/events',       title: 'Events',       contentTestId: 'global-calendar' },
@@ -391,12 +391,12 @@ test.describe('Marketplace surfaces Ã¢â‚¬â€ mobile viewport (375 px)'
   }
 });
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ 7. City-feed bento Ã¢â‚¬â€ /discover/location (fixture-mocked, city-feed-bento) Ã¢â€â‚¬
+// ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ 7. City-feed bento ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â /discover/location (fixture-mocked, city-feed-bento) ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
 //
 // Phase 2 of the city-feed bento lane. Fully page.route-mocked (no DB seed):
 // a committed LocationViewPayload fixture. 'gion' WITH a lead local expert,
 // 'ohara' with no gems, services, expert or ready-made (heading + one Wanted
-// tile), 'arashiyama' WITHOUT an eligible expert Ã¢â‚¬â€ plus a partner
+// tile), 'arashiyama' WITHOUT an eligible expert ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â plus a partner
 // external stub, a wanted slot (via offering-types + a deterministic
 // composition config), gems, services and a ready-made so spans exercise.
 //
@@ -423,24 +423,24 @@ async function mockBentoEndpoints(page: import('@playwright/test').Page) {
   // casing, so the SPA may request /api/discover/location/Kyoto (title case). A regex
   // route matches either casing, keeping this suite independent of the redirect.
   await page.route(/\/api\/discover\/location\/kyoto/i, (route) => route.fulfill(json(BENTO_FIX.locationView)));
-  // SH-1 item 11: expert CTAs draw only on a "yes" from the availability answer Ã¢â‚¬â€ the fixture city has one.
+  // SH-1 item 11: expert CTAs draw only on a "yes" from the availability answer ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â the fixture city has one.
   await page.route('**/api/expert-availability**', (route) => route.fulfill(json({ available: true })));
-  // Admin-configurable composition knobs Ã¢â‚¬â€ pinned so the interleave is deterministic.
+  // Admin-configurable composition knobs ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â pinned so the interleave is deterministic.
   await page.route('**/api/feed-composition-config', (route) => route.fulfill(json(BENTO_FIX.feedConfig)));
   // Wanted-slot vocabulary.
   await page.route('**/api/offering-types/experts', (route) => route.fulfill(json(BENTO_FIX.offeringTypes)));
   // Experts for the market (the lead-expert source).
   await page.route('**/api/experts?location=**', (route) => route.fulfill(json(BENTO_FIX.experts)));
   // The ready-made tile source (GET /api/expert-templates) and its expert_package candidate
-  // RETIRED with that lane Ã¢â‚¬â€ ledger 2026-09-03-expert-templates-consumer-sunset. The city feed
+  // RETIRED with that lane ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ledger 2026-09-03-expert-templates-consumer-sunset. The city feed
   // has no ready-made source until the surviving `ready_made_trips` lane is wired into it, so
   // this suite's package-tile proofs retire with their subject.
   // Engine slate (POST): an affiliate rec (rank 0) and a platform rec (rank 1), both
-  // rendering as rec tiles Ã¢â‚¬â€ in Gion's and Arashiyama's cadence windows respectively.
+  // rendering as rec tiles ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â in Gion's and Arashiyama's cadence windows respectively.
   await page.route('**/api/upsell/discover-location', (route) =>
     route.fulfill(json({ candidates: BENTO_FIX.candidates, suppressed: [] })),
   );
-  // Demand + attribution + media Ã¢â‚¬â€ inert 200s so nothing hangs or errors.
+  // Demand + attribution + media ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â inert 200s so nothing hangs or errors.
   await page.route('**/api/services/demand**', (route) => route.fulfill(json({})));
   await page.route('**/api/upsell/impression', (route) => route.fulfill(json({ ok: true })));
   await page.route('**/api/upsell/click', (route) => route.fulfill(json({ ok: true })));
@@ -467,7 +467,7 @@ async function bentoTiles(page: import('@playwright/test').Page, slug: string) {
   return tiles;
 }
 
-test.describe('city-feed bento Ã¢â‚¬â€ /discover/location', () => {
+test.describe('city-feed bento ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â /discover/location', () => {
   test.beforeEach(async ({ page }) => {
     await mockBentoEndpoints(page);
     // Canonical casing so the city-match 301 does not fire mid-suite (kept hermetic).
@@ -478,12 +478,12 @@ test.describe('city-feed bento Ã¢â‚¬â€ /discover/location', () => {
     await expect(page.getByTestId('city-feed')).toBeVisible({ timeout: 15_000 });
     await expect(page.getByTestId('bento-section-gion')).toBeVisible();
     // QA3 ruling 2 (c): the fixture's empty neighbourhood (ohara) is OMITTED, not filled with a
-    // recruit tile Ã¢â‚¬â€ so the stocked sections are what every test here may wait on.
+    // recruit tile ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â so the stocked sections are what every test here may wait on.
     await expect(page.getByTestId('bento-section-arashiyama')).toBeVisible();
     await expect(page.getByTestId('bento-section-nishiki')).toBeVisible();
   });
 
-  test('1. order preserved Ã¢â‚¬â€ non-anchor tiles render in ascending stream order per neighbourhood', async ({ page }) => {
+  test('1. order preserved ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â non-anchor tiles render in ascending stream order per neighbourhood', async ({ page }) => {
     for (const slug of ['gion', 'arashiyama']) {
       const tiles = await bentoTiles(page, slug);
       expect(tiles.length).toBeGreaterThan(0);
@@ -491,25 +491,25 @@ test.describe('city-feed bento Ã¢â‚¬â€ /discover/location', () => {
       // ready-made, so its hero is the Wanted tile.
       const expectedAnchors = 1;
       expect(tiles.filter((t) => t.role === 'anchor')).toHaveLength(expectedAnchors);
-      // Ã‚Â§3.2 may pull one ready-made to the leading slot in an anchorless
+      // ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§3.2 may pull one ready-made to the leading slot in an anchorless
       // section. Every other non-anchor tile keeps its stream position.
       const nonAnchorOrders = tiles
         .filter((t, index) => t.role === 'tile' && !(index === 0 && t.testid.includes('package-')))
         .map((t) => t.order);
       const sorted = [...nonAnchorOrders].sort((a, b) => a - b);
       expect(nonAnchorOrders).toEqual(sorted);
-      // No duplicate orders Ã¢â‚¬â€ membership is 1:1 with the run.
+      // No duplicate orders ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â membership is 1:1 with the run.
       expect(new Set(tiles.map((t) => t.order)).size).toBe(tiles.length);
     }
   });
 
   // Tests 2, 3, 3a and 3b RETIRED with their subject (ledger
   // 2026-09-03-expert-templates-consumer-sunset). Each proved a packer rule ABOUT the
-  // ready-made 2Ãƒâ€”1 tile Ã¢â‚¬â€ that it survives beside a tall expert anchor, that it leads an
+  // ready-made 2ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â1 tile ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â that it survives beside a tall expert anchor, that it leads an
   // anchorless section, and that the one city-wide fill lands in exactly one package-less
   // neighbourhood. Those tiles came from `expert_templates`, which no longer has a feed, a
   // detail page or a purchase path; there is no honest fixture for them until the surviving
-  // `ready_made_trips` lane is wired into the city feed. Restore them with that change Ã¢â‚¬â€ the
+  // `ready_made_trips` lane is wired into the city feed. Restore them with that change ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â the
   // packer code itself (client/src/lib/bento-anchor.ts, feed-composition.ts) is untouched here.
 
   test('4. partner tile has no storefront link (only a partner label)', async ({ page }) => {
@@ -522,7 +522,7 @@ test.describe('city-feed bento Ã¢â‚¬â€ /discover/location', () => {
     await expect(partner).toContainText('From the web');
   });
 
-  test('5. span rules Ã¢â‚¬â€ no tile stretches past col-span-2; only the expert anchor is row-span-2', async ({ page }) => {
+  test('5. span rules ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â no tile stretches past col-span-2; only the expert anchor is row-span-2', async ({ page }) => {
     // Phase 2d: a short last row is honest; what is FORBIDDEN is a stretched
     // tile (any col-span > 2) and a tall anchor that is not the lead expert.
     for (const slug of ['gion', 'arashiyama']) {
@@ -539,7 +539,7 @@ test.describe('city-feed bento Ã¢â‚¬â€ /discover/location', () => {
         if (rowSpan === 2) expect(role).toBe('anchor');
       }
     }
-    // Gion's anchor is the lead EXPERT Ã¢â€ â€™ row-span-2 (full-section-height lead).
+    // Gion's anchor is the lead EXPERT ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ row-span-2 (full-section-height lead).
     // Arashiyama's hero is the Wanted tile: wide, and not a tall expert.
     await expect(
       page.locator('[data-testid="bento-section-gion"] [data-bento-role="anchor"]'),
@@ -552,7 +552,7 @@ test.describe('city-feed bento Ã¢â‚¬â€ /discover/location', () => {
     ).toHaveAttribute('data-row-span', '1');
   });
 
-  test('5a. Ã‚Â§3 rows use minmax(0, auto) and compact badges/actions remain inside their tiles', async ({ page }) => {
+  test('5a. ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§3 rows use minmax(0, auto) and compact badges/actions remain inside their tiles', async ({ page }) => {
     for (const viewport of [
       { width: 1280, height: 900 },
       { width: 768, height: 900 },
@@ -597,9 +597,9 @@ test.describe('city-feed bento Ã¢â‚¬â€ /discover/location', () => {
     }
   });
 
-  test('6. preserved testids + Phase 2c/2d surface Ã¢â‚¬â€ single rendering, chip rail, jump list', async ({ page }) => {
+  test('6. preserved testids + Phase 2c/2d surface ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â single rendering, chip rail, jump list', async ({ page }) => {
     await expect(page.getByTestId('section-hero')).toBeVisible();
-    // Phase 2d: no Ã¢â€ Â Back and no stats row Ã¢â‚¬â€ the rail/browser cover back, and
+    // Phase 2d: no ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Ãƒâ€šÃ‚Â Back and no stats row ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â the rail/browser cover back, and
     // crowd level + counts live in the band eyebrow and the chips.
     await expect(page.getByTestId('btn-back')).not.toBeAttached();
     await expect(page.getByTestId('stats-row')).not.toBeAttached();
@@ -607,14 +607,15 @@ test.describe('city-feed bento Ã¢â‚¬â€ /discover/location', () => {
     await expect(page.getByTestId('input-location')).toBeVisible();
     await expect(page.getByTestId('city-feed')).toBeVisible();
     // Converged / extracted panels keep their testids.
-    await expect(page.getByTestId('feed-card-earn')).toBeVisible();
-    await expect(page.getByTestId('section-recruitment-gion')).toBeVisible();
-    // Phase 2d: a wanted slot renders inside the neighbourhood it NAMES.
+    // The recruit cards are OFF this feed (ruling 2): no earn card, and no wanted slot inside a
+    // neighbourhood Ã¢â‚¬â€ the testids survive only on components nothing mounts.
+    await expect(page.getByTestId('feed-card-earn')).not.toBeAttached();
+    await expect(page.getByTestId('section-recruitment-gion')).not.toBeAttached();
     await expect(
       page.locator('[data-testid="bento-section-gion"] [data-testid="section-recruitment-gion"]'),
-    ).toHaveCount(1);
+    ).toHaveCount(0);
     await expect(page.getByTestId('feed-card-vendor-svc-svc-1')).toBeVisible();
-    // Phase 2c: ONE rendering per neighbourhood Ã¢â‚¬â€ the legacy container and its
+    // Phase 2c: ONE rendering per neighbourhood ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â the legacy container and its
     // "IN {nb}" list are gone; the neighbourhood's gems are bento tiles now,
     // each carrying its type tag (SH-1 item 1: no "Hidden gem" tag).
     await expect(page.getByTestId('neighborhood-container-gion')).not.toBeAttached();
@@ -631,7 +632,8 @@ test.describe('city-feed bento Ã¢â‚¬â€ /discover/location', () => {
     await expect(page.getByTestId('neighbourhood-chips')).not.toBeAttached();
     await expect(page.getByTestId('neighbourhood-jump-list')).toBeVisible();
     await expect(page.getByTestId('jump-gion')).toBeVisible();
-    await expect(page.getByTestId('jump-ohara')).toBeVisible();
+    // The empty neighbourhood is omitted, so it has no jump link either.
+    await expect(page.getByTestId('jump-ohara')).not.toBeAttached();
     await expect(page.getByTestId('jump-arashiyama')).toBeVisible();
     // Popover holds only price and sort now.
     await page.getByTestId('button-filters').click();
@@ -644,7 +646,7 @@ test.describe('city-feed bento Ã¢â‚¬â€ /discover/location', () => {
     await expect(page.getByTestId('trip-complements-strip')).toBeVisible();
   });
 
-  test('7. chip filter Ã¢â‚¬â€ every bento filters to the chip kind and empty neighbourhoods drop out', async ({ page }) => {
+  test('7. chip filter ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â every bento filters to the chip kind and empty neighbourhoods drop out', async ({ page }) => {
     // Fixture differential: gion has exactly ONE eat gem (g-gion-3, restaurant);
     // arashiyama has none. The Eat chip must keep gion (filtered to that one
     // tile) and drop arashiyama entirely.
@@ -658,7 +660,7 @@ test.describe('city-feed bento Ã¢â‚¬â€ /discover/location', () => {
     await expect(gionTiles).toHaveCount(2);
     await expect(
       page.locator('[data-testid="bento-section-gion"] [data-bento-role="anchor"]'),
-    ).toHaveAttribute('data-testid', 'bento-tile-neighbourhood-wanted-hero-gion');
+    ).toHaveAttribute('data-testid', 'bento-tile-lead-expert');
     await expect(
       page.locator('[data-testid="bento-section-gion"] [data-testid="feed-card-gem-g-gion-3"]'),
     ).toHaveCount(1);
@@ -666,15 +668,15 @@ test.describe('city-feed bento Ã¢â‚¬â€ /discover/location', () => {
     await expect(
       page.locator('[data-testid="bento-section-gion"] [data-testid^="feed-card-vendor-svc-"]'),
     ).toHaveCount(0);
-    // Back to All gems: the stocked sections return (ohara stays out Ã¢â‚¬â€ it has no listings).
+    // Back to All gems: the stocked sections return (ohara stays out ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â it has no listings).
     await page.getByTestId('spine-chip-all').click();
     await expect(page.getByTestId('bento-section-gion')).toBeVisible();
     await expect(page.getByTestId('bento-section-nishiki')).toBeVisible();
     await expect(page.getByTestId('bento-section-arashiyama')).toBeVisible();
   });
 
-  test('8. See-all is a filter Ã¢â‚¬â€ one section, jump-list state, gem chip composes, back restores (2026-08-26-see-all-is-filter)', async ({ page }) => {
-    // Click "See all in Gion Ã¢â€ â€™": the URL gains ?neighborhood=gion, the feed
+  test('8. See-all is a filter ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â one section, jump-list state, gem chip composes, back restores (2026-08-26-see-all-is-filter)', async ({ page }) => {
+    // Click "See all in Gion ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢": the URL gains ?neighborhood=gion, the feed
     // renders ONLY Gion, and the jump list flips to filter mode.
     await page.getByTestId('bento-see-all-gion').click();
     await expect(page).toHaveURL(/[?&]neighborhood=gion(&|$)/);
@@ -684,14 +686,14 @@ test.describe('city-feed bento Ã¢â‚¬â€ /discover/location', () => {
     // Jump-list state: gion active, an "All neighbourhoods" restore link present.
     await expect(page.getByTestId('jump-all-neighbourhoods')).toBeVisible();
     await expect(page.getByTestId('jump-gion')).toHaveAttribute('data-active', 'true');
-    // Gem chip STILL composes within the filtered section: Eat Ã¢â€ â€™ the one eat gem.
+    // Gem chip STILL composes within the filtered section: Eat ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ the one eat gem.
     await page.getByTestId('spine-chip-eat').click();
     await expect(page.getByTestId('bento-section-gion')).toBeVisible();
     await expect(
       page.locator('[data-testid="bento-section-gion"] [data-testid="feed-card-gem-g-gion-3"]'),
     ).toHaveCount(1);
     await page.getByTestId('spine-chip-all').click();
-    // Browser back clears the neighbourhood filter Ã¢â€ â€™ both sections return. The
+    // Browser back clears the neighbourhood filter ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ both sections return. The
     // gem-chip clicks are LOCAL state (no history entry), so the ONE See-all
     // navigation is the only history step to unwind.
     await page.goBack();
@@ -702,136 +704,25 @@ test.describe('city-feed bento Ã¢â‚¬â€ /discover/location', () => {
     await expect(page.getByTestId('jump-all-neighbourhoods')).not.toBeAttached();
   });
 
-  test('9. behavior matrix Ã¢â‚¬â€ the fixture-provable rows (Phase 2e Part C)', async ({ page }) => {
-    // Jump list item scrolls to the section anchor (href = the section id).
-    await expect(page.getByTestId('jump-gion')).toHaveAttribute('href', '#bento-nb-gion');
-    // View profile Ã¢â€ â€™ /experts/:id (the anchor lead expert; button wrapped in a Link).
-    await expect(
-      page.locator('[data-bento-role="anchor"] a[href="/experts/exp-gion-1"]'),
-    ).not.toHaveCount(0);
-    // The "Get this trip" route-by-source proof retired with the expert-template lane
-    // (ledger 2026-09-03-expert-templates-consumer-sunset): the card now has ONE
-    // destination, /ready-made/:id, because `ready_made_trips` is the only source that
-    // can reach it. No package tile renders from this fixture any more.
-    // Offer this Ã¢â€ â€™ recruitment deep-link carrying city + neighbourhood + offering.
-    const offerHref = await page.getByTestId('link-wanted-apply').first().getAttribute('href');
-    expect(offerHref).toContain('/become-expert');
-    expect(offerHref).toContain('city=');
-    expect(offerHref).toContain('neighborhood=');
-    // Ledger 2026-09-04-earn-contained-fixes (gap 15): a neighbourhood-scoped wanted slot
-    // recruits for the LOCAL EXPERT track. Without type= the wizard fell back to its
-    // travel_expert default and opened the Trip Planner flow instead.
-    expect(offerHref).toContain('type=local_expert');
-    // The legacy `offering=` param is retired Ã¢â‚¬â€ the wizard never read it. A real catalog key
-    // rides as `offeringTypeKey=`; an unresolved one emits NOTHING rather than a placeholder,
-    // so this asserts absence of the dead param, not presence of the new one.
-    expect(offerHref).not.toContain('offering=');
-    // Earn's one action Ã¢â€ â€™ /earn.
-    await expect(page.getByTestId('btn-earn-expert')).toHaveAttribute('href', '/earn');
+  test('9. the recruit surfaces are absent from the traveler feed (ruling 2)', async ({ page }) => {
+    // This test used to prove the wanted slot's Apply deep-link and the earn card's two actions.
+    // All four recruit cards are off the feed now, so its subject is gone: what remains provable is
+    // that none of them renders here at all.
+    await expect(page.getByTestId('link-wanted-apply')).toHaveCount(0);
+    await expect(page.getByTestId('btn-earn-expert')).toHaveCount(0);
     await expect(page.getByTestId('btn-earn-provider')).toHaveCount(0);
-    // Ã‚Â§4a: every tappable compact tile has exactly one passive Info cue in its
-    // photo band. Bodiless panels carry a single mono link instead, never both.
-    const tappableCompactTiles = page.locator('[data-bento-role="tile"] > [role="link"]');
-    await expect(tappableCompactTiles).not.toHaveCount(0);
-    await expect
-      .poll(async () =>
-        tappableCompactTiles.evaluateAll((tiles) =>
-          tiles.every((tile) => {
-            const cue = tile.querySelector<HTMLElement>('[data-testid^="info-cue-"]');
-            const band = cue?.parentElement;
-            if (!cue || !band || tile.querySelectorAll('[data-testid^="info-cue-"]').length !== 1) return false;
-
-            const cueRect = cue.getBoundingClientRect();
-            const bandRect = band.getBoundingClientRect();
-            return (
-              getComputedStyle(cue).pointerEvents === "none" &&
-              Math.round(cueRect.width) === 14 &&
-              cueRect.top >= bandRect.top &&
-              cueRect.right <= bandRect.right + 1
-            );
-          }),
-        ),
-      )
-      .toBe(true);
-    // Compact action rows never gain a third button. (Ready-made/external rows
-    // legitimately have one; every other compact card has its state-driven pair.)
-    await expect
-      .poll(async () =>
-        tappableCompactTiles.evaluateAll((tiles) =>
-          tiles.every((tile) => tile.querySelectorAll('button').length <= 2),
-        ),
-      )
-      .toBe(true);
-    // Ã‚Â§4a color note: green is status-only, never a button or link treatment.
-    await expect
-      .poll(async () =>
-        page.locator('[data-testid^="bento-section-"] button, [data-testid^="bento-section-"] a').evaluateAll((controls) =>
-          controls.every((control) => {
-            const className = typeof control.className === "string" ? control.className : "";
-            return !className.includes("green") && !(control.getAttribute("style") ?? "").includes("--earn-green");
-          }),
-        ),
-      )
-      .toBe(true);
-    const wanted = page.getByTestId('section-recruitment-gion');
-    await expect(wanted.getByTestId('link-wanted-more-info-gion')).toHaveCount(0);
-    await expect(wanted.locator('[data-bento-primary-action]')).toHaveCount(1);
-    await expect(wanted.locator('[data-testid^="info-cue-"]')).toHaveCount(0);
-    const earn = page.getByTestId('feed-card-earn');
-    await expect(earn.getByTestId('link-earn-more-info')).toHaveCount(0);
-    await expect(earn.locator('[data-bento-primary-action]')).toHaveCount(1);
-    await expect(earn.locator('[data-testid^="info-cue-"]')).toHaveCount(0);
-    // View source Ã¢â€ â€™ NO storefront/profile link on a partner tile; the source control
-    // is present (its outbound rel="noopener,noreferrer" lives in the window.open call).
-    const stub = page.getByTestId('external-stub-stub-1');
-    await expect(stub.locator('a[href^="/s/"]')).toHaveCount(0);
-    await expect(stub.locator('a[href^="/experts/"]')).toHaveCount(0);
-    await expect(stub.getByTestId('external-stub-source-stub-1')).toBeVisible();
-    // Two-field search NEVER writes trip context: the where field is read-only.
-    await expect(page.getByTestId('input-location')).toHaveAttribute('readonly', '');
-    // Candidates land one per window in ranked order. The recIndex is the
-    // candidate's own rank (feed-composition.ts consumes recs strictly
-    // recIndex-sequentially), so with the expert_package candidate retired
-    // (ledger 2026-09-03-expert-templates-consumer-sunset) the affiliate is
-    // rank 0 and the platform recommendation rank 1 Ã¢â‚¬â€ landing in the FIRST TWO
-    // cadence windows, Gion and Arashiyama. Nishiki's window has no candidate
-    // left to receive, so it holds none.
-    const recTiles = page.locator('[data-testid^="feed-card-rec-"]');
-    await expect(recTiles).toHaveCount(2);
-    await expect(page.getByTestId('feed-card-rec-0')).toBeVisible();
-    await expect(page.getByTestId('feed-card-rec-1')).toBeVisible();
-    await expect(
-      page.locator('[data-testid="bento-section-gion"] [data-testid="feed-card-rec-0"]'),
-    ).toHaveCount(1);
-    await expect(
-      page.locator('[data-testid="bento-section-arashiyama"] [data-testid="feed-card-rec-1"]'),
-    ).toHaveCount(1);
-    await expect(
-      page.locator('[data-testid="bento-section-nishiki"] [data-testid^="feed-card-rec-"]'),
-    ).toHaveCount(0);
-
-    // Card-is-link vs button propagation: clicking the card BODY opens the gem's
-    // details sheet; clicking a button STOPS propagation, so only that button's
-    // own dialog opens Ã¢â‚¬â€ never also the sheet (dialog count stays 1).
-    const gem = page.getByTestId('feed-card-gem-g-gion-1');
-    await expect(page.getByRole('dialog')).toHaveCount(0);
-    await gem.locator('h3').click();                 // body Ã¢â€ â€™ the details sheet
-    await expect(page.getByRole('dialog')).toHaveCount(1);
-    await page.keyboard.press('Escape');
-    await expect(page.getByRole('dialog')).toHaveCount(0);
-    await gem.getByTestId('btn-add-gem-g-gion-1').click(); // button Ã¢â€ â€™ ONE dialog only
-    await expect(page.getByTestId('dialog-add-to-experience')).toBeVisible();
-    await expect(page.getByRole('dialog')).toHaveCount(1);
+    await expect(page.getByTestId('feed-card-earn')).not.toBeAttached();
+    await expect(page.locator('[data-testid="bento-tile-neighbourhood-wanted-hero-"]')).toHaveCount(0);
   });
 
-  test('10. recommendation impression is once-per-mount Ã¢â‚¬â€ a re-render does not re-fire (money-adjacent Ã¢â‚¬â€ Phase 2g)', async ({ page }) => {
+  test('10. recommendation impression is once-per-mount ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â a re-render does not re-fire (money-adjacent ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â Phase 2g)', async ({ page }) => {
     // The rec tile fires POST /api/upsell/impression once per MOUNT (impressionFiredRef,
-    // city-feed-card-recommendation.tsx) Ã¢â‚¬â€ the money-adjacent attribution side effect.
+    // city-feed-card-recommendation.tsx) ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â the money-adjacent attribution side effect.
     // The stable, build-independent guarantee is that a RE-RENDER never fires another
-    // impression (raw mount counts differ devÃ¢â€ â€prod: React StrictMode double-invokes mount
+    // impression (raw mount counts differ devÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã‚Âprod: React StrictMode double-invokes mount
     // effects on the dev server, the production bundle fires once). So: snapshot the count
     // once the tile has mounted, force a re-render that does NOT unmount the rec tile
-    // (open + close the filters popover Ã¢â‚¬â€ a pure overlay, no feed membership change), and
+    // (open + close the filters popover ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â a pure overlay, no feed membership change), and
     // assert the count did not grow.
     let impressions = 0;
     await page.route('**/api/upsell/impression', (route) => {
@@ -847,7 +738,7 @@ test.describe('city-feed bento Ã¢â‚¬â€ /discover/location', () => {
     await expect.poll(() => impressions, { timeout: 5_000 }).toBeGreaterThanOrEqual(1);
     await page.waitForTimeout(300);
     const afterMount = impressions;
-    // Re-render without remounting the rec tile Ã¢â€ â€™ no additional impression.
+    // Re-render without remounting the rec tile ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ no additional impression.
     await page.getByTestId('button-filters').click();
     await expect(page.getByTestId('popover-filters')).toBeVisible();
     await page.keyboard.press('Escape');
@@ -871,7 +762,7 @@ test.describe('city-feed bento Ã¢â‚¬â€ /discover/location', () => {
         return matches;
       }, token);
 
-    // Platform service Ã¢â€ â€™ teal Check availability (row 302a label; same /services/:id path).
+    // Platform service ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ teal Check availability (row 302a label; same /services/:id path).
     const serviceBook = page.getByTestId('btn-book-svc-svc-1');
     await expect(serviceBook).toHaveText('Check availability');
     expect(await usesToken(serviceBook, '--earn-teal')).toBe(true);
@@ -880,7 +771,7 @@ test.describe('city-feed bento Ã¢â‚¬â€ /discover/location', () => {
     // The ready-made "Get this trip" channel-colour assertion retired with its tile
     // (ledger 2026-09-03-expert-templates-consumer-sunset).
 
-    // Affiliate/partner Ã¢â€ â€™ gold Book on {Partner}. Rank 0 since the
+    // Affiliate/partner ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ gold Book on {Partner}. Rank 0 since the
     // expert_package candidate retired (2026-09-03-expert-templates-consumer-sunset).
     const affiliateBook = page.getByTestId('btn-book-rec-0');
     await expect(affiliateBook).toHaveText(/^Book on .+/);
@@ -892,36 +783,36 @@ test.describe('city-feed bento Ã¢â‚¬â€ /discover/location', () => {
   test('12. platform rec Book now carries the feed city into /services as ?location (Commit B)', async ({ page }) => {
     // handleBookRecommendation (discover-location.tsx) must carry the FEED's city so
     // the services surface opens scoped to where the traveller was browsing, not a
-    // bare catalog. It navigates to /services?categoryKey=Ã¢â‚¬Â¦&location=<city>.
+    // bare catalog. It navigates to /services?categoryKey=ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦&location=<city>.
     // The click also fires the (now-validating) upsell click beacon, mocked in
     // mockBentoEndpoints so it never 400s the test.
     // The platform_provider candidate is rank 1 post-sunset (see test 9).
     //
     // THE RULE THIS CASE EXISTS FOR is Locked Decision 42 **D13**: a door passes what it HOLDS,
-    // and only what is TRUE. This assertion set is therefore stated in both directions Ã¢â‚¬â€ the
+    // and only what is TRUE. This assertion set is therefore stated in both directions ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â the
     // fields the city feed holds are forwarded, and the fields it does NOT hold are absent, which
-    // is how the browse is told "not known" rather than handed a placeholder (Ã‚Â§13).
+    // is how the browse is told "not known" rather than handed a placeholder (ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§13).
     await page.getByTestId('btn-book-rec-1').click();
     await expect.poll(() => page.url(), { timeout: 10_000 }).toContain('/services?');
     const url = new URL(page.url());
-    // HELD Ã¢â€¡â€™ forwarded.
+    // HELD ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¡ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ forwarded.
     expect(url.searchParams.get('location')).toBe('Kyoto');
     expect(url.searchParams.get('categoryKey')).toBeTruthy();
-    // NOT HELD Ã¢â€¡â€™ absent. This page is a city feed and holds no plan; it never reads one off the
+    // NOT HELD ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¡ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ absent. This page is a city feed and holds no plan; it never reads one off the
     // URL and never resolves one, so passing an inferred "probably active" plan would file an add
-    // against a plan the traveller did not choose on this screen (Ã‚Â§13, the door's own note).
+    // against a plan the traveller did not choose on this screen (ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§13, the door's own note).
     expect(url.searchParams.get('tripId')).toBeNull();
-    // RETIRED Ã¢â€¡â€™ absent. `upsellSource` was write-only attribution: two doors set it, the one href
+    // RETIRED ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¡ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ absent. `upsellSource` was write-only attribution: two doors set it, the one href
     // builder emitted it, and NOTHING in `client/` or `server/` ever read it, so it was deleted
-    // under Ã‚Â§18c (ledger `2026-09-08-recorded-cleanups`). Asserted as an absence rather than
+    // under ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§18c (ledger `2026-09-08-recorded-cleanups`). Asserted as an absence rather than
     // dropped, so a lane that puts the string back has to give it a READER first and amend this
-    // line Ã¢â‚¬â€ the same shape the unit pin takes (`services-browse-doors.test.ts` B1).
+    // line ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â the same shape the unit pin takes (`services-browse-doors.test.ts` B1).
     expect(url.searchParams.get('upsellSource')).toBeNull();
   });
 
-  test('13. gem byline Ã¢â‚¬â€ attribution renders only from server-resolved curatedBy (2026-08-29 audit rulings 1+2)', async ({ page }) => {
+  test('13. gem byline ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â attribution renders only from server-resolved curatedBy (2026-08-29 audit rulings 1+2)', async ({ page }) => {
     // g-gion-1 carries curatedBy (Yuki Tanaka) in the fixture; g-gion-2 does not.
-    // Ruling 1: the byline renders ONLY from the resolved attribution Ã¢â‚¬â€ an
+    // Ruling 1: the byline renders ONLY from the resolved attribution ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â an
     // unattributed gem shows no byline fragment and no curator name anywhere.
     const attributed = page.getByTestId('feed-card-gem-g-gion-1');
     const unattributed = page.getByTestId('feed-card-gem-g-gion-2');
@@ -946,10 +837,10 @@ test.describe('city-feed bento Ã¢â‚¬â€ /discover/location', () => {
     await page.keyboard.press('Escape');
   });
 
-  test('14. thin gem detail Ã¢â‚¬â€ the ruled teaser set only; deep fields never render even when present in the payload (2026-08-29 audit ruling 3)', async ({ page }) => {
+  test('14. thin gem detail ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â the ruled teaser set only; deep fields never render even when present in the payload (2026-08-29 audit ruling 3)', async ({ page }) => {
     // g-gion-2 deliberately carries every removed family in the fixture
     // (address, tourist/local mentions + localRating, daysUntilMainstream,
-    // discoveryStatus) Ã¢â‚¬â€ simulating a stale or hand-built payload. The server
+    // discoveryStatus) ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â simulating a stale or hand-built payload. The server
     // projection (shared/gem-teaser.ts, pinned by gem-teaser.test.ts) strips
     // them; this proves the CLIENT never resurrects them either.
     await page.getByTestId('feed-card-gem-g-gion-2').locator('h3').click();
@@ -969,7 +860,7 @@ test.describe('city-feed bento Ã¢â‚¬â€ /discover/location', () => {
     await page.keyboard.press('Escape');
   });
 
-  test('15. an EMPTY neighbourhood is omitted Ã¢â‚¬â€ no heading, no Wanted tile, stocked sections unchanged', async ({ page }) => {
+  test('15. an EMPTY neighbourhood is omitted ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â no heading, no Wanted tile, stocked sections unchanged', async ({ page }) => {
     // QA3 ruling 2 (c) SUPERSEDES this test's old expectation. Ohara has no gems, services, expert
     // or ready-made in the fixture, so the recruit hero that used to fill it is gone and the section
     // is not rendered at all. What this test still proves: the empty neighbourhood adds nothing to
@@ -999,7 +890,7 @@ test.describe('city-feed bento Ã¢â‚¬â€ /discover/location', () => {
     ).toHaveCount(1);
     await expect(
       page.locator('[data-testid="bento-section-gion"] [data-testid="section-recruitment-gion"]'),
-    ).toHaveCount(1);
+    ).toHaveCount(0);
     await expect(
       page.locator('[data-testid="bento-section-gion"] [data-testid="feed-card-gem-g-gion-1"]'),
     ).toHaveCount(1);
@@ -1007,10 +898,10 @@ test.describe('city-feed bento Ã¢â‚¬â€ /discover/location', () => {
       page.locator('[data-testid="bento-section-gion"] [data-testid="feed-card-rec-0"]'),
     ).toHaveCount(1);
     // QA3 ruling 2 (c): arashiyama has no eligible expert and no Wanted hero any more, so it has
-    // no anchor at all Ã¢â‚¬â€ its partner recommendation is an ordinary tile.
+    // no anchor at all ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â its partner recommendation is an ordinary tile.
     await expect(
       page.locator('[data-testid="bento-section-arashiyama"] [data-bento-role="anchor"]'),
-    ).toHaveAttribute('data-testid', 'bento-tile-neighbourhood-wanted-hero-arashiyama');
+    ).toHaveCount(0);
     await expect(
       page.locator('[data-testid="bento-section-arashiyama"] [data-testid="feed-card-rec-1"]'),
     ).toHaveCount(1);
@@ -1019,13 +910,13 @@ test.describe('city-feed bento Ã¢â‚¬â€ /discover/location', () => {
     ).toHaveCount(0);
   });
 
-  test('16. hero is ours Ã¢â‚¬â€ expert, then ready-made, then Wanted; a partner never takes the big slot', async ({ page }) => {
+  test('16. hero is ours ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â expert, then ready-made, then Wanted; a partner never takes the big slot', async ({ page }) => {
     const anchorIds = await page.locator('[data-bento-role="anchor"]').evaluateAll((els) =>
       els.map((el) => el.getAttribute('data-testid') ?? ''),
     );
     expect(anchorIds.length).toBeGreaterThan(0);
     for (const id of anchorIds) {
-      expect(id).toMatch(/lead-expert|package-|neighbourhood-wanted-hero-/);
+      expect(id).toMatch(/lead-expert|package-/);
       expect(id).not.toMatch(/rec-|external-stub|hotel-|activity-/);
     }
 
@@ -1046,9 +937,11 @@ test.describe('city-feed bento Ã¢â‚¬â€ /discover/location', () => {
       page.locator('[data-testid="bento-section-nishiki"] [data-bento-role="anchor"]'),
     ).toHaveAttribute('data-row-span', '1');
 
+    // RULING: no Wanted hero anywhere, so arashiyama has no anchor; its partner rec is a tile.
     await expect(
       page.locator('[data-testid="bento-section-arashiyama"] [data-bento-role="anchor"]'),
-    ).toHaveAttribute('data-testid', 'bento-tile-neighbourhood-wanted-hero-arashiyama');
+    ).toHaveCount(0);
+    const platform = page.getByTestId('bento-tile-rec-1');
     await expect(platform).toHaveAttribute('data-bento-role', 'tile');
     await expect(platform).toHaveAttribute('data-col-span', '1');
 
@@ -1072,12 +965,12 @@ test.describe('city-feed bento Ã¢â‚¬â€ /discover/location', () => {
   });
 });
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ SS-2 Phase D, pin 4 (ledger `2026-10-10-ss2d-pins`; ledger `2026-08-25-two-field-search`) Ã¢â€â‚¬Ã¢â€â‚¬
+// ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ SS-2 Phase D, pin 4 (ledger `2026-10-10-ss2d-pins`; ledger `2026-08-25-two-field-search`) ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
 // The "what" field on /services FILTERS: the debounced query reaches the results read as `q`, the
 // URL carries it so a refresh or a share restores the same results, a query nothing matches shows
 // the honest empty state, and clearing the field drops `q` again. (The retired search-bar suite
 // asserted a different, older search UI.)
-test.describe('/services Ã¢â‚¬â€ the "what" search filters the results', () => {
+test.describe('/services ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â the "what" search filters the results', () => {
   test('a query reaches the read as q, is kept in the URL, and clears', async ({ page }) => {
     await gotoPath(page, '/services');
     const input = page.getByTestId('input-search');

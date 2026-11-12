@@ -42,9 +42,9 @@ const BEFORE: Record<string, [string, number, number, boolean][]> = {
   expertAnchor: [["e1", 2, 2, true], ["g1", 2, 1, false], ["p1", 2, 1, false], ["g2", 1, 1, false], ["ev1", 1, 1, false], ["v1", 1, 1, false], ["g3", 1, 1, false], ["x1", 1, 1, false], ["g4", 1, 1, false]],
   readyMadeAnchor: [["p1", 2, 1, true], ["g1", 1, 1, false], ["g2", 1, 1, false], ["ev1", 1, 1, false], ["g3", 1, 1, false], ["x1", 1, 1, false]],
   wantedAnchor: [["w1", 2, 1, true], ["g1", 1, 1, false], ["g2", 1, 1, false], ["ev1", 1, 1, false]],
-  // QA3 ruling 2 (c): a STOCKED neighbourhood with no expert/ready-made anchor still gets the Wanted
-  // hero as the face of its section (unchanged); an EMPTY one yields no tiles at all.
-  noAnchorCandidate: [["neighbourhood-wanted-hero-arashiyama", 2, 1, true], ["g1", 1, 1, false], ["g2", 1, 1, false], ["ev1", 1, 1, false]],
+  // RULING (Leon, Nov 12 2026): the Wanted hero is never minted — a hero-less section shows its
+  // own tiles with NO anchor, and an EMPTY neighbourhood yields no tiles at all.
+  noAnchorCandidate: [["g1", 1, 1, false], ["g2", 1, 1, false], ["ev1", 1, 1, false]],
   emptyUnstocked: [],
   priceSorted: [["p1", 2, 1, false], ["g1", 1, 1, false], ["e1", 1, 1, false], ["g2", 1, 1, false], ["g3", 1, 1, false]],
   partnerHeavy: [["e1", 2, 2, true], ["x1", 1, 1, false], ["x2", 1, 1, false], ["x3", 1, 1, false], ["g1", 1, 1, false], ["p1", 2, 1, false], ["p2", 2, 1, false], ["g2", 1, 1, false]],
@@ -129,14 +129,13 @@ test("L3: a config edit changes the layout with no other file edited", () => {
 
 test("L4: an empty neighbourhood is OMITTED, and the page keeps no inline card markup", () => {
   const page = fs.readFileSync("client/src/pages/discover-location.tsx", "utf8");
-  // QA3 ruling 2 (c) narrows L4's claim: the page still renders the family card as the anchor of a
-  // STOCKED neighbourhood with no expert/ready-made, and an EMPTY neighbourhood never gets one —
-  // its section is omitted whole (no heading, no tile).
-  assert.ok(page.includes("<FeedNeighbourhoodWantedCard"), "the stocked hero still renders the family card");
+  // RULING (Leon, Nov 12 2026): no recruit card reaches this page — the Wanted hero included — so
+  // the family card is not rendered here at all, and an unstocked neighbourhood is omitted whole.
+  assert.equal(page.includes("<FeedNeighbourhoodWantedCard"), false, "no Wanted hero is rendered");
   assert.match(
     page,
     /if \(neighbourhood && neighbourhoodIsUnstocked\(neighbourhood\)\) return null;/,
-    "…and an unstocked neighbourhood is omitted instead of filled",
+    "an unstocked neighbourhood is omitted instead of filled",
   );
   assert.equal(page.includes("function NeighbourhoodWantedPanel"), false);
   assert.equal(/function \w+Card\(/.test(page), false, "no inline *Card component in the page");

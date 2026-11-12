@@ -45,8 +45,6 @@ import { CityFeedCardExternalStub } from "@/components/city-feed-card-external-s
 import { CityFeedCardExpert } from "@/components/city-feed-card-expert";
 import { CityFeedCardRecommendation } from "@/components/city-feed-card-recommendation";
 import { ExpertCard } from "@/components/expert-card";
-import { FeedWantedSlotCard } from "@/components/feed/wanted-slot-card";
-import { FeedNeighbourhoodWantedCard } from "@/components/feed/neighbourhood-wanted-card";
 import { FeedReadyMadeCard } from "@/components/feed/ready-made-card";
 import { TileDetailPanel } from "@/components/feed/tile-detail-panel";
 import { collectTileActions, opensTileDetail, tileDisplayName, tileOpensDetailPanel, type TilePanelAction } from "@/lib/tile-detail";
@@ -583,21 +581,10 @@ function BentoTile({
           compactActionState={compactActionState}
         />
       );
-    // QA3 ruling 2: the `/earn` card is gone from the traveler feed, and nothing composes a plain
-    // wanted-slot any more. The Wanted HERO branch stays because `bento-spans` still mints one as the
-    // anchor of a STOCKED neighbourhood with no expert or ready-made — that is the section's own
-    // face, not a partner recruit card. An EMPTY neighbourhood never reaches here: its section is
-    // omitted whole (the unstocked early return).
-    case "wanted-slot":
-      if (item.data?.neighbourhoodWantedHero) {
-        return (
-          <FeedNeighbourhoodWantedCard
-            name={String(item.data.name ?? "")}
-            slug={String(item.data.slug ?? "")}
-          />
-        );
-      }
-      return <FeedWantedSlotCard item={item} density="compact" />;
+    // RULING (Leon, Nov 12 2026): ALL FOUR recruit cards are off the traveler feed, the stocked
+    // "Wanted" hero included. `bento-spans` no longer mints it and nothing composes a wanted slot,
+    // so neither case is reachable here any more. The two components are KEPT, unmounted, for an
+    // /earn lane; the `/earn` card is gone for the same reason.
     case "package":
       return (
         <FeedReadyMadeCard

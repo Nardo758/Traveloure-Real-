@@ -132,10 +132,11 @@ export function buildBentoTiles(
   city: string = "",
   config: BentoLayoutConfig = BENTO_LAYOUT_CONFIG,
 ): PlacedTile[] {
-  // QA3 ruling 2 (c): an EMPTY neighbourhood is no longer filled with a Wanted hero — it yields no
-  // tiles at all, so its section is omitted whole (no heading, no tile). The STOCKED fallthrough
-  // below is a different thing and STAYS: a neighbourhood with listings but no expert/ready-made
-  // anchor still shows its own tiles with the Wanted hero as the face of that section.
+  // RULING (Leon, Nov 12 2026): ALL FOUR recruit cards leave the traveler feed — the stocked
+  // "Wanted" hero included. The hero is therefore never minted: an EMPTY neighbourhood yields no
+  // tiles (its section is omitted whole — no heading, no tile), and a neighbourhood with listings
+  // but no expert/ready-made anchor simply shows its own tiles with no anchor.
+  // `neighbourhoodWantedHeroItem` and its component are KEPT, unmounted, for an /earn lane.
   if (!floatAnchor) {
     if (tagged.length === 0) return [];
     return assignBentoSpans(tagged.map((t) => ({ ...t, isAnchor: false })), config);
@@ -149,8 +150,5 @@ export function buildBentoTiles(
     const rest = withAnchor.filter((_, i) => i !== hero.index);
     return assignBentoSpans([anchor, ...rest], config);
   }
-  return assignBentoSpans(
-    [{ item: neighbourhoodWantedHeroItem(neighbourhood, city), order: -1, isAnchor: true }, ...withAnchor],
-    config,
-  );
+  return assignBentoSpans(withAnchor, config);
 }

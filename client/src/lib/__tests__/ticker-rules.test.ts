@@ -1,21 +1,21 @@
 /**
- * LW-1f (ledger `2026-10-16-lw1f-kyoto-ticker`; hand-off Part A): the ticker's pure rules — no DOM, no DB.
+ * LW-1f (ledger `2026-10-16-lw1f-kyoto-ticker`; hand-off Part A): the ticker's pure rules â€” no DOM, no DB.
  *
  *   K1  an href is NULL or a relative internal path: outside URLs, `//host`, schemes, backslashes and spaces are
  *       refused; the query and hash are not part of the route match.
  *   K2  an internal path must match the committed client route list (`:param` = one segment); an unknown path is
  *       refused with its own sentence.
  *   K3  `/blog/<slug>` is recognised as a blog link (its publication is the server's check).
- *   K4  the right button follows the sign-up switch: waitlist ⇒ "Join the Kyoto waitlist" to /kyoto; open ⇒
+ *   K4  the right button follows the sign-up switch: waitlist â‡’ "Join the Kyoto waitlist" to /kyoto; open â‡’
  *       "Start planning" with the city; an unknown mode is waitlist (fail-closed).
  *   K5  the launch market's city comes from its slug; a slug naming no market is NULL, never a guess.
- *   K6  the ribbon is mounted on the public marketing pages only — never checkout, admin, the workspace, the
+ *   K6  the ribbon is mounted on the public marketing pages only â€” never checkout, admin, the workspace, the
  *       guest planner or the waitlist page itself.
  *   K7  the committed route list is current (the same check CI runs) and holds the seeded links.
  *
- * Run: npx tsx --test client/src/lib/__tests__/ticker-rules.test.ts *   K8  (LW-1f-b, issue #1486) the beta list: absent, unreadable, empty or all-unknown ⇒ the launch market alone;
+ * Run: npx tsx --test client/src/lib/__tests__/ticker-rules.test.ts *   K8  (LW-1f-b, issue #1486) the beta list: absent, unreadable, empty or all-unknown â‡’ the launch market alone;
  *       a valid list in its stored order; a save of an unknown or repeated key, or a non-array, is refused.
- *   K9  the one label helper names the cities (one, two, three) and falls back to the launch city; neither ⇒ none.
+ *   K9  the one label helper names the cities (one, two, three) and falls back to the launch city; neither â‡’ none.
  *   K10 no label, help text or content rule states a number of cities.
  */
 import { describe, it } from "node:test";
@@ -39,7 +39,7 @@ import {
 import { CLIENT_ROUTES } from "../../../../shared/client-routes.generated";
 import { showsTicker } from "../ticker-mount";
 
-describe("K1 — the link shape", () => {
+describe("K1 â€” the link shape", () => {
   it("accepts a relative internal path and strips query and hash for matching", () => {
     assert.equal(internalPathOf("/kyoto"), "/kyoto");
     assert.equal(internalPathOf("/signup?intent=supply"), "/signup");
@@ -56,7 +56,7 @@ describe("K1 — the link shape", () => {
   });
 });
 
-describe("K2 — the route list", () => {
+describe("K2 â€” the route list", () => {
   const routes = ["/", "/kyoto", "/blog/:slug", "/signup", "/s/:handle"];
   it("matches literal and parameter routes", () => {
     assert.ok(isClientRoutePath("/kyoto", routes));
@@ -73,7 +73,7 @@ describe("K2 — the route list", () => {
   });
 });
 
-describe("K3 — blog links", () => {
+describe("K3 â€” blog links", () => {
   it("finds the post slug in a /blog/<slug> link only", () => {
     assert.equal(blogSlugOf("/blog/kyoto-foliage"), "kyoto-foliage");
     assert.equal(blogSlugOf("/blog/kyoto-foliage?x=1"), "kyoto-foliage");
@@ -84,7 +84,7 @@ describe("K3 — blog links", () => {
   });
 });
 
-describe("K4 — the button follows the sign-up switch", () => {
+describe("K4 â€” the button follows the sign-up switch", () => {
   it("waitlist mode: Join the Kyoto waitlist, to the waitlist page", () => {
     assert.deepEqual(tickerButton("waitlist", "kyoto", "Kyoto"), { kind: "waitlist", label: "Join the Kyoto waitlist", href: "/kyoto" });
   });
@@ -98,7 +98,7 @@ describe("K4 — the button follows the sign-up switch", () => {
   });
 });
 
-describe("K5 — the launch city", () => {
+describe("K5 â€” the launch city", () => {
   it("names Kyoto for kyoto, and nothing for an unknown slug", () => {
     assert.equal(launchCityName("kyoto"), "Kyoto");
     assert.equal(launchCityName("atlantis"), null);
@@ -106,10 +106,10 @@ describe("K5 — the launch city", () => {
   });
 });
 
-describe("K6 — where the ribbon is mounted", () => {
+describe("K6 â€” where the ribbon is mounted", () => {
   it("shows on the marketing pages", () => {
     // Cut-list #1 slice A (Leon, Nov 10 2026): /experiences left the TRAVELER path, so it moved to
-    // the "never" list below. The marketing pages keep the ribbon — that is all this list is for.
+    // the "never" list below. The marketing pages keep the ribbon â€” that is all this list is for.
     for (const p of ["/", "/pricing", "/about", "/how-it-works", "/blog", "/blog/some-post", "/help/billing", "/pricing?x=1"]) {
       assert.ok(showsTicker(p), p);
     }
@@ -119,22 +119,9 @@ describe("K6 — where the ribbon is mounted", () => {
       assert.ok(!showsTicker(p), p);
     }
   });
-  // QA round 3, ruling 7 (Leon, Nov 11 2026): the ribbon is off the TRAVELER path, so a signed-in
-  // member never sees it — not even on the marketing pages, `/` included.
-  it("never for a signed-in member, on every path", () => {
-    for (const p of ["/", "/pricing", "/about", "/how-it-works", "/blog", "/blog/some-post", "/help/billing", "/experiences", "/plans/new"]) {
-      assert.ok(!showsTicker(p, { signedIn: true, authSettled: true }), p);
-    }
-  });
-  // …and because a member must never be flashed it, an UNKNOWN viewer is held until auth settles.
-  it("held while auth is still unknown", () => {
-    assert.equal(showsTicker("/", { authSettled: false }), false);
-    assert.equal(showsTicker("/", { signedIn: false, authSettled: false }), false);
-    assert.equal(showsTicker("/", { signedIn: false, authSettled: true }), true, "a settled guest still gets it");
-  });
 });
 
-describe("K7 — the committed route list", () => {
+describe("K7 â€” the committed route list", () => {
   it("is current with App.tsx", () => {
     execFileSync("node", ["scripts/generate-client-routes.cjs", "--check"], { stdio: "pipe" });
   });
@@ -145,7 +132,7 @@ describe("K7 — the committed route list", () => {
   });
 });
 
-describe("K8 — the beta list setting", () => {
+describe("K8 â€” the beta list setting", () => {
   it("defaults to the launch market and keeps a valid stored list", () => {
     assert.deepEqual(betaMarketSlugs(null, "kyoto"), ["kyoto"]);
     assert.deepEqual(betaMarketSlugs("not json", "kyoto"), ["kyoto"]);
@@ -165,7 +152,7 @@ describe("K8 — the beta list setting", () => {
   });
 });
 
-describe("K9 — the one beta label", () => {
+describe("K9 â€” the one beta label", () => {
   it("names the cities and falls back to the launch city", () => {
     assert.equal(betaLabel(betaCityNames(["kyoto"])), "Now in beta in Kyoto");
     assert.equal(betaLabel(betaCityNames(["kyoto", "goa"])), "Now in beta in Kyoto and Goa");
@@ -175,7 +162,7 @@ describe("K9 — the one beta label", () => {
   });
 });
 
-describe("K10 — no count of cities anywhere", () => {
+describe("K10 â€” no count of cities anywhere", () => {
   it("in the labels, the help text and the content rule", () => {
     const texts = [
       TICKER_CONTENT_RULE,

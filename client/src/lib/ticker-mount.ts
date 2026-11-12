@@ -21,28 +21,16 @@ export const TICKER_MARKETING_PATHS: readonly string[] = [
 /** Single pages under these get it too (a blog post, a help article). */
 export const TICKER_MARKETING_PREFIXES: readonly string[] = ["/blog/", "/help/"];
 
-export interface TickerViewer {
-  /** True once `/api/auth/user` says there is a member in this session. */
-  signedIn?: boolean;
-  /**
-   * False while the auth read is still in flight. THE RULING (QA round 3, ruling 7): the ribbon is
-   * off the TRAVELER path and a member must never see it — so an UNKNOWN viewer is treated as a
-   * member and the ribbon is held until auth settles. That costs a guest one round-trip of delay on
-   * the marketing pages, which is the trade selected: never flash the ribbon at a member.
-   */
-  authSettled?: boolean;
-}
-
 /**
  * Is the launch-market ribbon mounted here?
  *
- * ONE rule, three questions in order: has auth settled (no ⇒ no ribbon), is the viewer a member
- * (yes ⇒ no ribbon, on every path including `/`), then today's marketing-path test.
- * Called with no viewer it answers the path question alone, which is what the route pins use.
+ * RULING (Leon, Nov 12 2026): the ribbon is visible whether or not the traveler is signed in. There
+ * is no auth dimension at all — a signed-in member sees it on the marketing pages exactly as a guest
+ * does, and nothing is held while `/api/auth/user` is in flight. The only question is the PATH: the
+ * marketing list above, never `/experiences` (taken off that list by QA3 ruling 2), never the plan,
+ * checkout, admin or workspace surfaces.
  */
-export function showsTicker(location: string, viewer: TickerViewer = {}): boolean {
-  if (viewer.authSettled === false) return false;
-  if (viewer.signedIn === true) return false;
+export function showsTicker(location: string): boolean {
   const path = (location.split(/[?#]/, 1)[0] || "/").replace(/(.)\/+$/, "$1");
   if (TICKER_MARKETING_PATHS.includes(path)) return true;
   return TICKER_MARKETING_PREFIXES.some((p) => path.startsWith(p) && path.length > p.length && !path.slice(p.length).includes("/"));
