@@ -215,7 +215,12 @@ async function switchKyotoExpertsOn(page: Page): Promise<() => void> {
                        FROM local_expert_forms WHERE email LIKE '%@traveloure-qa.test'),
            'handle', (SELECT count(*) FROM users WHERE email LIKE '%@traveloure-qa.test' AND handle IS NOT NULL AND coalesce(is_test, false) = false),
            'listings', (SELECT count(*) FROM provider_services WHERE approval_status = 'approved' AND status = 'active' AND expert_offering_type_key IS NOT NULL),
-           'is_test_count', (SELECT count(*) FROM users WHERE email LIKE '%@traveloure-qa.test' AND coalesce(is_test, false))
+           'is_test_count', (SELECT count(*) FROM users WHERE email LIKE '%@traveloure-qa.test' AND coalesce(is_test, false)),
+           'neighbourhoods', (SELECT json_agg(json_build_object('city', cn.city, 'verified', en.verified_at IS NOT NULL, 'market', en.verified_at IS NOT NULL))
+                                FROM expert_neighborhoods en
+                                JOIN city_neighborhoods cn ON cn.id = en.neighborhood_id
+                                JOIN users u ON u.id = en.expert_id
+                               WHERE u.email LIKE '%@traveloure-qa.test')
          )::text`,
       ),
   );
