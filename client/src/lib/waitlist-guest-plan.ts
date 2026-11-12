@@ -350,9 +350,23 @@ async function claimGuestPlansOnce(): Promise<GuestClaimOutcome> {
       }
     }
     return { ok: true, ids };
-  } catch {
-    // `apiRequest` throws on a non-2xx answer as on a network failure: both are a real failure, never "nothing".
+  } catch (err) {
+    // Leon, Nov 12, 2026: a 400 `guest_session_required` means this browser has no guest to claim (the presence
+    // cookie outlived the guest cookie). That is nothing to claim — empty, memo stamped, no toast — never a failure.
+    if (isNoGuestSession(err)) return { ok: true, ids: [] };
+    // `apiRequest` throws on any other non-2xx answer as on a network failure: both are a real failure, never "nothing".
     return { ok: false };
+  }
+}
+
+/** Pure: the claim's 400 that says no guest session rode the request (`guest-plans.routes.ts`, `guest_session_required`). */
+export function isNoGuestSession(err: unknown): boolean {
+  if (statusOf(err) !== 400) return false;
+  const body = String((err as Error | null)?.message ?? "").replace(/^\d{3}:\s*/, "");
+  try {
+    return (JSON.parse(body) as { code?: unknown })?.code === "guest_session_required";
+  } catch {
+    return false;
   }
 }
 

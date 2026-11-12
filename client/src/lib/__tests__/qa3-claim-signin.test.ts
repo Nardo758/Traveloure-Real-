@@ -11,6 +11,7 @@
  *   C5 TB2's path at the claim layer: sign in (claims) → sign out → a new guest plan → sign in as the same account
  *      claims the new plan and lands on /plans/{id}; and the modal goes to the claimed plan before its own destination
  *   C6 one cart migration: the modal's duplicate is gone
+ *   C7 a 400 guest_session_required (the presence cookie outlived the guest cookie) is nothing to claim: no toast, memo stamped
  *
  * Run: node --import ./client/src/lib/__tests__/lc1-css-register.mjs --import tsx --test client/src/lib/__tests__/qa3-claim-signin.test.ts
  */
@@ -193,6 +194,31 @@ describe("QA round 3 PR 3 — the sign-in claim", () => {
     assert.match(modal, /const claimedIds = await claimGuestPlans\(/);
     assert.match(modal, /window\.location\.href = claimLandingPath\(claimedIds\) \?\? safeDest \?\? getRoleHomePath\(role\);/);
     assert.ok(modal.indexOf("const claimedIds = await claimGuestPlans(") < modal.indexOf("window.location.href = claimLandingPath(claimedIds)"));
+  });
+
+  it("C7 a 400 guest_session_required is nothing to claim: empty, memo stamped, no toast, not asked again", async () => {
+    // The presence cookie outlived the guest cookie: the server says no guest session rode the request.
+    cookie = "traveloure_guest_present=1";
+    answer = () => json({ code: "guest_session_required" }, 400);
+    assert.deepEqual(await claim.claimGuestPlans("u1"), []);
+    assert.equal(claimPosts(), 1);
+    assert.equal(toasts, 0, "no toast for nothing to claim");
+    assert.equal(session.get(MEMO), "u1", "the memo is stamped, so the next page load does not ask again");
+    assert.deepEqual(await claim.claimGuestPlans("u1"), []);
+    assert.equal(claimPosts(), 1, "answered from the memo");
+    // Any other 400 is still a real failure.
+    claim._resetGuestClaimMemo();
+    session.clear();
+    answer = () => json({ code: "something_else" }, 400);
+    assert.deepEqual(await claim.claimGuestPlans("u1"), []);
+    assert.equal(toasts, 1);
+    assert.equal(session.get(MEMO), undefined);
+    // The pure reading.
+    assert.equal(claim.isNoGuestSession(new Error('400: {"code":"guest_session_required"}')), true);
+    assert.equal(claim.isNoGuestSession(new Error('400: {"code":"other"}')), false);
+    assert.equal(claim.isNoGuestSession(new Error('500: {"code":"guest_session_required"}')), false);
+    assert.equal(claim.isNoGuestSession(new Error("400: not json")), false);
+    assert.equal(claim.isNoGuestSession(null), false);
   });
 
   it("C6 one cart migration: the modal's duplicate is gone", () => {
