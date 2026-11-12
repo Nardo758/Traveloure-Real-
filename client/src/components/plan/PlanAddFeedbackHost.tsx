@@ -26,6 +26,7 @@ import { PLAN_DATES_CALENDAR_TITLE } from "@/components/plan/PlanDatesCalendar";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { browseSavePath } from "@/lib/browse-save";
 import { useSignupMode } from "@/lib/signup-mode";
+import { PLAN_ADD_TOAST_MS } from "@/config/toast.config";
 import { GUEST_PLAN_QUERY_KEY, guestSaveErrorMessage, type GuestPlanView } from "@/lib/waitlist-guest-plan";
 import { ADD_COPY, PENDING_ADD_MAX_AGE_MS, addedMessage, changeDayOptions, pendingAddIsStale, planDayCount, planItemPath, type PlanAddRail } from "@/lib/add-to-plan";
 import {
@@ -99,11 +100,12 @@ export function PlanAddFeedbackHost() {
     () =>
       onPlanAddFeedback((f) => {
         if (f.kind === "added") {
-          toast({ title: addedMessage(f.event), action: addedActions(f.event), "data-testid": "toast-added" } as any);
+          toast({ title: addedMessage(f.event), action: addedActions(f.event), duration: PLAN_ADD_TOAST_MS, "data-testid": "toast-added" } as any);
         } else if (f.kind === "failed") {
           toast({
             variant: "destructive",
             title: f.message,
+            duration: PLAN_ADD_TOAST_MS,
             "data-testid": "toast-add-failed",
             action: (
               <ToastAction altText={ADD_COPY.retry} data-testid="toast-add-retry" onClick={() => f.retry()}>
@@ -185,7 +187,7 @@ export function PlanAddFeedbackHost() {
                         () => {
                           setMoving(false);
                           setChangeDay(null);
-                          toast({ title: addedMessage({ dayNumber: o.day, located: e.located }), action: addedActions({ ...e, dayNumber: o.day }), "data-testid": "toast-added" } as any);
+                          toast({ title: addedMessage({ dayNumber: o.day, located: e.located }), action: addedActions({ ...e, dayNumber: o.day }), duration: PLAN_ADD_TOAST_MS, "data-testid": "toast-added" } as any);
                         },
                         (err) => {
                           setMoving(false);

@@ -119,11 +119,22 @@ export async function fetchGuestPlan(): Promise<GuestPlanView | null> {
   }
 }
 
-export function useGuestPlan(enabled: boolean) {
+/**
+ * QA round 3 PR 5 (Leon, Nov 12, 2026): the ONE rule for whether the page may read `GET /api/guest-plans/current` —
+ * signed out, and the session read settled. That route is `guestOnly`: a signed-in caller is answered 409 `signed_in`,
+ * so a read sent while `/api/auth/user` is still in flight (the user reads as absent then) is a console error for every
+ * member who was ever a guest (the presence cookie is never cleared). Every caller reads this, never its own copy.
+ */
+export function guestPlanReadAllowed(auth: { authLoading: boolean; signedIn: boolean }): boolean {
+  return !auth.authLoading && !auth.signedIn;
+}
+
+/** The session's guest plan. `auth` is the caller's session read; `enabled` is the caller's own extra condition. */
+export function useGuestPlan(auth: { authLoading: boolean; signedIn: boolean }, enabled = true) {
   return useQuery<GuestPlanView | null>({
     queryKey: GUEST_PLAN_QUERY_KEY,
     queryFn: fetchGuestPlan,
-    enabled,
+    enabled: enabled && guestPlanReadAllowed(auth),
     retry: false,
     staleTime: 0,
   });

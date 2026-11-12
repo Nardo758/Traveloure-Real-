@@ -44,6 +44,7 @@ import { placeCustomPinBeforeCharge } from "../services/custom-pin-place";
 import type { NamedStop } from "../services/anchor-candidates-map";
 import type { CustomPinPlacement, ResolvedCustomPin } from "@shared/custom-location-pin";
 import { loadLegCoverage, loadOptimizerFindings } from "../services/optimizer-lead.service";
+import { buildTripPreviewResponse } from "../services/optimization-preview-trip.service";
 import Stripe from "stripe";
 import { getStripeSecretKey } from "../utils/stripe-key";
 import { waitlistPurchaseDecisionFor } from "../services/waitlist-purchase-gate";
@@ -195,81 +196,9 @@ router.get("/api/optimization-preview", isAuthenticated, async (req, res) => {
     const denied = await authorizeTripLogistics(tripId, userId, "GET /api/optimization-preview");
     if (denied) return res.status(denied.status).json({ error: denied.message });
 
-    const inputs = await loadTripOptimizerInputs(tripId);
-
-    // Event type drives only the heuristic's own score WEIGHTS (TEMPLATE_WEIGHTS) — it is not a
-    // fee input on this path, because this path returns no fee. The party size is deliberately
-    // NOT read: `travelers` reaches only `avgCostPerPerson`, which this response does not emit,
-    // and reading a column an answer does not depend on invites the reader to think it does.
-    const [tripRow] = await db
-      .select({ eventType: trips.eventType })
-      .from(trips)
-      .where(eq(trips.id, tripId))
-      .limit(1);
-
-    const preview: OptimizationPreviewResult = computeOptimizationPreviewHeuristic(
-      // `loadTripOptimizerInputs` always sets both `serviceType` and `dayNumber` (the column is
-      // NOT NULL and the itemType map never returns undefined); the optimizer's shared item type
-      // declares them optional for its OTHER producers. An item that somehow arrives without
-      // either is DROPPED rather than given an invented type or day (§13) — and the item count
-      // this response reports is taken from what was actually scored, so a drop is visible in the
-      // number rather than hidden behind it.
-      inputs.baselineItems.flatMap((item) =>
-        item.serviceType && item.dayNumber != null
-          ? [
-              {
-                serviceType: item.serviceType,
-                // Absent stays absent. `calculateItineraryMetrics` treats a missing price as no
-                // cost and a missing duration as its own default — neither is invented here.
-                price: item.price,
-                duration: item.duration,
-                dayNumber: item.dayNumber,
-              },
-            ]
-          : [],
-      ),
-      1,
-      tripRow?.eventType ?? undefined,
-    );
-
-    // Surface step 4 (spec §8; R-f): what Optimize found in this draft — kinds and counts only, never
-    // the re-sequenced order. Independent of the heuristic score, so a refused score still carries them.
-    // FB-1 step 1: `notChecked` names the findings that could not be read (and why) — no screen reads it yet.
-    const { findings, hasPricedItems, notChecked } = await loadOptimizerFindings(tripId);
-    // P0-d item 1 (ledger `2026-10-12-p0d-coverage-bridges`): the all-clear also needs every pair of
-    // stops on every day not yet past to have a routed leg; the card reads this beside the findings.
-    const { coverage, routedPlan } = await loadLegCoverage(tripId);
-
-    if (!preview.computable) {
-      // The heuristic's OWN reason, passed through unchanged — the client never restates it.
-      return res.json({ computable: false, reason: preview.reason, findings, notChecked, hasPricedItems, coverage, routedPlan });
-    }
-
-    // Projected explicitly. `metrics` (the full internal object) and the three extrapolated
-    // cart numbers are NOT emitted: nothing here measures money or minutes a re-ordering would
-    // recover, so this response carries no figure that would read as one (§13).
-    return res.json({
-      computable: true,
-      itemCount: preview.itemCount,
-      dayCount: preview.dayCount,
-      currentScore: preview.currentScore,
-      improvementRoom: preview.improvementRoom,
-      weakest: preview.weakest,
-      dimensions: preview.dimensions,
-      // Items the run would treat as fixed points — purchased rows AND D3 expert work, counted
-      // from the same read-set's actual constraint list, never assumed (§13).
-      fixedCount: inputs.fixedCommitments.length,
-      findings,
-      notChecked,
-      hasPricedItems,
-      coverage,
-      routedPlan,
-      // A7 (§F2 (4)): how many open comparisons a run would decide — never WHICH option wins. The
-      // run decides only the stay comparison it builds its versions around, so this is 0 or 1.
-      ...(versionPerOptionEnabled()
-        ? { openComparisons: (await openSetSlotsForRun(tripId, inputs.baselineItems as any, null))?.length ? 1 : 0 }
-        : {}),
-    });
+    // QA round 3 PR 5: every part is read through `buildTripPreviewResponse`, which names a part it cannot read in
+    // `notChecked` and still answers (§13 — never a 500 for a plan the preview cannot fully read).
+    return res.json(await buildTripPreviewResponse(tripId));
   } catch (err: any) {
     console.error("[optimization-preview:trip] error:", err);
     return res.status(500).json({ error: err.message });

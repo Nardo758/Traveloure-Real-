@@ -444,6 +444,16 @@ export interface NotChecked {
   days: number[];
 }
 
+/**
+ * QA round 3 PR 5 (Leon, Nov 12, 2026): a part of the trip-addressed preview (`GET /api/optimization-preview`) that
+ * could not be read. It sits in the response's `notChecked` beside the per-finding entries, and the part's own fields
+ * are left out of the response — never filled with an empty "nothing found" (§13).
+ */
+export interface PreviewPartNotLoaded {
+  part: "plan_items" | "findings" | "leg_coverage" | "open_comparisons";
+  reason: "load_failed";
+}
+
 /** Pure. Splits the plan's stops into the days the path findings may read and the days they may not. */
 export function openPathDays(
   stops: ReadonlyArray<{ dayNumber: number; open: { lat: number; lng: number } | null }>,
