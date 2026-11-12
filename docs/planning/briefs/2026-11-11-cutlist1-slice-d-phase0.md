@@ -2,7 +2,8 @@
 
 Base: `main` `f258c1366`, after slice B #1981 (`bc75bb5b`), slice C #1982 (`2238c1c2`) and header fix v2 #1984
 (`2afc0860`). Brief v3 (Drive `1v4KpuwcKyeij_K_1a2nJk7HJy4uz9K3Lo504ABw99Jg`), slice D. This audit is read-only, and
-every pin is on `f258c1366`.
+every pin is on `f258c1366`. **Phase 0 is a hard stop:** the build waits for Leon's review, and ready-for-review is
+Leon's to set.
 
 **Most of the brief's slice D already landed** — slice C took the claim's cart lines (the request folded D's claim
 into C), and #1984 binds the claimed plan. What is left is listed in §6.
@@ -16,12 +17,9 @@ into C), and #1984 binds the claimed plan. What is left is listed in §6.
   when the client's cookies are off (`:237–245`).
 - Client: `claimGuestPlansOnce` `client/src/lib/waitlist-guest-plan.ts:279` (one request per sign-in, A-37), the App
   watcher `client/src/App.tsx:1612`.
-- **Door reuse:** the brief asks for the ledger id behind "TB3's door-reuse rule" and names `2026-09-07-concierge-door`
-  (`ensureSlipForExpertRequest`). That row is **retired** (R811, "surface removed",
-  `docs/decisions/00432-2026-09-07-concierge-door.md:1`), and no ledger row names a TB3 door-reuse rule (TB3 in
-  `docs/decisions/01460-…` is TB3.9/TB3.10, day dating and row names). The rule the brief describes — the claim re-owns
-  rows and never mints — **holds on main by construction** (§1 above). **Question:** cite nothing, or name the row Leon
-  means.
+- **Claim rule (ruled Nov 12, 2026):** the rule the brief describes — the claim re-owns rows and never mints — is
+  GATE-1B's (`2026-11-04-gate1b-guest-plan`, R831) and PLAN-1 ruling 2's (`2026-11-06-plan1-one-planner`, R857), and
+  holds on main by construction (above).
 
 ## 2. Cart lines — already shipped by slice C, after the commit
 
@@ -41,7 +39,8 @@ into C), and #1984 binds the claimed plan. What is left is listed in §6.
   A cart line that names no platform listing is display-only; checkout skips it (`if (!item.service) continue;`,
   `server/routes/payments.routes.ts:474`, and seven more sites in that file), and no server path charges an
   `in_platform_bookable` product (grep: no match under `server/routes`). Carting one would put a line in the cart that
-  cannot be paid. **Question:** default leaves them on the plan (unchanged status), as `affiliate_bookable` items are.
+  cannot be paid. **Ruled (Nov 12, 2026):** they stay on the plan and off the cart, as `affiliate_bookable` items do;
+  LD 44 Phase 2 (the API-partner booking lane) is the lane that changes it.
 
 ## 3. The active plan after a claim — shipped by #1984
 
