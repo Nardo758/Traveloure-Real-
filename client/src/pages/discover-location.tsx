@@ -32,7 +32,7 @@ import { CATALOGUE_SEARCH_COPY } from "@shared/catalogue-search";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertCircle, ChevronRight, Globe, Palmtree, Search, MapPin, SlidersHorizontal } from "lucide-react";
+import { AlertCircle, Globe, Palmtree, Search, MapPin, SlidersHorizontal } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useTripContext } from "@/lib/trip-context";
@@ -45,10 +45,7 @@ import { CityFeedCardExternalStub } from "@/components/city-feed-card-external-s
 import { CityFeedCardExpert } from "@/components/city-feed-card-expert";
 import { CityFeedCardRecommendation } from "@/components/city-feed-card-recommendation";
 import { ExpertCard } from "@/components/expert-card";
-import { FeedWantedSlotCard } from "@/components/feed/wanted-slot-card";
-import { FeedEarnCard } from "@/components/feed/earn-card";
 import { FeedReadyMadeCard } from "@/components/feed/ready-made-card";
-import { FeedNeighbourhoodWantedCard } from "@/components/feed/neighbourhood-wanted-card";
 import { TileDetailPanel } from "@/components/feed/tile-detail-panel";
 import { collectTileActions, opensTileDetail, tileDisplayName, tileOpensDetailPanel, type TilePanelAction } from "@/lib/tile-detail";
 import {
@@ -56,7 +53,6 @@ import {
   filterFeedStream,
   neighbourhoodIsUnstocked,
   neighbourhoodSectionNeedsWantedTile,
-  placeUnstockedNeighbourhoods,
   withoutUnstockedNeighbourhoods,
   type FeedItem,
 } from "@/lib/feed-stream";
@@ -73,7 +69,6 @@ import {
   defaultIsRelated,
   DEFAULT_FEED_COMPOSITION_CONFIG,
   type FeedCompositionConfig,
-  type WantedSlotData,
 } from "@/lib/feed-composition";
 import { useUpsellSlot } from "@/components/UpsellSlot";
 import { EMPTY_STATE_COPY } from "@/lib/empty-state-copy";
@@ -456,8 +451,8 @@ function SpineChipRail({
 // The former inline LeadExpertCard / WantedSlotCard / EarnCard / PackageCard /
 // RecommendationCard have been converged onto the card family + feed/* panels
 // (city-feed bento, Phase 2): recommendation → CityFeedCardRecommendation,
-// package → FeedReadyMadeCard, wanted-slot → FeedWantedSlotCard, earn →
-// FeedEarnCard, lead-expert → ExpertCard variant="anchor". BentoTile below
+// package → FeedReadyMadeCard, lead-expert → ExpertCard variant="anchor". (QA3 ruling 2:
+// wanted-slot and earn are off this page; their components are kept, unmounted.) BentoTile below
 // dispatches to them; the anchor treatment is chosen by the bento renderer.
 // ─── Filler card (non-neighborhood) ──────────────────────────────────────────
 
@@ -586,18 +581,10 @@ function BentoTile({
           compactActionState={compactActionState}
         />
       );
-    case "wanted-slot":
-      if (item.data?.neighbourhoodWantedHero) {
-        return (
-          <FeedNeighbourhoodWantedCard
-            name={String(item.data.name ?? "")}
-            slug={String(item.data.slug ?? "")}
-          />
-        );
-      }
-      return <FeedWantedSlotCard item={item} density="compact" />;
-    case "earn-card":
-      return <FeedEarnCard city={city} density="compact" />;
+    // RULING (Leon, Nov 12 2026): ALL FOUR recruit cards are off the traveler feed, the stocked
+    // "Wanted" hero included. `bento-spans` no longer mints it and nothing composes a wanted slot,
+    // so neither case is reachable here any more. The two components are KEPT, unmounted, for an
+    // /earn lane; the `/earn` card is gone for the same reason.
     case "package":
       return (
         <FeedReadyMadeCard
@@ -721,6 +708,10 @@ function BentoGroup({
   // a gem, service, expert or ready-made does not share this section — the
   // stream places those with the stocked neighbourhoods.
   const needsWanted = neighbourhoodSectionNeedsWantedTile(neighbourhood, runItems);
+  // QA3 ruling 2 (c): an unstocked neighbourhood is no longer a section at all — no heading, no
+  // Wanted tile. Dropped HERE and not only at stream placement, because a FILTERED view passes the
+  // stream through unfiltered and would otherwise re-home one.
+  if (neighbourhood && neighbourhoodIsUnstocked(neighbourhood)) return null;
   // An unstocked neighbourhood shows only its Wanted hero. Every other section,
   // including the city-feed intro, floats expert → ready-made → Wanted.
   const placed = buildBentoTiles(
@@ -1512,17 +1503,9 @@ export default function DiscoverLocationPage() {
   });
   const feedConfig = feedConfigData ?? DEFAULT_FEED_COMPOSITION_CONFIG;
 
-  // Expert offering types — used to build specific recruitment slot labels
-  const { data: expertOfferingTypes } = useQuery<Array<{ offering_type_key: string; display_name: string; service_tier: string }>>({
-    queryKey: ["/api/offering-types/experts"],
-    queryFn: async () => {
-      const res = await fetch("/api/offering-types/experts");
-      if (!res.ok) return [];
-      return res.json();
-    },
-    staleTime: 15 * 60_000,
-    retry: false,
-  });
+  // QA round 3 ruling 2: the recruitment cards are off the traveler feed, so the offering-type read
+  // that only labelled them ("Local guide wanted in {nb}") has no reader and is gone with them. A
+  // query nobody reads is the §18c shape.
 
   const { settings: marketStatusSettings } = useMarketStatusSettings();
   const { data, isLoading, error } = useQuery<LocationViewPayload>({
@@ -1765,82 +1748,15 @@ export default function DiscoverLocationPage() {
       )
     : [];
 
-  // Wanted/recruitment slots: one per neighborhood for offering types the
-  // engine found NO coverage for at all ("covered" = ranked candidates +
-  // suppressed-but-ranked). The composition layer caps and spaces them —
-  // this list is the pool, not the placement.
-  const coveredOfferingIds = new Set([
-    ...discoverySlotResult.candidates.map((c) => c.offeringId),
-    ...discoverySlotResult.suppressed.map((s) => s.offeringId),
-  ]);
-  const uncoveredOfferings = (expertOfferingTypes ?? []).filter(
-    (o) => !coveredOfferingIds.has(o.offering_type_key)
-  );
-  // Decorative discover slots retain their historical full-list fallback when both arrays are
-  // empty. This deliberately differs from the landing hero: that route can distinguish a gather
-  // that ran from unknown coverage and suppresses "Wanted" when coverage is unknown. Do not copy
-  // this fallback into server/services/landing-hero.compose.ts.
-  const recruitmentPool = uncoveredOfferings.length > 0 ? uncoveredOfferings : (expertOfferingTypes ?? []);
-
-  // Build raw wanted-slot data (no demand counts yet).
-  // The first five neighbourhoods in payload order (the server orders by name)
-  // still seed the filler recruitment cards. An unstocked neighbourhood is
-  // skipped — it already has the one Wanted tile in its own section, and the
-  // slot is not handed to the next neighbourhood (no backfill).
-  const rawWantedSlotsData: WantedSlotData[] = neighborhoods.slice(0, 5).flatMap((nb: any, idx: number) => {
-    if (neighbourhoodIsUnstocked(nb)) return [];
-    const nbName = nb.name ?? nb.neighborhood_name ?? nb.neighborhoodName ?? toTitleCase(city);
-    const offering = recruitmentPool[idx % Math.max(recruitmentPool.length, 1)];
-    return [{
-      offeringLabel: offering?.display_name ?? "Local expert guide",
-      // Gap 15: the old fallback here was the literal `"guide"`, which is not an
-      // `expert_offering_types` key. It matched nothing in the demand lookup below (silently
-      // returning 0) and, once the recruitment CTA started forwarding the key, would have sent
-      // a value the migration-107 FK cannot hold. EMPTY is the honest "the catalog has not
-      // answered yet" state: the demand lookup skips it and the CTA omits the param (§13).
-      offeringKey: offering?.offering_type_key ?? "",
-      neighborhoodName: nbName,
-      neighborhoodSlug: typeof nb.slug === "string" ? nb.slug : "",
-      city,
-      // ENTRY-1: the same key the sections use (slug first), so the tile homes in its own section.
-      neighborhoodId: neighbourhoodHomeKey({ slug: nb.slug, id: nb.id, name: nbName }) ?? nbName,
-    }];
-  });
-
-  // Demand counts for wanted-slot enrichment — batch fetch from /api/services/demand
-  const wantedOfferingKeys = Array.from(
-    new Set(rawWantedSlotsData.map((s) => s.offeringKey).filter(Boolean)),
-  );
-  const { data: demandCounts } = useQuery<Record<string, number>>({
-    queryKey: ["/api/services/demand", city, wantedOfferingKeys.join(","), scheduledDate ?? ""],
-    queryFn: async () => {
-      if (!city || wantedOfferingKeys.length === 0) return {};
-      const params = new URLSearchParams({ city, offeringTypeKeys: wantedOfferingKeys.join(",") });
-      if (scheduledDate) {
-        params.set("dateRangeStart", scheduledDate);
-        params.set("dateRangeEnd", scheduledDate);
-      }
-      const res = await fetch(`/api/services/demand?${params}`);
-      if (!res.ok) return {};
-      return res.json();
-    },
-    enabled: !!city && wantedOfferingKeys.length > 0,
-    staleTime: 5 * 60_000,
-  });
-
-  // Human-readable date label for WantedSlotCard when a date filter is active
-  const dateContext = scheduledDate
-    ? new Date(scheduledDate + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
-    : undefined;
-
-  // Merge demand counts (and date context) into wanted-slot data — sorted descending
-  const wantedSlotsData: WantedSlotData[] = rawWantedSlotsData
-    .map((slot) => ({
-      ...slot,
-      demandCount: demandCounts?.[slot.offeringKey] ?? 0,
-      dateContext,
-    }))
-    .sort((a, b) => (b.demandCount ?? 0) - (a.demandCount ?? 0));
+  // ── QA round 3 ruling 2: no recruit cards on the traveler feed ──────────
+  // The wanted/recruitment slots (one recruitment tile per uncovered offering), the single `/earn`
+  // card near position 9, the unstocked-neighbourhood "Wanted" hero and the empty-market expert
+  // recruitment section are all gone from this page. The COMPONENTS are kept by the ruling
+  // (`components/feed/wanted-slot-card.tsx`, `earn-card.tsx`, `neighbourhood-wanted-card.tsx`), for
+  // an /earn lane to mount or delete — nothing on this page renders them any more, so the two reads
+  // that only fed them (`/api/offering-types/experts`, `/api/services/demand`) are gone as well: a
+  // query with no reader is the §18c shape. NOTE: the retired copy is deliberately not quoted here
+  // — the source pins assert it is absent from this file, comments included.
 
   // ── One interleaved stream ──────────────────────────────────────────────
   // The composition layer PLACES the injected elements into the organic
@@ -1862,7 +1778,7 @@ export default function DiscoverLocationPage() {
       ? composeDiscoverFeed(
           withoutUnstockedNeighbourhoods(feedItems),
           discoverySlotResult.candidates,
-          wantedSlotsData,
+          [], // QA3 ruling 2: no wanted/recruitment slots on the traveler feed
           leadExpert,
           feedConfig,
           defaultIsRelated,
@@ -1882,21 +1798,20 @@ export default function DiscoverLocationPage() {
     data: s,
   }));
 
-  // Exactly ONE earn-card near position 9 (F7/F9), only on the unfiltered "all" view.
+  // QA3 ruling 2: the `/earn` card that used to sit near position 9 is gone from the traveler feed.
+  // External stubs are woven in AFTER it (append — they never displace a native card or the rec
+  // cadence). Distinct card treatment (CityFeedCardExternalStub) keeps them visibly separate from
+  // bookable listings.
   const filteredItems: FeedItem[] = (() => {
     if (spineFilter !== "all") return retagged;
     const out = [...retagged];
-    out.splice(Math.min(9, out.length), 0, { kind: "earn-card", id: "earn-card", data: { city } });
-    // External stubs are woven in after the earn-card region (append — they never displace a
-    // native card or the rec cadence). Distinct card treatment (CityFeedCardExternalStub) keeps
-    // them visibly separate from bookable listings.
     if (externalStubItems.length > 0) {
       out.splice(Math.min(12, out.length), 0, ...externalStubItems);
     }
-    return placeUnstockedNeighbourhoods(
-      out,
-      feedItems.filter((item) => item.kind === "neighborhood"),
-    );
+    // QA3 ruling 2 (c): an unstocked neighbourhood is no longer re-homed into its own "Wanted"
+    // section — the section is dropped whole (no heading, no tile), so `withoutUnstocked…` above
+    // is the last word on them and nothing is spliced back in.
+    return out;
   })();
 
   // ── Header: read-only "where" value (city + trip dates) ─────────────────
@@ -2072,29 +1987,12 @@ export default function DiscoverLocationPage() {
 
             {/* Lead expert, wanted slots, and engine recommendations are no
                 longer stacked blocks here — the feed-composition layer
-                interleaves them into the organic stream below. Only the
-                empty-market recruitment card remains a standalone section
-                (there is no feed to interleave into). */}
-            {experts.length === 0 && neighborhoods.length === 0 && (
-              <div
-                className="rounded-xl border border-dashed border-primary/40 bg-primary/5 p-4 text-center"
-                data-testid="section-expert-recruitment-generic"
-              >
-                <p className="text-sm font-semibold text-primary mb-3">
-                  Local experts wanted in {toTitleCase(city)}
-                </p>
-                {/* Gap 15: name the track. Without `type=` the wizard fell back to its
-                    `travel_expert` default, so a "local experts wanted" card opened the Trip
-                    Planner flow. This card has no neighbourhood or offering to carry. */}
-                <a
-                  href={`/become-expert?type=local_expert&city=${encodeURIComponent(city)}`}
-                  className="inline-flex items-center gap-1 text-xs font-semibold text-primary underline underline-offset-2"
-                  data-testid="link-expert-recruitment-earn"
-                >
-                  Start earning in {toTitleCase(city)} <ChevronRight className="w-3.5 h-3.5" />
-                </a>
-              </div>
-            )}
+                interleaves them into the organic stream below.
+                QA3 ruling 2 (d): the empty-market expert recruitment card is gone too
+                (retired copy is not quoted here: the source pin asserts its absence).
+                A city with no experts and no neighbourhoods now shows the page's own
+                non-recruitment empty state (the feed's honest "nothing here yet" read);
+                no replacement string was introduced. */}
 
             {/* Trailhead T4.4: the headline over published external content now reads
                 "Discover ‹Market›" (approved copy, ledger 2026-10-31-four-copy-strings). It names the

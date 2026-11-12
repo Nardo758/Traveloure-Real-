@@ -21,6 +21,15 @@ export const TICKER_MARKETING_PATHS: readonly string[] = [
 /** Single pages under these get it too (a blog post, a help article). */
 export const TICKER_MARKETING_PREFIXES: readonly string[] = ["/blog/", "/help/"];
 
+/**
+ * Is the launch-market ribbon mounted here?
+ *
+ * RULING (Leon, Nov 12 2026): the ribbon is visible whether or not the traveler is signed in. There
+ * is no auth dimension at all — a signed-in member sees it on the marketing pages exactly as a guest
+ * does, and nothing is held while `/api/auth/user` is in flight. The only question is the PATH: the
+ * marketing list above, never `/experiences` (taken off that list by QA3 ruling 2), never the plan,
+ * checkout, admin or workspace surfaces.
+ */
 export function showsTicker(location: string): boolean {
   const path = (location.split(/[?#]/, 1)[0] || "/").replace(/(.)\/+$/, "$1");
   if (TICKER_MARKETING_PATHS.includes(path)) return true;

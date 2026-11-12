@@ -203,10 +203,62 @@ async function switchKyotoExpertsOn(page: Page): Promise<() => void> {
     `INSERT INTO platform_settings (setting_key, setting_value) VALUES ('expert_hook_cities', '["kyoto"]')
      ON CONFLICT (setting_key) DO UPDATE SET setting_value = EXCLUDED.setting_value, updated_at = NOW()`,
   );
+  // A failing poll used to say only "false". The answer has two halves (the switch and the chooser)
+  // and the chooser reads a byline gate plus routability, so print the seeded FACTS once — a
+  // diagnostic, never a relaxation of the assertion.
+  console.log(
+    "[A4 facts] " +
+      psql(
+        `SELECT json_build_object(
+           'setting', (SELECT setting_value FROM platform_settings WHERE setting_key = 'expert_hook_cities'),
+           'forms', (SELECT json_agg(json_build_object('status', status, 'identity', identity_verification_status, 'stripe', stripe_connect_status))
+                       FROM local_expert_forms WHERE email LIKE '%@traveloure-qa.test'),
+           'handle', (SELECT count(*) FROM users WHERE email LIKE '%@traveloure-qa.test' AND handle IS NOT NULL AND coalesce(is_test, false) = false),
+           'listings', (SELECT count(*) FROM provider_services WHERE approval_status = 'approved' AND status = 'active' AND expert_offering_type_key IS NOT NULL),
+           'is_test_count', (SELECT count(*) FROM users WHERE email LIKE '%@traveloure-qa.test' AND coalesce(is_test, false)),
+           'neighbourhoods', (SELECT json_agg(json_build_object('city', cn.city, 'verified', en.verified_at IS NOT NULL, 'market', en.verified_at IS NOT NULL))
+                                FROM expert_neighborhoods en
+                                JOIN city_neighborhoods cn ON cn.id = en.neighborhood_id
+                                JOIN users u ON u.id = en.expert_id
+                               WHERE u.email LIKE '%@traveloure-qa.test')
+         )::text`,
+      ),
+  );
+  // The byline gate's fourth fact is `storefrontLive` = `loadStorefront(handle) != null`. Probe the
+  // public read that answers it, plus the public directory, so a failure names the failing link.
+  const seededHandle = psql(
+    `SELECT handle FROM users WHERE email LIKE '%@traveloure-qa.test' AND handle IS NOT NULL LIMIT 1`,
+  );
+  if (seededHandle) {
+    const storefront = await page.request.get(`${BASE_URL}/s/${encodeURIComponent(seededHandle)}`);
+    const directory = await page.request.get(`${BASE_URL}/api/experts?city=${encodeURIComponent("Kyoto")}`);
+    const directoryBody = await directory.text();
+    console.log(
+      `[A4 probe2] handle=${seededHandle} storefront=${storefront.status()} directory=${directory.status()} ` +
+        `directoryHasFixture=${directoryBody.includes("Fixture")}`,
+    );
+  } else {
+    console.log("[A4 probe2] no seeded handle found");
+  }
   await expect
-    .poll(async () => (await (await page.request.get(`${BASE_URL}/api/expert-availability?city=${encodeURIComponent("Kyoto, Japan")}`)).json()).available, {
-      timeout: 45_000,
-    })
+    .poll(
+      async () => {
+        const res = await page.request.get(
+          `${BASE_URL}/api/expert-availability?city=${encodeURIComponent("Kyoto, Japan")}`,
+        );
+        const body = (await res.json()) as { available?: boolean };
+        // A failing poll used to say only "false". The answer has two halves (the switch and the
+        // chooser), and the seeded facts sit behind a byline/storefront gate, so print what the
+        // server actually said — this is a diagnostic, not a relaxation of the assertion.
+        if (!body?.available) console.log(`[A4 probe] ${res.status()} ${JSON.stringify(body)}`);
+        return body?.available;
+      },
+      // THE SERVER CACHES THIS ANSWER FOR 60s (`AVAILABILITY_TTL_MS`, expert-door.routes.ts:53), and
+      // an earlier test in this lane has almost always asked about Kyoto before the fixture exists.
+      // The old 45s poll could not outlast that cached `false` — and A4's 30s test budget truncated it
+      // anyway, so the wait never even ran to its own limit. Poll past the TTL, with margin.
+      { timeout: 80_000, intervals: [2_000] },
+    )
     .toBe(true);
   return () => {
     if (prior) psql(`UPDATE platform_settings SET setting_value = '${prior.replace(/'/g, "''")}' WHERE setting_key = 'expert_hook_cities'`);
@@ -215,6 +267,9 @@ async function switchKyotoExpertsOn(page: Page): Promise<() => void> {
 }
 
 test("A4: Hand off to a local expert opens the ONE handoff chooser (R324)", async ({ page }) => {
+  // This test seeds a fixture and then waits out the server's 60s availability cache before the
+  // chooser can answer yes, so it needs more than the default 30s budget.
+  test.setTimeout(180_000);
   const tripId = await registerAndCreateTrip(page, "hire");
   const restore = await switchKyotoExpertsOn(page);
   try {

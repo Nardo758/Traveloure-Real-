@@ -191,7 +191,11 @@ describe("T8 wanted tiles home by slug", () => {
     assert.equal(neighbourhoodHomeKey(null), null);
     const page = src("client/src/pages/discover-location.tsx");
     assert.match(page, /const sectionKey = \(nb: any\): string \| null => neighbourhoodHomeKey\(nb\);/);
-    assert.match(page, /neighborhoodId: neighbourhoodHomeKey\(\{ slug: nb\.slug, id: nb\.id, name: nbName \}\)/);
+    // QA3 ruling 2 (a): the page no longer BUILDS wanted-slot items, so the pool that set
+    // `neighborhoodId: neighbourhoodHomeKey({...})` is gone with them. The homing rule is unchanged
+    // and still applies wherever a slot IS composed — the card reads the key it is given.
+    assert.doesNotMatch(page, /neighborhoodId: neighbourhoodHomeKey\(/, "the page builds no wanted slots");
+    assert.match(src("client/src/components/feed/wanted-slot-card.tsx"), /neighborhoodId/, "the card still names its section by that key");
     assert.equal(itineraryExpertLink("Arashiyama"), ARASHIYAMA_ITINERARY_EXPERT_LINK);
     assert.equal(itineraryProviderLink("Arashiyama"), ARASHIYAMA_ITINERARY_PROVIDER_LINK);
     assert.equal(itineraryExpertLink("Fushimi"), "Know Fushimi well? Apply now as a local expert.");

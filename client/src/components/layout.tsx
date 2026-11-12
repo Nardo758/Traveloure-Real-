@@ -802,8 +802,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </a>
 
       {/* LW-1f: the launch-market ribbon, above the header, on the public marketing pages only
-          (lib/ticker-mount). Cut-list #1 slice A took /experiences OFF that list — the ribbon still
-          belongs on the marketing pages, it just left the traveler path (Leon, Nov 10, 11:51 AM ET). */}
+          (lib/ticker-mount). RULING (Leon, Nov 12 2026): visible whether or not the traveler is
+          signed in — no auth dimension, and nothing held while auth is in flight. The only question
+          is the path, and /experiences is not on the list (QA3 ruling 2). */}
       {showsTicker(location) && <CityTickerTape />}
 
       {/* TEST 5 — aria-label="Main navigation" announces the landmark to screen readers */}

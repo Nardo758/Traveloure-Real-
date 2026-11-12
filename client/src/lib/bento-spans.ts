@@ -132,16 +132,16 @@ export function buildBentoTiles(
   city: string = "",
   config: BentoLayoutConfig = BENTO_LAYOUT_CONFIG,
 ): PlacedTile[] {
+  // RULING (Leon, Nov 12 2026): ALL FOUR recruit cards leave the traveler feed — the stocked
+  // "Wanted" hero included. The hero is therefore never minted: an EMPTY neighbourhood yields no
+  // tiles (its section is omitted whole — no heading, no tile), and a neighbourhood with listings
+  // but no expert/ready-made anchor simply shows its own tiles with no anchor.
+  // `neighbourhoodWantedHeroItem` and its component are KEPT, unmounted, for an /earn lane.
   if (!floatAnchor) {
     if (tagged.length === 0) return [];
     return assignBentoSpans(tagged.map((t) => ({ ...t, isAnchor: false })), config);
   }
-  if (tagged.length === 0) {
-    return assignBentoSpans(
-      [{ item: neighbourhoodWantedHeroItem(neighbourhood, city), order: -1, isAnchor: true }],
-      config,
-    );
-  }
+  if (tagged.length === 0) return [];
   const withAnchor = tagged.map((t) => ({ ...t, isAnchor: false }));
   const hero = selectBentoHero(withAnchor, neighbourhood, city, config);
   if (hero.index !== null && hero.index >= 0) {
@@ -150,8 +150,5 @@ export function buildBentoTiles(
     const rest = withAnchor.filter((_, i) => i !== hero.index);
     return assignBentoSpans([anchor, ...rest], config);
   }
-  return assignBentoSpans(
-    [{ item: neighbourhoodWantedHeroItem(neighbourhood, city), order: -1, isAnchor: true }, ...withAnchor],
-    config,
-  );
+  return assignBentoSpans(withAnchor, config);
 }

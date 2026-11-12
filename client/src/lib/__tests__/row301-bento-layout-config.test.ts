@@ -7,7 +7,7 @@
  *   L2 geometry: an expert anchor is 2x2, ready-mades are 2 wide, no tile is wider than 2, and the
  *      grid has no empty cell before its last row.
  *   L3 changing a config value changes the layout, with no other file edited.
- *   L4 the page renders the Wanted hero through the card family and keeps no inline card markup.
+ *   L4 an empty neighbourhood is OMITTED (QA3 ruling 2 (c)); the page keeps no inline card markup.
  *
  * Run: npx tsx --test client/src/lib/__tests__/row301-bento-layout-config.test.ts
  */
@@ -42,8 +42,10 @@ const BEFORE: Record<string, [string, number, number, boolean][]> = {
   expertAnchor: [["e1", 2, 2, true], ["g1", 2, 1, false], ["p1", 2, 1, false], ["g2", 1, 1, false], ["ev1", 1, 1, false], ["v1", 1, 1, false], ["g3", 1, 1, false], ["x1", 1, 1, false], ["g4", 1, 1, false]],
   readyMadeAnchor: [["p1", 2, 1, true], ["g1", 1, 1, false], ["g2", 1, 1, false], ["ev1", 1, 1, false], ["g3", 1, 1, false], ["x1", 1, 1, false]],
   wantedAnchor: [["w1", 2, 1, true], ["g1", 1, 1, false], ["g2", 1, 1, false], ["ev1", 1, 1, false]],
-  noAnchorCandidate: [["neighbourhood-wanted-hero-arashiyama", 2, 1, true], ["g1", 1, 1, false], ["g2", 1, 1, false], ["ev1", 1, 1, false]],
-  emptyUnstocked: [["neighbourhood-wanted-hero-arashiyama", 2, 1, true]],
+  // RULING (Leon, Nov 12 2026): the Wanted hero is never minted — a hero-less section shows its
+  // own tiles with NO anchor, and an EMPTY neighbourhood yields no tiles at all.
+  noAnchorCandidate: [["g1", 1, 1, false], ["g2", 1, 1, false], ["ev1", 1, 1, false]],
+  emptyUnstocked: [],
   priceSorted: [["p1", 2, 1, false], ["g1", 1, 1, false], ["e1", 1, 1, false], ["g2", 1, 1, false], ["g3", 1, 1, false]],
   partnerHeavy: [["e1", 2, 2, true], ["x1", 1, 1, false], ["x2", 1, 1, false], ["x3", 1, 1, false], ["g1", 1, 1, false], ["p1", 2, 1, false], ["p2", 2, 1, false], ["g2", 1, 1, false]],
 };
@@ -125,12 +127,20 @@ test("L3: a config edit changes the layout with no other file edited", () => {
   assert.notEqual(place("partnerHeavy", plannerFirst)[0].item.id, "e1");
 });
 
-test("L4: the Wanted hero is a family card and the page keeps no inline card markup", () => {
+test("L4: an empty neighbourhood is OMITTED, and the page keeps no inline card markup", () => {
   const page = fs.readFileSync("client/src/pages/discover-location.tsx", "utf8");
-  assert.ok(page.includes("<FeedNeighbourhoodWantedCard"), "BentoTile renders the family card");
+  // RULING (Leon, Nov 12 2026): no recruit card reaches this page — the Wanted hero included — so
+  // the family card is not rendered here at all, and an unstocked neighbourhood is omitted whole.
+  assert.equal(page.includes("<FeedNeighbourhoodWantedCard"), false, "no Wanted hero is rendered");
+  assert.match(
+    page,
+    /if \(neighbourhood && neighbourhoodIsUnstocked\(neighbourhood\)\) return null;/,
+    "an unstocked neighbourhood is omitted instead of filled",
+  );
   assert.equal(page.includes("function NeighbourhoodWantedPanel"), false);
   assert.equal(/function \w+Card\(/.test(page), false, "no inline *Card component in the page");
   assert.equal(page.includes("function assignBentoSpans"), false, "span math lives in lib/bento-spans.ts");
+  // The component is KEPT by the ruling (an /earn lane mounts or deletes it), just unmounted here.
   const card = fs.readFileSync("client/src/components/feed/neighbourhood-wanted-card.tsx", "utf8");
   assert.ok(card.includes("export function FeedNeighbourhoodWantedCard"));
 });
