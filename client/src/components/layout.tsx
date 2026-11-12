@@ -802,9 +802,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </a>
 
       {/* LW-1f: the launch-market ribbon, above the header, on the public marketing pages only
-          (lib/ticker-mount). Cut-list #1 slice A took /experiences OFF that list — the ribbon still
-          belongs on the marketing pages, it just left the traveler path (Leon, Nov 10, 11:51 AM ET). */}
-      {showsTicker(location) && <CityTickerTape />}
+          (lib/ticker-mount). QA round 3 ruling 7: it is off the TRAVELER path, so a signed-in member
+          never sees it — and while auth is still unknown the ribbon is HELD rather than flashed
+          (an unknown viewer is treated as a member). The rule itself lives in ticker-mount.ts. */}
+      {showsTicker(location, { signedIn: !!user, authSettled: !isAuthLoading }) && <CityTickerTape />}
 
       {/* TEST 5 — aria-label="Main navigation" announces the landmark to screen readers */}
       <nav

@@ -58,7 +58,7 @@ const page = fs.readFileSync("client/src/pages/discover-location.tsx", "utf8");
 const between = (src: string, start: string, end: string) => src.slice(src.indexOf(start), src.indexOf(end, src.indexOf(start)));
 // Row 301 moved the panel out of the page into its own card file.
 const panelSrc = fs.readFileSync("client/src/components/feed/neighbourhood-wanted-card.tsx", "utf8");
-const emptyMarketSrc = between(page, 'data-testid="section-expert-recruitment-generic"', "</div>");
+// QA3 ruling 2 (d): there is no empty-market card left to slice — W3 asserts its absence below.
 
 describe("row 300b — Wanted tiles make no demand claim", () => {
   it("W1: no count, no 'want this', no badge, no eyebrow, at demandCount 0, 3 and 12", () => {
@@ -80,9 +80,12 @@ describe("row 300b — Wanted tiles make no demand claim", () => {
     assert.equal(panelSrc.includes("Wanted here"), false);
   });
 
-  it("W3: the empty-market card has no 'Travelers are looking' line", () => {
-    assert.ok(emptyMarketSrc.length > 0, "empty-market card found");
-    assert.equal(/Travelers are looking/i.test(emptyMarketSrc), false);
+  it("W3: the empty-market card is GONE from the traveler feed (QA3 ruling 2 (d))", () => {
+    // The section, its "Local experts wanted in {City}" line and its "Start earning" link are all
+    // removed with the ruling; the honest empty state is the page's own, with no new string.
+    assert.equal(page.includes('data-testid="section-expert-recruitment-generic"'), false, "section retired");
+    assert.equal(page.includes('data-testid="link-expert-recruitment-earn"'), false, "its link retired");
+    assert.equal(/Local experts wanted in/i.test(page), false, "its copy retired");
   });
 
   it("W4: no trending, popular, best, founding or PayPal in either component", () => {

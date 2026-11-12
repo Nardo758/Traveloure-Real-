@@ -172,8 +172,14 @@ describe("slice A — the plan state is computed once; header fix v2 renders it 
     const betaLink = LAYOUT.indexOf('data-testid="link-beta"');
     assert.ok(logoEnd > 0 && betaLink > logoEnd, "BETA sits AFTER the logo link closes");
     assert.match(LAYOUT, /href="\/discover\/location\/Kyoto"/, "…and points at the launch surface");
-    // The ribbon KEEPS its mount on the marketing pages; the traveler path is what it left.
-    assert.match(LAYOUT, /\{showsTicker\(location\) && <CityTickerTape \/>\}/, "the ribbon still mounts");
+    // The ribbon KEEPS its mount on the marketing pages; the traveler path is what it left, and
+    // since QA3 ruling 7 the mount also asks WHO is looking (signed-in ⇒ no ribbon; auth unsettled
+    // ⇒ held).
+    assert.match(
+      LAYOUT,
+      /\{showsTicker\(location, \{ signedIn: !!user, authSettled: !isAuthLoading \}\) && <CityTickerTape \/>\}/,
+      "the ribbon still mounts, behind the auth-aware rule",
+    );
     const MOUNT = fs.readFileSync("client/src/lib/ticker-mount.ts", "utf8");
     assert.doesNotMatch(MOUNT, /"\/experiences"/, "/experiences is OFF the marketing list");
     for (const marketing of ['"/"', '"/about"', '"/pricing"', '"/how-it-works"', '"/local-experts"', '"/providers"', '"/press"', '"/blog"']) {

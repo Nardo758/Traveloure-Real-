@@ -119,6 +119,19 @@ describe("K6 — where the ribbon is mounted", () => {
       assert.ok(!showsTicker(p), p);
     }
   });
+  // QA round 3, ruling 7 (Leon, Nov 11 2026): the ribbon is off the TRAVELER path, so a signed-in
+  // member never sees it — not even on the marketing pages, `/` included.
+  it("never for a signed-in member, on every path", () => {
+    for (const p of ["/", "/pricing", "/about", "/how-it-works", "/blog", "/blog/some-post", "/help/billing", "/experiences", "/plans/new"]) {
+      assert.ok(!showsTicker(p, { signedIn: true, authSettled: true }), p);
+    }
+  });
+  // …and because a member must never be flashed it, an UNKNOWN viewer is held until auth settles.
+  it("held while auth is still unknown", () => {
+    assert.equal(showsTicker("/", { authSettled: false }), false);
+    assert.equal(showsTicker("/", { signedIn: false, authSettled: false }), false);
+    assert.equal(showsTicker("/", { signedIn: false, authSettled: true }), true, "a settled guest still gets it");
+  });
 });
 
 describe("K7 — the committed route list", () => {
