@@ -204,9 +204,20 @@ async function switchKyotoExpertsOn(page: Page): Promise<() => void> {
      ON CONFLICT (setting_key) DO UPDATE SET setting_value = EXCLUDED.setting_value, updated_at = NOW()`,
   );
   await expect
-    .poll(async () => (await (await page.request.get(`${BASE_URL}/api/expert-availability?city=${encodeURIComponent("Kyoto, Japan")}`)).json()).available, {
-      timeout: 45_000,
-    })
+    .poll(
+      async () => {
+        const res = await page.request.get(
+          `${BASE_URL}/api/expert-availability?city=${encodeURIComponent("Kyoto, Japan")}`,
+        );
+        const body = (await res.json()) as { available?: boolean };
+        // A failing poll used to say only "false". The answer has two halves (the switch and the
+        // chooser), and the seeded facts sit behind a byline/storefront gate, so print what the
+        // server actually said — this is a diagnostic, not a relaxation of the assertion.
+        if (!body?.available) console.log(`[A4 probe] ${res.status()} ${JSON.stringify(body)}`);
+        return body?.available;
+      },
+      { timeout: 45_000 },
+    )
     .toBe(true);
   return () => {
     if (prior) psql(`UPDATE platform_settings SET setting_value = '${prior.replace(/'/g, "''")}' WHERE setting_key = 'expert_hook_cities'`);
