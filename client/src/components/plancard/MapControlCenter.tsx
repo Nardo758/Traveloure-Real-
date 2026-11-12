@@ -860,7 +860,7 @@ export function MapControlCenter({
                   if (guestSavesToPlan) {
                     // GATE-1: in waitlist mode the guest's add writes to the guest plan — no sign-in hand-off.
                     return (
-                      <GuestBrowseAdd testId="map-browse-add" className={addCls} savedKey={browseKey} onAdd={() => guest!.onAdd(selectedBrowse)} />
+                      <GuestBrowseAdd testId="map-browse-add" className={addCls} savedKey={browseKey} dayNumber={dayNumber ?? 1} onAdd={() => guest!.onAdd(selectedBrowse)} />
                     );
                   }
                   if (guest) {
@@ -1066,7 +1066,20 @@ function ViatorLiveRow({ city, tripId, purchasesAllowed }: { city: string; tripI
  * Cut-list #1 slice C: the guest's browse add on the map — the one add button, reading "Added ✓" (inert) once the
  * guest plan's items hold this place (R4b-3, read from the server).
  */
-function GuestBrowseAdd({ testId, className, savedKey, onAdd }: { testId: string; className: string; savedKey: string | null; onAdd: () => void }) {
+function GuestBrowseAdd({
+  testId,
+  className,
+  savedKey,
+  dayNumber,
+  onAdd,
+}: {
+  testId: string;
+  className: string;
+  savedKey: string | null;
+  /** QA round 3 PR 5: the day chip the add is saved to (`guest.onAdd` passes the same `dayNumber ?? 1`), so the label names it. */
+  dayNumber: number;
+  onAdd: () => void;
+}) {
   const { saved, inert } = useRefSavedState(savedKey);
-  return <AddToPlanButton testId={testId} className={className} pendingKey={savedKey} added={saved} addedInert={inert} onClick={onAdd} />;
+  return <AddToPlanButton testId={testId} className={className} pendingKey={savedKey} added={saved} addedInert={inert} dayNumber={dayNumber} onClick={onAdd} />;
 }

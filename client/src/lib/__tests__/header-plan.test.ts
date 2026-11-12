@@ -148,7 +148,12 @@ describe("slice A — the plan state is computed once; header fix v2 renders it 
     assert.doesNotMatch(LAYOUT, /HeaderPlanCTA/, "the nav chip is gone (decision-maker Nov 11, 2026)");
     assert.match(LAYOUT, /const headerState = headerPlanState\(/);
     assert.match(LAYOUT, /<TripStrip planState=\{headerState\} datesTarget=\{headerDates\} signedIn=\{!!user\} \/>/);
-    assert.match(LAYOUT, /useGuestPlan\(guestPresent && !user\)/, "the guest read is gated on the presence cookie");
+    // QA round 3 PR 5: the session-read half of the gate is the ONE `guestPlanReadAllowed` inside `useGuestPlan`.
+    assert.match(
+      LAYOUT,
+      /useGuestPlan\(\{ authLoading: isAuthLoading, signedIn: !!user \}, guestPresent\)/,
+      "the guest read is gated on the presence cookie and the settled session read",
+    );
     assert.match(LAYOUT, /hasGuestPresenceCookie\(document\.cookie\)/, "…by the same check shouldClaimGuestPlans uses");
     assert.match(LAYOUT, /useActivePlan\(\)/, "the signed-in plan is the ONE active-plan rule's");
   });

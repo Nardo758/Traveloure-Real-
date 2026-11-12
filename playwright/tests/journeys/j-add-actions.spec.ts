@@ -8,13 +8,13 @@ import { pickPlanDates } from "../_plan-dates-calendar";
  *
  * In waitlist mode a signed-out traveler with a guest plan opens the map, finds a fixture listing and adds it:
  *
- *   A1 the one add button reads "Add to plan"; the press shows the spinner (aria-busy) while the save is in flight
+ *   A1 the one add button reads "Add to Day 1" on the guest map (the chip's day; QA round 3 PR 5); the press shows the spinner (aria-busy) while the save is in flight
  *   A2 the first add on a plan whose dates were never chosen opens the range calendar ("When are you going?") BEFORE
  *      the item lands (QA round 3 PR 1, Leon, Nov 11, 2026): at 375px a bottom sheet; its two exits are Save and
  *      "Skip for now" (no "Not now"); nothing is sent until the answer; Skip writes the item on Day 1, and the
  *      calendar does not reopen on the next add
  *   A3 the toast reads "Added to Day 1." with Undo and Change day; the button reads "Added ✓" (inert on the guest rail)
- *   A4 Undo removes the row on the server and the button returns to "Add to plan"
+ *   A4 Undo removes the row on the server and the button returns to "Add to Day 1"
  *   A5 a failed save is the recovery toast with "Retry"; Retry adds the row
  *   A6 375px: the add button, the toast and its two actions sit inside the viewport with no horizontal scroll
  *
@@ -97,7 +97,8 @@ test("slice C — guest add: spinner, first-add calendar with Skip, Added to Day
   await page.goto("/plans/new?view=map");
   await openBrowseRow(page, listing);
   const add = testid(page, "map-browse-add");
-  await expect(add).toContainText("Add to plan");
+  // QA round 3 PR 5: the guest map's add names the day chip it saves to (the one-day placeholder plan's Day 1).
+  await expect(add).toContainText("Add to Day 1");
 
   // A1 + A5: the first save fails once — the button spins while it is in flight, then the recovery toast offers Retry.
   let release!: () => void;
@@ -164,7 +165,7 @@ test("slice C — guest add: spinner, first-add calendar with Skip, Added to Day
   // A4: Undo removes the row on the server; the button offers the add again.
   await testid(page, "toast-added-undo").click();
   await expect.poll(async () => (await guestItems(planId)).length, { timeout: 15_000 }).toBe(0);
-  await expect(add).toContainText("Add to plan", { timeout: 15_000 });
+  await expect(add).toContainText("Add to Day 1", { timeout: 15_000 });
 
   // A2 (once): the next add does not reopen the calendar.
   await add.click();
@@ -204,6 +205,9 @@ test("QA round 3 — desktop first add: the calendar is a popover at the button;
   const pop = testid(page, "first-add-dates-popover");
   await expect(pop).toBeVisible({ timeout: 10_000 });
   await expect(testid(page, "first-add-dates-sheet")).toHaveCount(0);
+  // Measured once its open animation has finished: mid-animation the panel is still sliding its last 8px toward the
+  // button (`slide-in-from-*-2`), so its box overlaps the button and the placement check flaked (QA round 3 PR 5).
+  await pop.evaluate((el) => Promise.all(el.getAnimations({ subtree: true }).map((a) => a.finished)));
   // Anchored at the pressed button: the panel opens beside it, not centred on the page.
   const [btn, box] = [await add.boundingBox(), await pop.boundingBox()];
   expect(btn && box, "rendered").toBeTruthy();

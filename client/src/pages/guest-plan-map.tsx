@@ -79,7 +79,7 @@ export default function GuestPlanMapPage() {
   const { user, isLoading } = useAuth();
   const { mode } = useSignupMode();
   // N-5 (round 2): the tab names the guest's plan once it is read; "Traveloure" until then — never the last page's title.
-  const guestPlanForTitle = useGuestPlan(!isLoading && !user && mode === "waitlist");
+  const guestPlanForTitle = useGuestPlan({ authLoading: isLoading, signedIn: !!user }, mode === "waitlist");
   useDocumentTitle(guestPlanForTitle.data?.plan.title ?? null);
   // GATE-1B (ledger `2026-11-04-gate1b-guest-plan`): in waitlist mode a signed-out visitor gets a server-side plan
   // here — no sign-in wall. Open mode keeps the sign-in path below, unchanged.
@@ -245,7 +245,8 @@ function WaitlistGuestPlan() {
   const startedRef = useRef(false);
   const [creating, setCreating] = useState(() => !!recordRef.current);
   const [createFailed, setCreateFailed] = useState(false);
-  const planQ = useGuestPlan(!creating);
+  const { user: planUser, isLoading: planAuthLoading } = useAuth();
+  const planQ = useGuestPlan({ authLoading: planAuthLoading, signedIn: !!planUser }, !creating);
 
   useEffect(() => {
     const record = recordRef.current;

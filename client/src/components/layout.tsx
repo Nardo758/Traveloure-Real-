@@ -653,11 +653,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
   // `?tripId=`, then the pen, then the most recently updated un-finalized plan — the one rule the
   // picker and the pending-add flush read too.
   const guestPresent = typeof document !== "undefined" && hasGuestPresenceCookie(document.cookie);
-  const guestPlanQuery = useGuestPlan(guestPresent && !user);
+  const guestPlanQuery = useGuestPlan({ authLoading: isAuthLoading, signedIn: !!user }, guestPresent);
   const { trips: headerTrips, bound: headerBound, loading: headerTripsLoading } = useActivePlan();
   const headerState = headerPlanState({
     isSignedIn: !!user,
-    guestStatus: guestPlanQuery.isLoading
+    // QA round 3 PR 5: the guest read waits for the session read (`guestPlanReadAllowed`); until then a browser with a
+    // guest is "loading", never "idle" (a disabled query does not report loading).
+    guestStatus: guestPlanQuery.isLoading || (guestPresent && isAuthLoading)
       ? "loading"
       : guestPlanQuery.isError
         ? "error"

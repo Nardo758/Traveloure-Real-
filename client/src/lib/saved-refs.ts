@@ -13,7 +13,7 @@ import { QueryClient, QueryClientContext, useQuery, type QueryClient as QC } fro
 import { savedRefKeyOfItem } from "@shared/plan-item-ref";
 import { useSignupMode } from "./signup-mode";
 import { fetchUser } from "@/hooks/use-auth";
-import { fetchGuestPlan, GUEST_PLAN_QUERY_KEY, type GuestPlanView } from "./waitlist-guest-plan";
+import { fetchGuestPlan, GUEST_PLAN_QUERY_KEY, guestPlanReadAllowed, type GuestPlanView } from "./waitlist-guest-plan";
 
 export function savedRefKey(ref: { kind?: string | null; source_id?: string | null } | null | undefined): string | null {
   const kind = typeof ref?.kind === "string" ? ref.kind.trim() : "";
@@ -71,7 +71,7 @@ function useSavedRefRead(): { keys: ReadonlySet<string>; guestRail: boolean } {
     qc,
   );
   const guest = useQuery<GuestPlanView | null>(
-    { queryKey: GUEST_PLAN_QUERY_KEY, queryFn: fetchGuestPlan, retry: false, staleTime: 30_000, enabled: authKnown && !signedIn && mode === "waitlist" },
+    { queryKey: GUEST_PLAN_QUERY_KEY, queryFn: fetchGuestPlan, retry: false, staleTime: 30_000, enabled: !!client && guestPlanReadAllowed({ authLoading: !authKnown, signedIn }) && mode === "waitlist" },
     qc,
   );
   return useMemo(() => {

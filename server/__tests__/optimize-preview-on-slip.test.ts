@@ -38,6 +38,8 @@ import {
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const routesSrc = readFileSync(join(ROOT, "server", "routes", "optimization.routes.ts"), "utf-8");
+// QA round 3 PR 5: the GET's reads and assembly moved into this service (the route keeps the gate and calls it).
+const tripPreviewSrc = readFileSync(join(ROOT, "server", "services", "optimization-preview-trip.service.ts"), "utf-8");
 const serviceSrc = readFileSync(
   join(ROOT, "server", "services", "optimization-preview.service.ts"),
   "utf-8",
@@ -227,11 +229,9 @@ test("S1: ONE heuristic — the routes file never calls calculateItineraryMetric
 });
 
 test("S2: BOTH entries call the one heuristic — the cart's POST and the slip's trip-addressed GET", () => {
-  assert.equal(
-    (routesSrc.match(/computeOptimizationPreviewHeuristic\(/g) ?? []).length,
-    2,
-    "two callers, one implementation",
-  );
+  // The cart's POST calls it in the route; the slip's GET calls it through `buildTripPreviewResponse` (QA round 3 PR 5).
+  assert.equal((routesSrc.match(/computeOptimizationPreviewHeuristic\(/g) ?? []).length, 1, "the POST's caller");
+  assert.equal((tripPreviewSrc.match(/computeOptimizationPreviewHeuristic\(/g) ?? []).length, 1, "the GET's caller");
   assert.ok(routesSrc.includes('router.post("/api/optimization-preview"'));
   assert.ok(routesSrc.includes('router.get("/api/optimization-preview"'));
   // …and the cart still reaches the heuristic through that same endpoint.
@@ -242,8 +242,9 @@ test("S3: the trip-addressed entry reads the optimizer's own read-set, not a cli
   const getBlock =
     routesSrc.split('router.get("/api/optimization-preview"')[1]?.split("\nrouter.")[0] ?? "";
   assert.ok(getBlock.length > 0, "the GET handler exists");
+  assert.ok(getBlock.includes("buildTripPreviewResponse(tripId)"), "the GET reads through the trip preview service");
   assert.ok(
-    getBlock.includes("loadTripOptimizerInputs(tripId)"),
+    /inputs: loadTripOptimizerInputs\b/.test(tripPreviewSrc),
     "the same read-set the paid run uses (optimizer-baseline.service.ts)",
   );
   assert.ok(
@@ -251,7 +252,7 @@ test("S3: the trip-addressed entry reads the optimizer's own read-set, not a cli
     "the slip sends an id and nothing else — no item list off the wire (§14 reads)",
   );
   assert.ok(
-    routesSrc.includes('from "../services/optimizer-baseline.service"'),
+    tripPreviewSrc.includes('from "./optimizer-baseline.service"'),
     "the read-set is imported, never re-expressed",
   );
 });

@@ -339,8 +339,15 @@ export async function createGuestPlan(hash: string, body: z.infer<typeof guestPl
   // no new plan, no prompt. A create that names no occasion (a city-page save) answers the plan as it stands.
   const existing = await readGuestPlan(hash);
   if (existing) {
-    if (!occasionSlug) return { ok: true, view: existing, created: false };
-    const patch: Record<string, unknown> = { occasionSlug, eventType };
+    // QA round 3 Major 4 (Leon, Nov 12, 2026): a create that states a party saves it on the existing plan too (TB4's
+    // 40 adults were dropped here — the plan answered as it stood). Through the ONE party patch `updateGuestPlan` uses.
+    const party = guestPartyPatch(body, { adults: existing.plan.adults, kids: existing.plan.kids });
+    if (!occasionSlug) {
+      if (!party) return { ok: true, view: existing, created: false };
+      await storage.updateTrip(existing.plan.id, party as any);
+      return { ok: true, view: (await readGuestPlan(hash)) ?? existing, created: false };
+    }
+    const patch: Record<string, unknown> = { occasionSlug, eventType, ...(party ?? {}) };
     if (body.title) patch.title = body.title;
     if (body.startDate && body.endDate) {
       patch.startDate = body.startDate;
@@ -391,6 +398,25 @@ export function isUniqueViolation(err: unknown): boolean {
   return e?.code === "23505" || e?.cause?.code === "23505";
 }
 
+/**
+ * The party columns a guest create or update writes: the stated `adults` / `kids`, and `number_of_travelers` derived
+ * from the pair (`partyTotal`; NULL when adults is unstated — LD 33, never 2). Null when the body states no party.
+ */
+export function guestPartyPatch(
+  body: { adults?: number | null; kids?: number | null },
+  current: { adults: number | null | undefined; kids: number | null | undefined },
+): Record<string, unknown> | null {
+  if (body.adults === undefined && body.kids === undefined) return null;
+  const patch: Record<string, unknown> = {};
+  if (body.adults !== undefined) patch.adults = body.adults;
+  if (body.kids !== undefined) patch.kids = body.kids;
+  const adults = body.adults !== undefined ? body.adults : current.adults ?? null;
+  const kids = body.kids !== undefined ? body.kids : current.kids ?? null;
+  const total = adults != null ? partyTotal(adults, kids) : undefined;
+  patch.numberOfTravelers = total ?? null;
+  return patch;
+}
+
 export async function updateGuestPlan(hash: string, body: z.infer<typeof guestPlanUpdateBody>): Promise<GuestPlanView | null> {
   const trip = await currentGuestTrip(hash);
   if (!trip) return null;
@@ -399,14 +425,7 @@ export async function updateGuestPlan(hash: string, body: z.infer<typeof guestPl
     patch.startDate = body.startDate;
     patch.endDate = body.endDate;
   }
-  if (body.adults !== undefined) patch.adults = body.adults;
-  if (body.kids !== undefined) patch.kids = body.kids;
-  if (body.adults !== undefined || body.kids !== undefined) {
-    const adults = body.adults !== undefined ? body.adults : trip.adults ?? null;
-    const kids = body.kids !== undefined ? body.kids : trip.kids ?? null;
-    const total = adults != null ? partyTotal(adults, kids) : undefined;
-    patch.numberOfTravelers = total ?? null;
-  }
+  Object.assign(patch, guestPartyPatch(body, { adults: trip.adults ?? null, kids: trip.kids ?? null }) ?? {});
   // The re-date stamp, market and zone derivations ride the ONE writer (LD 30, R-4).
   await storage.updateTrip(trip.id, patch as any);
   return readGuestPlan(hash);

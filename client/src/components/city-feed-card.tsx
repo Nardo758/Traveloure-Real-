@@ -1,3 +1,4 @@
+import { useFeedAddDay } from "@/lib/feed-add-day";
 import React, { useEffect, useState } from "react";
 import { eventPlacementHints } from "@shared/plan-item-ref";
 import { useImpressionTracker } from "@/hooks/use-impression-tracker";
@@ -598,7 +599,7 @@ interface MoreInfoSheetProps {
    * (waitlist + signed out); otherwise `onAdd` is the card's own add path under the card's own label.
    */
   /** CAP-2 Phase 3: the drawer's save, rendered by PlanActions ("Save to plan" / "Saved to plan"). */
-  action?: { placeable: boolean; savedKey: string | null; onAdd?: () => void; disabled?: boolean; city?: string | null } | null;
+  action?: { placeable: boolean; savedKey: string | null; onAdd?: () => void; disabled?: boolean; city?: string | null; dayNumber?: number | null } | null;
 }
 
 // C3 / R4 (cosmetic-public-surfaces dispatch): at desktop widths the details sheet opened as a
@@ -638,6 +639,7 @@ export function EventSheetBody({ data, action }: { data: any; action?: MoreInfoS
         save={{
           placeable: action.placeable,
           savedKey: action.savedKey,
+          dayNumber: action.dayNumber ?? null,
           disabled: action.disabled,
           testId: `btn-add-event-sheet-${data.id}`,
           className: "self-start inline-flex h-8 items-center rounded-md border border-border px-3 text-xs font-semibold",
@@ -1086,7 +1088,9 @@ export function CityFeedCardGem({
     sourceImpressionId: getImpressionId(),
     sourceContentId: gem.id,
   });
-  const gemSave = feedSaveIntent({ type: "gem", sourceContentId: gem.id }, city);
+  // QA round 3 PR 5: a day-filtered feed on a confirmed plan names the day the add lands on ("Add to Day {n}").
+  const gemAddDay = useFeedAddDay(scheduledDate);
+  const gemSave = { ...feedSaveIntent({ type: "gem", sourceContentId: gem.id }, city), dayNumber: gemAddDay };
   const { srcSet, sizes } = buildSrcSet(photoUrl);
 
   const isRow = layout === "row";
@@ -1454,7 +1458,8 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd: onAddProp
     // CAP-2 Phase 2 (A-29): a partner event's own start and end ride as placement hints.
     ...(isCityEvent ? {} : eventPlacementHints(event)),
   });
-  const eventSave = feedSaveIntent(eventRef, city);
+  const eventAddDay = useFeedAddDay(scheduledDate);
+  const eventSave = { ...feedSaveIntent(eventRef, city), dayNumber: eventAddDay };
   const sheetAction = {
     ...eventSave,
     city,
@@ -1756,7 +1761,8 @@ export function CityFeedCardVendorService({ service, city, className, cardPositi
     sourceImpressionId: getImpIdVendor(),
     sourceContentId: String(service.id),
   });
-  const svcSave = feedSaveIntent({ type: "service", sourceContentId: String(service.id) }, city);
+  const svcAddDay = useFeedAddDay(scheduledDate);
+  const svcSave = { ...feedSaveIntent({ type: "service", sourceContentId: String(service.id) }, city), dayNumber: svcAddDay };
 
   // A vendor-service is a real provider_services row: it books in-app on
   // /services/:id through the audited /api/checkout rail, so its native booking
@@ -2101,7 +2107,8 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd: onA
     sourceImpressionId: getImpIdSupply(),
     sourceContentId: String(item.id ?? ""),
   });
-  const supplySave = feedSaveIntent({ type: isHotel ? "hotel" : "activity", sourceContentId: String(item.id ?? "") }, city);
+  const supplyAddDay = useFeedAddDay(scheduledDate);
+  const supplySave = { ...feedSaveIntent({ type: isHotel ? "hotel" : "activity", sourceContentId: String(item.id ?? "") }, city), dayNumber: supplyAddDay };
   const { srcSet, sizes } = buildSrcSet(photoUrl);
 
   // Partner amounts render in the source currency. No currency ⇒ "See current price", never a "$" prefix (LC-1).
