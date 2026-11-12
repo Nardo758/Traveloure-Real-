@@ -582,8 +582,18 @@ export async function claimGuestPlans(hash: string, userId: string): Promise<str
  * cart line (LD 39: the cart IS that projection; no second store). Runs AFTER the claim commits, so the projection
  * reads the new owner; a failure here never fails the claim (§15b) — the items stay on the plan, routable by hand.
  * Partner (affiliate) items, events and free places are never carted: nothing on the platform sells them.
+ *
+ * Cut-list #1 slice D: a failure is caught PER ITEM, so one item's projection error never stops the rest of its plan.
+ * An item whose flip committed but whose line was not written stays `ready_for_checkout`; the next
+ * `syncItemProjection` of that item (any later plan write) writes the line. `deps.sync` is the test seam that forces a
+ * projection failure; production passes nothing.
  */
-export async function projectClaimedBookableItems(tripIds: string[], userId: string): Promise<{ carted: string[] }> {
+export async function projectClaimedBookableItems(
+  tripIds: string[],
+  userId: string,
+  deps: { sync?: typeof syncItemProjection } = {},
+): Promise<{ carted: string[] }> {
+  const sync = deps.sync ?? syncItemProjection;
   const carted: string[] = [];
   if (tripIds.length === 0) return { carted };
   for (const tripId of tripIds) {
@@ -626,8 +636,12 @@ export async function projectClaimedBookableItems(tripIds: string[], userId: str
           return out.length > 0;
         });
         if (!flipped) continue;
-        const sync = await syncItemProjection(r.id);
-        if (sync.action === "upserted") carted.push(r.id);
+        try {
+          const out = await sync(r.id);
+          if (out.action === "upserted") carted.push(r.id);
+        } catch (err: any) {
+          logger.warn({ tripId, itemId: r.id, code: err?.code, err: err?.message }, "guest claim: cart projection failed (the claim stands)");
+        }
       }
     } catch (err: any) {
       logger.warn({ tripId, code: err?.code, err: err?.message }, "guest claim: cart projection failed; items stay on the plan");

@@ -56,7 +56,7 @@ import {
   updateGuestPlan,
   useGuestPlan,
 } from "@/lib/waitlist-guest-plan";
-import { GUEST_PLAN_COPY, guestPlanKeptLine } from "@shared/guest-plan-copy";
+import { GUEST_PLAN_COPY, guestPlanNotice } from "@shared/guest-plan-copy";
 import {
   GUEST_GATE_DISMISS,
   GUEST_GATE_TITLE,
@@ -358,7 +358,8 @@ function WaitlistGuestPlan() {
           </h1>
         ) : null}
         <p className="text-xs text-muted-foreground" data-testid="guest-plan-kept">
-          {guestPlanKeptLine(view.retentionDays)}
+          {/* Cut-list #1 slice D: the one notice line (30 days ⇒ "Saved on this device for 30 days"). */}
+          {guestPlanNotice(view.retentionDays)}
         </p>
       </div>
 

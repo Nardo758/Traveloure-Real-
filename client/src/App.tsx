@@ -1611,6 +1611,9 @@ function GuestCartMigrator() {
         // "refresh the list without navigating" branch is retired). Nothing claimed ⇒ the traveler stays put.
         void claimGuestPlans((user as any)?.id ?? null).then(async (ids) => {
           if (ids.length === 0) return;
+          // Cut-list #1 slice D: the claim turned the plan's bookable items into cart lines (server-side, after the
+          // claim commits), so the cart is re-read rather than showing its pre-claim count.
+          qc.invalidateQueries({ queryKey: ["/api/cart"] });
           const to = claimLandingPath(ids);
           // Cut-list #1 header fix v2 (the ONE active-plan rule): the claimed plan is BOUND into the pen the
           // moment the claim resolves, so the strip, the nav slot and the picker name it before the slip's own
