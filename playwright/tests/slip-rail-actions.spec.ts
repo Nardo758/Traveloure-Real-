@@ -214,10 +214,27 @@ async function switchKyotoExpertsOn(page: Page): Promise<() => void> {
            'forms', (SELECT json_agg(json_build_object('status', status, 'identity', identity_verification_status, 'stripe', stripe_connect_status))
                        FROM local_expert_forms WHERE email LIKE '%@traveloure-qa.test'),
            'handle', (SELECT count(*) FROM users WHERE email LIKE '%@traveloure-qa.test' AND handle IS NOT NULL AND coalesce(is_test, false) = false),
-           'listings', (SELECT count(*) FROM provider_services WHERE approval_status = 'approved' AND status = 'active' AND expert_offering_type_key IS NOT NULL)
+           'listings', (SELECT count(*) FROM provider_services WHERE approval_status = 'approved' AND status = 'active' AND expert_offering_type_key IS NOT NULL),
+           'is_test_count', (SELECT count(*) FROM users WHERE email LIKE '%@traveloure-qa.test' AND coalesce(is_test, false))
          )::text`,
       ),
   );
+  // The byline gate's fourth fact is `storefrontLive` = `loadStorefront(handle) != null`. Probe the
+  // public read that answers it, plus the public directory, so a failure names the failing link.
+  const seededHandle = psql(
+    `SELECT handle FROM users WHERE email LIKE '%@traveloure-qa.test' AND handle IS NOT NULL LIMIT 1`,
+  );
+  if (seededHandle) {
+    const storefront = await page.request.get(`${BASE_URL}/s/${encodeURIComponent(seededHandle)}`);
+    const directory = await page.request.get(`${BASE_URL}/api/experts?city=${encodeURIComponent("Kyoto")}`);
+    const directoryBody = await directory.text();
+    console.log(
+      `[A4 probe2] handle=${seededHandle} storefront=${storefront.status()} directory=${directory.status()} ` +
+        `directoryHasFixture=${directoryBody.includes("Fixture")}`,
+    );
+  } else {
+    console.log("[A4 probe2] no seeded handle found");
+  }
   await expect
     .poll(
       async () => {
