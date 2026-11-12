@@ -203,6 +203,21 @@ async function switchKyotoExpertsOn(page: Page): Promise<() => void> {
     `INSERT INTO platform_settings (setting_key, setting_value) VALUES ('expert_hook_cities', '["kyoto"]')
      ON CONFLICT (setting_key) DO UPDATE SET setting_value = EXCLUDED.setting_value, updated_at = NOW()`,
   );
+  // A failing poll used to say only "false". The answer has two halves (the switch and the chooser)
+  // and the chooser reads a byline gate plus routability, so print the seeded FACTS once — a
+  // diagnostic, never a relaxation of the assertion.
+  console.log(
+    "[A4 facts] " +
+      psql(
+        `SELECT json_build_object(
+           'setting', (SELECT setting_value FROM platform_settings WHERE setting_key = 'expert_hook_cities'),
+           'forms', (SELECT json_agg(json_build_object('status', status, 'identity', identity_verification_status, 'stripe', stripe_connect_status))
+                       FROM local_expert_forms WHERE email LIKE '%@traveloure-qa.test'),
+           'handle', (SELECT count(*) FROM users WHERE email LIKE '%@traveloure-qa.test' AND handle IS NOT NULL AND coalesce(is_test, false) = false),
+           'listings', (SELECT count(*) FROM provider_services WHERE approval_status = 'approved' AND status = 'active' AND expert_offering_type_key IS NOT NULL)
+         )::text`,
+      ),
+  );
   await expect
     .poll(
       async () => {
