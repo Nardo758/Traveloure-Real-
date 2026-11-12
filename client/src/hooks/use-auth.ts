@@ -2,6 +2,10 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { User } from "@shared/models/auth";
 import { forgetPhonePushOnSignOut } from "@/lib/web-push";
 import { clearPaymentMethodPromptDismissed } from "@/lib/payment-method-setup";
+import { clearGuestClaimMemo, hasGuestClaimMemo } from "@/lib/waitlist-guest-plan";
+
+/** QA round 3 PR 3: did this page hold a signed-in session (the last `/api/auth/user` answered a user)? */
+let sessionSeen = false;
 
 export async function fetchUser(): Promise<User | null> {
   const response = await fetch("/api/auth/user", {
@@ -9,6 +13,10 @@ export async function fetchUser(): Promise<User | null> {
   });
 
   if (response.status === 401) {
+    // QA round 3 PR 3 (Leon, Nov 11, 2026): a 401 after a session had existed (seen on this page, or recorded by this
+    // tab's claim memo) forgets the claim memo, so the next sign-in in this tab claims again.
+    if (sessionSeen || hasGuestClaimMemo()) clearGuestClaimMemo();
+    sessionSeen = false;
     return null;
   }
 
@@ -16,7 +24,9 @@ export async function fetchUser(): Promise<User | null> {
     throw new Error(`${response.status}: ${response.statusText}`);
   }
 
-  return response.json();
+  const user = (await response.json()) as User | null;
+  if (user) sessionSeen = true;
+  return user;
 }
 
 async function logout(): Promise<void> {
@@ -37,6 +47,10 @@ async function logout(): Promise<void> {
   if (!response.ok) {
     throw new Error(`Logout failed: ${response.status}`);
   }
+  // QA round 3 PR 3 (TB2): the claim memo and the claimed-plan hand-off survive the reload below in sessionStorage;
+  // forget them so a guest plan made after signing out is claimed by the next sign-in in this tab.
+  clearGuestClaimMemo();
+  sessionSeen = false;
   window.location.href = "/";
 }
 

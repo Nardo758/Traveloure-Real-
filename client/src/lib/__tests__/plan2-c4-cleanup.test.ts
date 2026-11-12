@@ -50,7 +50,8 @@ describe("PLAN-2 C4 cleanup", () => {
     assert.equal(shouldClaimGuestPlans({ cookieString: "", cookiesEnabled: false, localGuestId: "id" }), true, "cookies off: the page's id names the guest");
     assert.equal(shouldClaimGuestPlans({ cookieString: "", cookiesEnabled: false, localGuestId: null }), false);
     const src = read("client/src/lib/waitlist-guest-plan.ts");
-    assert.match(src, /if \(!shouldClaimGuestPlans\(\{ cookieString, cookiesEnabled, localGuestId: guestSessionId \}\)\) return \[\];\s*try \{\s*const res = await apiRequest\("POST", "\/api\/guest-plans\/claim"/);
+    // QA round 3 PR 3 (test edit): the claim answers one outcome shape; no guest is a successful empty claim.
+    assert.match(src, /if \(!shouldClaimGuestPlans\(\{ cookieString, cookiesEnabled, localGuestId: guestSessionId \}\)\) return \{ ok: true, ids: \[\] \};\s*try \{\s*const res = await apiRequest\("POST", "\/api\/guest-plans\/claim"/);
   });
 
   it("K2 the server sets the presence cookie with the guest cookie", () => {
