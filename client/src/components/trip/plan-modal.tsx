@@ -45,6 +45,8 @@ import {
   type PlanStop,
 } from "@/lib/plan-stops";
 import { savePlanStops } from "@/lib/plan-stops-writer";
+// E1: the ONE refusal sentence the calendar and both server rails already use. No new copy.
+import { LEAVE_BEFORE_ARRIVE_MESSAGE } from "@/lib/plan-dates-range";
 import { boundPlanCityChanged, sameCity } from "@/lib/plan-city";
 import { changeBoundPlanCity } from "@/lib/plan-city-writer";
 import { eventsNotYetCreated } from "@/lib/organize-events";
@@ -295,6 +297,20 @@ function formatPlanDay(ymd: string): string {
 }
 function formatPlanRange(start: string, end?: string | null): string {
   return end && end !== start ? `${formatPlanDay(start)} to ${formatPlanDay(end)}` : formatPlanDay(start);
+}
+
+/**
+ * E1: is the When range backwards? Compared as the YYYY-MM-DD prefix, exactly as
+ * `tripDateRangeRefusal` does on both server rails - never through a Date, so no timezone can flip it.
+ * A SAME-DAY range is a one-day trip and is not backwards. A `shape === "day"` occasion never asks a
+ * range at all, so it is never backwards either.
+ */
+export function planWhenIsBackwards(startDate: string, endDate: string): boolean {
+  const s = String(startDate ?? "").slice(0, 10);
+  const e = String(endDate ?? "").slice(0, 10);
+  const isDay = (v: string) => /^\d{4}-\d{2}-\d{2}$/.test(v);
+  if (!isDay(s) || !isDay(e)) return false;
+  return e < s;
 }
 
 export function PlanModal({
@@ -853,8 +869,13 @@ export function PlanModal({
       // ONE date: the plan starts and ends on it. `default_duration = "day"` is the occasion
       // saying it happens on a day, not across a range — so the end date is not a second question.
       end = start;
-    } else if (start && end && new Date(end) < new Date(start)) {
-      end = start;
+    } else if (start && end && planWhenIsBackwards(start, end)) {
+      // E1: REFUSE, never repair. This line used to rewrite `end = start`, so a backwards range
+      // became a silent one-day plan - the only place in the product that changed a traveler's
+      // answer instead of refusing it. The When step disables Save/Next, so reaching here means a
+      // stale render; the refusal is the backstop, and no PATCH is sent.
+      setSaveError(LEAVE_BEFORE_ARRIVE_MESSAGE)
+      return undefined
     }
     /**
      * §13 — A SUGGESTION IS NOT AN ANSWER. While `destinationSuggested` stands, row 1 holds the
@@ -1274,6 +1295,8 @@ export function PlanModal({
   // ── Presentation ─────────────────────────────────────────────────────────────────────────────
 
   const isLastStep = nextPlanStep(visibleSteps, step) === null;
+  // E1: a backwards range blocks Save and Next on every step, and shows the approved sentence.
+  const datesBackwards = shape !== "day" && planWhenIsBackwards(startDate, endDate);
   const back = previousPlanStep(visibleSteps, step);
   const next = nextPlanStep(visibleSteps, step);
 
@@ -1711,6 +1734,11 @@ export function PlanModal({
                       data-testid="input-etp-end-date"
                     />
                   </div>
+                  {datesBackwards && (
+                    <p className="mt-1 text-xs text-destructive" role="alert" data-testid="text-etp-dates-backwards">
+                      {LEAVE_BEFORE_ARRIVE_MESSAGE}
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -2182,7 +2210,7 @@ export function PlanModal({
               variant="outline"
               size="sm"
               onClick={() => void save()}
-              disabled={saving}
+              disabled={saving || datesBackwards}
               data-testid="button-etp-save"
             >
               {saving ? "Saving…" : "Save"}
@@ -2192,6 +2220,7 @@ export function PlanModal({
                 type="button"
                 size="sm"
                 onClick={() => goToStep(next)}
+                disabled={datesBackwards}
                 data-testid="button-planning-next"
               >
                 Next: {PLAN_STEP_LABELS[next]}
