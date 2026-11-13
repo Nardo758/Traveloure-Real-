@@ -29,7 +29,7 @@ function generateWithEvidence(evidence: unknown, missing = false) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mutation-auth-coverage-"));
   const evidencePath = path.join(dir, "evidence.json");
   if (!missing) fs.writeFileSync(evidencePath, JSON.stringify(evidence));
-  const result = spawnSync("npx", ["tsx", "scripts/generate-mutation-auth-coverage.ts"], {
+  const result = spawnSync(process.execPath, ["--import", "tsx", "scripts/generate-mutation-auth-coverage.ts"], {
     cwd: root,
     env: { ...process.env, MUTATION_AUTH_EVIDENCE_PATH: evidencePath, MUTATION_AUTH_COVERAGE_OUTPUT_DIR: dir },
     encoding: "utf8",
