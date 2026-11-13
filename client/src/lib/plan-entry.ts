@@ -462,6 +462,20 @@ export function planStartClick(handler: () => void) {
 
 export const PLAN_ENTRY_URL_STEPS = ["around", "occasion", "details"] as const;
 
+/**
+ * R4-5 (QA round 4): where a NEW plan starts. The pop-up lives on "/", never on the page whose control
+ * opened it, and it keeps none of that page's query string — building it from the current URL is what
+ * made the /experiences footer's "Start a plan" open `/experiences?start=1&step=occasion` instead of
+ * the doors' "Plan around…" step. Closing is a different job (withPlanEntryUrl against the live search,
+ * because the pop-up closes where it is) and stays with the caller.
+ *
+ * Leon accepted the consequence: a start pressed on /about now lands on "/" as well, so there is ONE
+ * start surface rather than one per page.
+ */
+export function planEntryHref(step?: string | null): string {
+  return `/${withPlanEntryUrl("", true, step)}`;
+}
+
 export function planEntryUrlRequested(search: string): boolean {
   return new URLSearchParams(search.startsWith("?") ? search.slice(1) : search).get("start") === "1";
 }

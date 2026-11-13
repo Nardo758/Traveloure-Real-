@@ -36,6 +36,11 @@ function invalidatePlan(tripId: string) {
   void queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
   void queryClient.invalidateQueries({ queryKey: ["/api/trips", tripId] });
   void queryClient.invalidateQueries({ queryKey: [api.trips.get.path, tripId] }); // ENTRY-1: the slip header's trip read
+  // R4-7 (QA round 4): the "Who's coming?" label and the Travel party chip each subscribe to the
+  // trips family under their OWN key shape, so the three exact keys above missed them and a save only
+  // showed up after a reload. A prefix invalidation covers every shape under /api/trips/:id (the chip
+  // counts the same party facts the board does), which is the ONE refresh this panel needs on save.
+  void queryClient.invalidateQueries({ queryKey: ["/api/trips"] });
 }
 
 /**

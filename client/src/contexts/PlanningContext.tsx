@@ -42,7 +42,7 @@ import { OCCASION_SAVE_FAILED, sendWithRetry } from "@/lib/occasion-save";
 import { type OccasionPickerGroup } from "@shared/experience-group";
 import { travelersForSave } from "@shared/plan-vocabulary";
 import type { ExperiencesPick } from "@/lib/plan-entry";
-import { planEntryMintBasics, planEntryUrlRequested, withPlanEntryUrl } from "@/lib/plan-entry";
+import { planEntryHref, planEntryMintBasics, planEntryUrlRequested, withPlanEntryUrl } from "@/lib/plan-entry";
 // The ONE resolver of an earner's public path (LD 40) — read by D15's return-to below.
 import { earnerProfilePath } from "@/lib/earner-address";
 import { withPlanTripId } from "@/lib/experts-browse";
@@ -756,11 +756,20 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** ENTRY-1: write the new-plan pop-up's URL state (`?start=1&step=`), keeping every other param. */
+/**
+ * ENTRY-1: write the new-plan pop-up's URL state (`?start=1&step=`).
+ *
+ * R4-5 (QA round 4): a start is always the ROOT URL — `planEntryHref(step)` — and never the current
+ * pathname or search. Building it from the live location is what turned the /experiences footer's
+ * "Start a plan" into `/experiences?start=1&step=occasion` instead of the doors' "Plan around…" step;
+ * a start pressed on /about now lands on "/" too (Leon accepted that, one start surface). CLOSING is
+ * unchanged: the pop-up closes where the traveler is, so it still edits the live URL in place.
+ */
 function writeEntryUrl(mode: "push" | "replace", openFlag: boolean, step?: string | null): void {
   if (typeof window === "undefined") return;
-  const next = withPlanEntryUrl(window.location.search, openFlag, step);
-  const url = `${window.location.pathname}${next}${window.location.hash}`;
+  const url = openFlag
+    ? planEntryHref(step)
+    : `${window.location.pathname}${withPlanEntryUrl(window.location.search, false, null)}${window.location.hash}`;
   if (mode === "push") window.history.pushState({ ...(window.history.state ?? {}), planEntry: true }, "", url);
   else window.history.replaceState(window.history.state, "", url);
 }
