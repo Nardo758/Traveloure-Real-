@@ -402,7 +402,6 @@ async function resolveProviders(
         contentAffinityTags: providerServices.contentAffinityTags,
         providerFirstName: users.firstName,
         providerLastName: users.lastName,
-        providerUsername: users.username,
       })
       .from(providerServices)
       .leftJoin(users, eq(providerServices.userId, users.id))
@@ -473,7 +472,6 @@ async function resolveProviders(
 
       const providerName =
         [row.providerFirstName, row.providerLastName].filter(Boolean).join(" ").trim() ||
-        row.providerUsername ||
         "Provider";
 
       return { row, totalScore, providerName, tags };
