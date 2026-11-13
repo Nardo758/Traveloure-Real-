@@ -62,7 +62,8 @@ const SECTION_4C = [
  */
 const LEFTOVERS: Record<string, string[]> = {
   // Supply side: the expert application's questions on the Become-an-expert page.
-  "client/src/pages/travel-experts.tsx": ["best", "best", "best", "popular", "top pick/rated"],
+  // "aim for … best results" moved to shared/expert-answer-length.ts (character counter). Two "best" hits remain.
+  "client/src/pages/travel-experts.tsx": ["best", "best", "popular", "top pick/rated"],
   // Supply side: the booking agent's verification control and its toast (LD 44 vocabulary).
   "client/src/components/booking-agent/VerifyRequestButton.tsx": ["verified", "verified"],
   // A data feature's name ("Crowd Forecast"); renaming it needs its own ruling.
@@ -122,8 +123,9 @@ describe("P-8 — content round 3", () => {
     // launch-waitlist.tsx block (3 entries, 5 hits) is removed from the baseline, so the pin moves 119 → 116 and 321 → 316.
     // Lane 5 (K-7, K-8) removed 7 entries and 8 hits: 116 → 109 and 316 → 308.
     // W22 (ledger `2026-11-07-w22-build-around-copy`) deleted BuildAroundDialog's "ranked by" line: 109 → 108, 308 → 307.
+    // The local-expert counter's "best results" sentence moved to shared/expert-answer-length.ts, outside this scan: 307 → 306.
     assert.equal(entries, 108);
-    assert.equal(hits, 307);
+    assert.equal(hits, 306);
     assert.ok(entries < 133);
     const perfect = Object.values(b).filter((by) => "perfect" in by);
     assert.equal(perfect.length, 13, "files with a recorded 'perfect' hit");
