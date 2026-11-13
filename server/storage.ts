@@ -4482,7 +4482,7 @@ export class DatabaseStorage implements IStorage {
     // users row has no firstName/lastName set.
     let enrichedServices: (ProviderService & { providerFirstName?: string | null; providerLastName?: string | null; providerImageUrl?: string | null; providerRating?: string | null; providerBusinessName?: string | null; providerHandle?: string | null; providerRole?: string | null })[] = pageServices;
     if (pageServices.length > 0) {
-      const userIds = [...new Set(pageServices.map(s => s.userId))];
+      const userIds = Array.from(new Set(pageServices.map(s => s.userId)));
       const [userRows, ratingRows, formRows] = await Promise.all([
         db
           // handle: MP-2 storefront return path — nullable (migration 136); the client

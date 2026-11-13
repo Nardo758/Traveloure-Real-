@@ -256,8 +256,8 @@ export async function bootstrapProductionLedger(): Promise<MigrationResult> {
   `);
 
   const after = await readLedger();
-  const stamped = [...after].filter((f) => !before.has(f));
-  const alreadyRecorded = [...before];
+  const stamped = Array.from(after).filter((f) => !before.has(f));
+  const alreadyRecorded = Array.from(before);
 
   console.log(
     `[Migrations][Bootstrap] Stamped ${stamped.length} new entries, ` +

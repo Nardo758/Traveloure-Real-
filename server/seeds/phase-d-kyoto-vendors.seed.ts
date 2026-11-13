@@ -98,7 +98,7 @@ const CAT_KEY_TO_SLUG: Record<string, string> = {
 };
 
 async function resolveCategoryIds(): Promise<Record<string, string>> {
-  const slugs = [...new Set(Object.values(CAT_KEY_TO_SLUG))];
+  const slugs = Array.from(new Set(Object.values(CAT_KEY_TO_SLUG)));
   const rows = await db
     .select({ id: serviceCategories.id, slug: serviceCategories.slug })
     .from(serviceCategories)

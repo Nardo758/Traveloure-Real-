@@ -71,7 +71,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useContentAgentBooking } from "@/hooks/use-content-agent-booking";
-import { TransportLeg, type TransportLegData, type TransportAlternative } from "@/components/itinerary/TransportLeg";
+import { TransportLeg } from "@/components/itinerary/TransportLeg";
 import { Anchor } from "lucide-react";
 // Spec C (SLIP_EXPERIENCE_DISPATCH §4): variant columns render through the CANONICAL
 // PlanCard family's proposal stage — never a parallel renderer.
