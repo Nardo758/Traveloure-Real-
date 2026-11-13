@@ -20,6 +20,7 @@
  */
 import { GUEST_PRESENT_COOKIE } from "@shared/guest-presence";
 import { parsePlanItemRef } from "@shared/plan-item-ref";
+import { tripDateRangeRefusal } from "@shared/trip-date-range";
 import { logger } from "../infrastructure/logger";
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { isAuthenticated } from "../replit_integrations/auth";
@@ -155,6 +156,16 @@ router.patch("/api/guest-plans/current", guestOnly, async (req, res) => {
   if (!parsed.success) return res.status(400).json({ code: "invalid_body" });
   try {
     const started = Date.now();
+    // R4-8: the guest window may never be saved reversed either — the SAME rule, and the same 400 code,
+    // as the signed-in rail (PATCH /api/trips/:id). The service's own body schema already refuses a
+    // reversed PAIR (guest-plan.service.ts), but it answers the generic "invalid_body"; this answers
+    // end_before_start, and it also judges a body that moves only ONE end against the end already stored.
+    // Same-day stays valid. Line comments only here, like the rest of this file.
+    const stored = await readGuestPlan(sessionHash(req)!);
+    const nextStart = parsed.data.startDate ?? stored?.plan?.startDate ?? null;
+    const nextEnd = parsed.data.endDate ?? stored?.plan?.endDate ?? null;
+    const refusal = tripDateRangeRefusal(nextStart, nextEnd);
+    if (refusal) return res.status(400).json(refusal);
     const view = await updateGuestPlan(sessionHash(req)!, parsed.data);
     // R3-1: the server's own time for the save, so a slow "Saving…" says whether the wait was here.
     res.set("Server-Timing", `update;dur=${Date.now() - started}`);
