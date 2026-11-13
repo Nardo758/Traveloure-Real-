@@ -20,6 +20,8 @@ export const PENDING_LL1_STRINGS = {
   // PENDING Leon wording — one screen-reader label per icon
   ariaWalk: "Walk to the next stop",
   // PENDING Leon wording
+  ariaBoat: "Boat to the next stop",
+  // PENDING Leon wording
   ariaTrain: "Train to the next stop",
   // PENDING Leon wording
   ariaBus: "Bus to the next stop",
@@ -28,7 +30,7 @@ export const PENDING_LL1_STRINGS = {
 } as const;
 
 /** The four modes the spec names. Anything else — transit, tram, rideshare, drive — has no icon. */
-export type TravelModeIcon = "walk" | "train" | "bus" | "taxi";
+export type TravelModeIcon = "walk" | "train" | "bus" | "taxi" | "boat";
 
 const MODE_TO_ICON: Record<string, TravelModeIcon> = {
   walk: "walk",
@@ -40,6 +42,11 @@ const MODE_TO_ICON: Record<string, TravelModeIcon> = {
   coach: "bus",
   taxi: "taxi",
   cab: "taxi",
+  // Water travel: the two values this codebase actually uses (maps.ts/navigate.ts unions, and
+  // transport-modes.ts already draws ferry with lucide Ship). `water_taxi` is NOT a mode here - it is a
+  // localName ("Lancha / Water taxi") on a ferry profile in server/data/transport-profiles.ts.
+  ferry: "boat",
+  boat: "boat",
 };
 
 export function travelModeIcon(mode: string | null | undefined): TravelModeIcon | null {
@@ -57,6 +64,8 @@ export function travelModeAriaLabel(icon: TravelModeIcon): string {
       return PENDING_LL1_STRINGS.ariaBus;
     case "taxi":
       return PENDING_LL1_STRINGS.ariaTaxi;
+    case "boat":
+      return PENDING_LL1_STRINGS.ariaBoat;
   }
 }
 

@@ -20,7 +20,7 @@
 import { SaveToPlanButton } from "@/components/plan/SaveToPlanButton";
 import { useBookingActionsShown } from "@/lib/signup-mode";
 import { useEffect, useState } from "react";
-import { Bike, Bus, Car, CheckCircle2, Clock, Footprints, TrainFront, Trash2 } from "lucide-react";
+import { Bike, Bus, Car, CheckCircle2, Clock, Footprints, Ship, TrainFront, Trash2 } from "lucide-react";
 import { NO_TRANSIT_DRIVE_NOTE, TRANSIT_API_UNCOVERED_NOTE, routedLegLine, type RouteAnswer, type RoutingMode } from "@shared/routing-engine";
 import { Link } from "wouter";
 import { AIRPORT_LEG_MODE_LABEL, airportLegLine, type AirportLegMode } from "@shared/airport-leg";
@@ -164,6 +164,7 @@ export function StopLegRow({
               {modeIcon === "walk" ? <Footprints className="h-3.5 w-3.5" aria-hidden="true" />
                 : modeIcon === "train" ? <TrainFront className="h-3.5 w-3.5" aria-hidden="true" />
                 : modeIcon === "bus" ? <Bus className="h-3.5 w-3.5" aria-hidden="true" />
+                : modeIcon === "boat" ? <Ship className="h-3.5 w-3.5" aria-hidden="true" />
                 : <Car className="h-3.5 w-3.5" aria-hidden="true" />}
             </span>
           ) : null}

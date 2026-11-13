@@ -54,9 +54,14 @@ test("LL-1: walk, train, bus and taxi each map to their icon and label; anything
   assert.equal(travelModeIcon("train"), "train");
   assert.equal(travelModeIcon("bus"), "bus");
   assert.equal(travelModeIcon("taxi"), "taxi");
+  // Water travel: the two values the codebase actually uses (maps.ts/navigate.ts unions).
+  assert.equal(travelModeIcon("ferry"), "boat");
+  assert.equal(travelModeIcon("boat"), "boat");
+  assert.equal(travelModeIcon("FERRY"), "boat", "case does not matter");
   assert.equal(travelModeIcon("WALK"), "walk", "case does not matter");
 
-  for (const unknown of ["transit", "tram", "rideshare", "drive", "private_driver", "", null, undefined]) {
+  // water_taxi is a localName on a ferry profile, never a mode value - it must not map.
+  for (const unknown of ["transit", "tram", "rideshare", "drive", "private_driver", "water_taxi", "", null, undefined]) {
     assert.equal(travelModeIcon(unknown as any), null, `${unknown} draws no icon`);
   }
 
@@ -64,6 +69,8 @@ test("LL-1: walk, train, bus and taxi each map to their icon and label; anything
   assert.equal(travelModeAriaLabel("train"), PENDING_LL1_STRINGS.ariaTrain);
   assert.equal(travelModeAriaLabel("bus"), PENDING_LL1_STRINGS.ariaBus);
   assert.equal(travelModeAriaLabel("taxi"), PENDING_LL1_STRINGS.ariaTaxi);
+  assert.equal(travelModeAriaLabel("boat"), PENDING_LL1_STRINGS.ariaBoat);
+  assert.equal(PENDING_LL1_STRINGS.ariaBoat, "Boat to the next stop");
 });
 
 test("LL-1: the pending strings live in ONE file and are marked for Leon", () => {
@@ -71,5 +78,5 @@ test("LL-1: the pending strings live in ONE file and are marked for Leon", () =>
   assert.equal(PENDING_LL1_STRINGS.backToPlan, "Back to plan");
   assert.equal(PENDING_LL1_STRINGS.onDay(3), "On Day 3");
   const marks = (src.match(/\/\/ PENDING Leon wording/g) ?? []).length;
-  assert.ok(marks >= 6, `every placeholder is marked; found ${marks} marks`);
+  assert.ok(marks >= 7, `every placeholder is marked; found ${marks} marks`);
 });
