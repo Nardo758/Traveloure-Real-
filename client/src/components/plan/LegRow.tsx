@@ -20,13 +20,15 @@
 import { SaveToPlanButton } from "@/components/plan/SaveToPlanButton";
 import { useBookingActionsShown } from "@/lib/signup-mode";
 import { useEffect, useState } from "react";
-import { Bike, Car, CheckCircle2, Clock, Footprints, TrainFront, Trash2 } from "lucide-react";
+import { Bike, Bus, Car, CheckCircle2, Clock, Footprints, TrainFront, Trash2 } from "lucide-react";
 import { NO_TRANSIT_DRIVE_NOTE, TRANSIT_API_UNCOVERED_NOTE, routedLegLine, type RouteAnswer, type RoutingMode } from "@shared/routing-engine";
 import { Link } from "wouter";
 import { AIRPORT_LEG_MODE_LABEL, airportLegLine, type AirportLegMode } from "@shared/airport-leg";
 import { AUTHOR_TIP_MAX_CHARS, isChauffeuredMode, legModeOptions } from "@shared/trip-plan";
 import { planLegDomId, planLegPairDomId } from "@shared/plan-jump-targets";
 import { TRANSPORT_MODE_LABELS } from "@/lib/maps-platform";
+// LL-1: the leg's travel-mode icon. Unknown modes draw nothing (see lib/plan-stop-links.ts).
+import { travelModeAriaLabel, travelModeIcon } from "@/lib/plan-stop-links";
 import { TRAVEL_TIME_NOT_CHECKED_LINE } from "@/lib/slip-legs";
 import { PLAN_COMPARE_MINUTE_COPY } from "@/lib/plan-compare";
 import { LEG_ESTIMATE_MARK, legRuleClass, storedLegIsRouted } from "@/lib/leg-rule";
@@ -131,6 +133,8 @@ export function StopLegRow({
   useEffect(() => setPickupTime(leg.pickupTime ?? ""), [leg.pickupTime]);
   const pickupDirty = pickupPoint !== (leg.pickupPoint ?? "") || pickupTime !== (leg.pickupTime ?? "");
   const mode = leg.userSelectedMode || leg.recommendedMode;
+  // LL-1: walk / train / bus / taxi only; an unknown mode draws no icon.
+  const modeIcon = travelModeIcon(mode);
   const [tip, setTip] = useState(leg.authorTip ?? "");
   useEffect(() => setTip(leg.authorTip ?? ""), [leg.authorTip]);
   const tipDirty = tip.trim() !== (leg.authorTip ?? "").trim();
@@ -154,6 +158,15 @@ export function StopLegRow({
     >
       {pairId && domIds ? <span id={pairId} aria-hidden="true" /> : null}
       <p className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+          {modeIcon ? (
+            // LL-1: the leg's travel mode as an icon. Unknown modes draw nothing.
+            <span aria-label={travelModeAriaLabel(modeIcon)} title={travelModeAriaLabel(modeIcon)} data-testid={`leg-mode-icon-${leg.id}`}>
+              {modeIcon === "walk" ? <Footprints className="h-3.5 w-3.5" aria-hidden="true" />
+                : modeIcon === "train" ? <TrainFront className="h-3.5 w-3.5" aria-hidden="true" />
+                : modeIcon === "bus" ? <Bus className="h-3.5 w-3.5" aria-hidden="true" />
+                : <Car className="h-3.5 w-3.5" aria-hidden="true" />}
+            </span>
+          ) : null}
         <span className="font-medium text-foreground" data-testid={`leg-mode-${leg.id}`}>{legModeLabel(mode)}</span>
         {typeof leg.estimatedDurationMinutes === "number" ? (
           <span className="inline-flex items-center gap-0.5">
