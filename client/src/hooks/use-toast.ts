@@ -4,9 +4,16 @@ import type {
   ToastActionElement,
   ToastProps,
 } from "@/components/ui/toast"
+// R4-3 part 2: the QA-only logger. It observes; it never changes the store. Off unless ?debugToasts=1.
+import { logToastAdd, logToastDismiss, toastCallerLine, toastCloseReason, toastDebugEnabled } from "@/lib/toast-debug"
 
 const TOAST_LIMIT = 1
 const TOAST_REMOVE_DELAY = 1000000
+const TOAST_DEFAULT_DURATION_MS = 5000
+// Debug-only: when a toast started and how long it asked to live, so a close can be labelled
+// "timer" or "user" from the elapsed time. Never read on the normal path.
+const toastStartedAt = new Map<string, number>()
+const toastDurationMs = new Map<string, number>()
 
 type ToasterToast = ToastProps & {
   id: string
@@ -142,12 +149,47 @@ type Toast = Omit<ToasterToast, "id">
 function toast({ ...props }: Toast) {
   const id = genId()
 
+  // R4-3 part 2: an ADD evicts whatever sat past the limit — name it before it disappears, because
+  // that eviction is exactly the "closed early" a QA run sees. Nothing here mutates the state.
+  if (toastDebugEnabled()) {
+    for (const evicted of memoryState.toasts.slice(TOAST_LIMIT - 1)) {
+      logToastDismiss(evicted.id, evicted.title, "replaced", { replacedBy: { id, title: props.title ?? null } })
+      toastStartedAt.delete(evicted.id)
+      toastDurationMs.delete(evicted.id)
+    }
+    toastStartedAt.set(id, Date.now())
+    toastDurationMs.set(id, Number(props.duration ?? TOAST_DEFAULT_DURATION_MS))
+    logToastAdd(id, props.title, props.duration)
+  }
+
   const update = (props: ToasterToast) =>
     dispatch({
       type: "UPDATE_TOAST",
       toast: { ...props, id },
     })
-  const dismiss = () => dispatch({ type: "DISMISS_TOAST", toastId: id })
+
+  // Radix reports "closed" for its own timer AND for a user close, so the elapsed time decides.
+  const dismissFromRadix = () => {
+    if (toastDebugEnabled()) {
+      const started = toastStartedAt.get(id)
+      const duration = toastDurationMs.get(id) ?? TOAST_DEFAULT_DURATION_MS
+      const elapsed = started == null ? duration : Date.now() - started
+      logToastDismiss(id, props.title, toastCloseReason(elapsed, duration))
+      toastStartedAt.delete(id)
+      toastDurationMs.delete(id)
+    }
+    dispatch({ type: "DISMISS_TOAST", toastId: id })
+  }
+
+  // The returned dismiss() is a CALLER closing it, so it says so, with the caller line.
+  const dismiss = () => {
+    if (toastDebugEnabled()) {
+      logToastDismiss(id, props.title, "programmatic", { caller: toastCallerLine() })
+      toastStartedAt.delete(id)
+      toastDurationMs.delete(id)
+    }
+    dispatch({ type: "DISMISS_TOAST", toastId: id })
+  }
 
   dispatch({
     type: "ADD_TOAST",
@@ -156,7 +198,7 @@ function toast({ ...props }: Toast) {
       id,
       open: true,
       onOpenChange: (open) => {
-        if (!open) dismiss()
+        if (!open) dismissFromRadix()
       },
     },
   })
