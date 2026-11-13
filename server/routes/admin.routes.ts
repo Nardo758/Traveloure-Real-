@@ -8809,7 +8809,7 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
     try {
       const admin = await requireAdmin(req, res); if (!admin) return;
       const parsed = insertServiceOfferingTypeSchema.parse(req.body);
-      const [created] = await createServiceOfferingType(parsed);
+      const created = await createServiceOfferingTypeRow(parsed);
       auditOfferingWrite(admin, req, "service_offering_type_create", "service_offering_type", created.offeringTypeKey, { after: created });
       res.status(201).json(created);
     } catch (error: any) { offeringWriteError(error, res); }
@@ -8831,7 +8831,7 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
       if (b.sortOrder !== undefined) updates.sortOrder = b.sortOrder;
       if (Object.keys(updates).length === 0) return res.status(400).json({ error: "No editable fields supplied" });
       updates.updatedAt = new Date();
-      const [updated] = await updateServiceOfferingType(key, updates);
+      const updated = await updateServiceOfferingTypeRow(key, updates);
       if (!updated) return res.status(404).json({ error: "Offering type not found", key });
       auditOfferingWrite(admin, req, "service_offering_type_update", "service_offering_type", key, { after: updated });
       res.json(updated);
@@ -8842,7 +8842,7 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
     try {
       const admin = await requireAdmin(req, res); if (!admin) return;
       const key = String(req.params.key || "").trim();
-      const [deleted] = await deleteServiceOfferingType(key);
+      const deleted = await deleteServiceOfferingTypeRow(key);
       if (!deleted) return res.status(404).json({ error: "Offering type not found", key });
       auditOfferingWrite(admin, req, "service_offering_type_delete", "service_offering_type", key, { before: deleted });
       res.json({ ok: true, key });
@@ -8862,7 +8862,7 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
     try {
       const admin = await requireAdmin(req, res); if (!admin) return;
       const parsed = insertExpertOfferingTypeSchema.parse(req.body);
-      const [created] = await createExpertOfferingTypeRow(parsed);
+      const created = await createExpertOfferingTypeRow(parsed);
       auditOfferingWrite(admin, req, "expert_offering_type_create", "expert_offering_type", created.offeringTypeKey, { after: created });
       res.status(201).json(created);
     } catch (error: any) { offeringWriteError(error, res); }
@@ -8883,7 +8883,7 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
       if (b.sortOrder !== undefined) updates.sortOrder = b.sortOrder;
       if (Object.keys(updates).length === 0) return res.status(400).json({ error: "No editable fields supplied" });
       updates.updatedAt = new Date();
-      const [updated] = await updateExpertOfferingTypeRow(key, updates);
+      const updated = await updateExpertOfferingTypeRow(key, updates);
       if (!updated) return res.status(404).json({ error: "Offering type not found", key });
       auditOfferingWrite(admin, req, "expert_offering_type_update", "expert_offering_type", key, { after: updated });
       res.json(updated);
@@ -8894,7 +8894,7 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
     try {
       const admin = await requireAdmin(req, res); if (!admin) return;
       const key = String(req.params.key || "").trim();
-      const [deleted] = await deleteExpertOfferingTypeRow(key);
+      const deleted = await deleteExpertOfferingTypeRow(key);
       if (!deleted) return res.status(404).json({ error: "Offering type not found", key });
       auditOfferingWrite(admin, req, "expert_offering_type_delete", "expert_offering_type", key, { before: deleted });
       res.json({ ok: true, key });
