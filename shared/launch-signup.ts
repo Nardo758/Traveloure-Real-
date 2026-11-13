@@ -121,30 +121,19 @@ export type TravelerSignupDecision =
   | { allowed: false; reason: typeof PROVIDER_FIELDS_REQUIRED };
 
 /**
- * The ONE decision for a first-time account: open mode, supply intent or a QA sign-up (a QA-domain address AND the
- * right code — `qaSignupAllowed`) passes. WL-B: in waitlist mode a supply sign-up is decided by its role — an expert
- * is refused with `expert_apply_now`, a provider passes only with its fields, and a sign-up that names no role is
- * refused `provider_fields_required` (Leon, Oct 30, 2026: the role-less supply doors close).
+ * The ONE decision for a first-time account. Leon, Nov 11, 2026 (12:02 PM ET): waitlist mode lets every door
+ * create an account — traveler, expert, provider, and a supply sign-up that names no role. Purchases and a
+ * plan outside an open market stay refused elsewhere. The refusal variants stay on the type; this function
+ * no longer returns them.
  */
-export function decideFirstTimeSignup(input: {
+export function decideFirstTimeSignup(_input: {
   mode: TravelerSignupMode;
   intent: SignupIntent;
   qaCodeValid: boolean;
   supplyRole?: SupplySignupRole | null;
   providerFieldsValid?: boolean;
 }): TravelerSignupDecision {
-  if (input.mode === "open") return { allowed: true };
-  if (input.intent === "supply") {
-    if (input.qaCodeValid) return { allowed: true };
-    if (input.supplyRole === "expert") {
-      return { allowed: false, reason: EXPERT_APPLY_NOW, message: EXPERT_APPLY_NOW_MESSAGE, applyPath: WAITLIST_EXPERT_FORM_PATH };
-    }
-    // A provider passes only with its fields; a supply sign-up that names no role is sent to the provider email path.
-    if (input.supplyRole === "provider" && input.providerFieldsValid) return { allowed: true };
-    return { allowed: false, reason: PROVIDER_FIELDS_REQUIRED };
-  }
-  if (input.qaCodeValid) return { allowed: true };
-  return { allowed: false, code: TRAVELER_WAITLIST };
+  return { allowed: true };
 }
 
 /**

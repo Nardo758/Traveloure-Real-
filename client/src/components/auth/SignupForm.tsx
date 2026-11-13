@@ -5,21 +5,19 @@
  *   · N-2 — the same fields on both: first name, last name, email, password, and ONE required consent box
  *     ("I agree to the Terms of Service and Privacy Policy", both linked). The container adds only what is its own
  *     (the page's provider and QA fields).
- *   · N-3 — in waitlist mode a traveler is sent to the waitlist BEFORE the form renders (`useWaitlistSignupGate`); a
- *     supply sign-up and a QA sign-up are not (the server refuses on submit either way).
+ *   · N-3 — Leon, Nov 11, 2026: the form renders in waitlist mode. `useWaitlistSignupGate` no longer redirects.
  *   · N-1 — the server's register answer stays neutral by ruling (AUTH-1 3b: no session, the same answer for a new and
  *     an existing address). The form then signs in with the email and password the person just typed
  *     (`signInAfterSignup`, POST /api/auth/login — the same rail as the sign-in form) and returns them to where they
  *     came from. An account that must confirm its address lands on the verify page, which says
  *     "Check your email to confirm your account."; the origin is kept so the confirmed account returns there.
  */
-import { useEffect, useState, type ReactNode } from "react";
+import { type ReactNode } from "react";
 import { Mail, Lock, User } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { waitlistBlockedPath } from "@shared/launch-signup";
 import { readAuthResponse, type AuthResponseRead } from "@/lib/auth-response";
 import { isRegistrationNeutral } from "@shared/registration-neutral";
 import { sanitizeReturnTo } from "@/lib/safe-return-to";
@@ -144,36 +142,9 @@ export function SignupFields({ draft, onChange }: { draft: SignupDraft; onChange
  * (a supply or QA sign-up) skips the check. Until the mode answers, "checking" (the caller draws no form); a failed
  * read shows the form (the server still refuses on submit).
  */
-export function useWaitlistSignupGate(active: boolean, exempt: boolean, onRedirect?: () => void): "checking" | "form" {
-  const [state, setState] = useState<"checking" | "form">(active && !exempt ? "checking" : "form");
-  useEffect(() => {
-    if (!active || exempt) {
-      setState("form");
-      return;
-    }
-    setState("checking");
-    let cancelled = false;
-    fetch("/api/public/signup-mode", { credentials: "include" })
-      .then((r) => readAuthResponse(r))
-      .then((read) => {
-        if (cancelled) return;
-        if (read.kind === "json" && read.ok && read.data.mode === "waitlist") {
-          const slug = typeof read.data.launchMarketSlug === "string" ? read.data.launchMarketSlug : null;
-          onRedirect?.();
-          window.location.replace(waitlistBlockedPath(slug));
-          return;
-        }
-        setState("form");
-      })
-      .catch(() => {
-        if (!cancelled) setState("form");
-      });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, exempt]);
-  return state;
+export function useWaitlistSignupGate(_active: boolean, _exempt: boolean, _onRedirect?: () => void): "checking" | "form" {
+  // Leon, Nov 11, 2026: a traveler is not sent to the waitlist instead of the account form.
+  return "form";
 }
 
 /** Kept in localStorage: the verify link opens in a new tab, which has no sessionStorage of this one. */

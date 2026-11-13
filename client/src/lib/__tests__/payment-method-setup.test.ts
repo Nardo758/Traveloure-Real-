@@ -131,14 +131,13 @@ test("a traveler on a traveler page is offered the prompt", () => {
 
 test("supply routes hide the prompt, including /earn and the local-expert sign-in return", () => {
   const earn = supplySignupContinuation("?intent=supply");
-  assert.equal(earn.kind, "chooser");
+  assert.equal(earn.kind, "account");
   const local = supplySignupContinuation("?intent=supply&role=local_expert");
   assert.equal(local.kind, "application");
   const paths = [
     "/earn",
     "/earn?role=local_expert",
     "/earn/",
-    earn.kind === "chooser" ? earn.href : "",
     LOCAL_EXPERT_APPLY_PATH,
     local.kind === "application" ? local.href : "",
     "/become-expert",

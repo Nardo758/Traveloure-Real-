@@ -13262,7 +13262,7 @@ export const launchWaitlist = pgTable("launch_waitlist", {
   updatedAt: timestamp("updated_at"),
   unsubscribedAt: timestamp("unsubscribed_at"),
 }, (table) => ({
-  emailMarketUniq: uniqueIndex("uq_launch_waitlist_email_market").on(table.email, table.marketSlug),
+  emailMarketRoleUniq: uniqueIndex("uq_launch_waitlist_email_market_role").on(table.email, table.marketSlug, table.role),
   marketCreatedIdx: index("idx_launch_waitlist_market_created").on(table.marketSlug, table.createdAt),
   marketRoleIdx: index("idx_launch_waitlist_market_role").on(table.marketSlug, table.role),
 }));

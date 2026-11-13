@@ -1,10 +1,10 @@
 /**
  * S-01 / S-10 (ledger `2026-10-21-supply-entry-paths`).
  *
- *   P1  A role-less supply sign-up continues to /earn, not the account form.
+ *   P1  A role-less supply sign-up stays on the account form.
  *   P2  A named role continues to that role's one application.
  *   P3  offeringTypeKey, offeringName and source ride along; junk is omitted.
- *   P4  An unknown role is the chooser. It does not invent an application.
+ *   P4  An unknown role stays on the account form. It does not invent an application.
  *   P5  qa=1 and a non-supply intent stay on the account form.
  *   P6  The public ticker rewrites only a supply /signup href.
  *   P7  The Local Expert apply path is a same-site return, and the earn card uses it.
@@ -33,11 +33,10 @@ function hrefOf(search: string): string {
   return next.kind === "account" ? "" : next.href;
 }
 
-test("P1 — a role-less supply sign-up continues to /earn", () => {
+test("P1 — a role-less supply sign-up stays on the account form", () => {
   const next = supplySignupContinuation("?intent=supply");
-  assert.equal(next.kind, "chooser");
-  assert.equal(next.kind === "chooser" ? next.href : "", "/earn");
-  assert.equal(publicSupplyEntryHref("/signup?intent=supply"), "/earn");
+  assert.equal(next.kind, "account");
+  assert.equal(publicSupplyEntryHref("/signup?intent=supply"), "/signup?intent=supply");
 });
 
 test("P2 — each role continues to its one application", () => {
@@ -88,18 +87,13 @@ test("P3 — a safe offering and source are carried; junk is omitted", () => {
   assert.equal(carriedSupplySource("ig_dm"), "ig_dm");
 
   const chooser = supplySignupContinuation("?intent=supply&source=kyoto_waitlist_page");
-  assert.equal(chooser.kind, "chooser");
-  assert.equal(chooser.kind === "chooser" ? chooser.href : "", "/earn?source=kyoto_waitlist_page");
+  assert.equal(chooser.kind, "account");
 });
 
-test("P4 — an unknown role is the chooser and does not name an application", () => {
+test("P4 — an unknown role stays on the account form and does not name an application", () => {
   for (const role of ["provider", "expert", "admin", "//evil.example", "local_expert/../admin"]) {
     const next = supplySignupContinuation(`?intent=supply&role=${encodeURIComponent(role)}`);
-    assert.equal(next.kind, "chooser", role);
-    const href = next.kind === "chooser" ? next.href : "";
-    assert.equal(href, "/earn", role);
-    assert.equal(href.includes("become-"), false);
-    assert.equal(href.includes(role), false);
+    assert.equal(next.kind, "account", role);
   }
 });
 

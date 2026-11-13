@@ -25,6 +25,7 @@ import {
 import { Link } from "wouter";
 import { PayoutSetupPrompt } from "@/components/payout/PayoutSetupPrompt";
 import { SetupChecklistCard } from "@/components/backoffice/SetupChecklistCard";
+import { MarketWaitlistPanel } from "@/components/partner/MarketWaitlistPanel";
 import { useAuth } from "@/hooks/use-auth";
 // Ledger 90 (FP-5, X1): the ONE booking-visibility predicate shared with Inbox, Customers, Money
 // and the server aggregations — see shared/booking-visibility.ts.
@@ -366,6 +367,7 @@ export default function ProviderDashboard() {
   return (
     <ProviderLayout title="Dashboard">
       <div className="p-5 space-y-3">
+        <MarketWaitlistPanel />
         {/* Row 115: the in-app payout prompt, from /api/me/payout-setup (onboarding, or first earning). */}
         <PayoutSetupPrompt hasEarnings={(analytics?.summary?.totalRevenue ?? 0) > 0} settingsHref="/provider/settings" />
 

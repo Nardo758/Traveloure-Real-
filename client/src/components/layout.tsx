@@ -6,6 +6,7 @@ import { useLocale } from "@/hooks/use-locale";
 import { LanguageMenu } from "@/components/language-menu";
 import { useAuth } from "@/hooks/use-auth";
 import { useSignInModal } from "@/contexts/SignInModalContext";
+import { KyotoMarketNotice } from "@/components/KyotoMarketNotice";
 import { usePlanning } from "@/contexts/PlanningContext";
 import { cityPageSource, experiencesPopupSource, PLAN_START_HREF, planStartClick } from "@/lib/plan-entry";
 import { START_PLAN_LABEL } from "@/lib/plan-vocabulary";
@@ -1181,6 +1182,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
           )}
         </AnimatePresence>
       </nav>
+
+      <KyotoMarketNotice />
 
       {/* Global trip strip — THE plan surface (header fix v2): sticky under the nav, fed the one plan state. */}
       <TripStrip planState={headerState} datesTarget={headerDates} signedIn={!!user} />

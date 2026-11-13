@@ -22,6 +22,7 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import { PayoutSetupPrompt } from "@/components/payout/PayoutSetupPrompt";
+import { MarketWaitlistPanel } from "@/components/partner/MarketWaitlistPanel";
 import { Link } from "wouter";
 import { ExpertLayout } from "@/components/expert/expert-layout";
 import { PageHeader, EmptyState } from "@/components/backoffice/primitives";
@@ -604,6 +605,7 @@ export default function ExpertToday() {
             stayed gated on a handle nobody prompted them to claim. Self-gating: renders
             nothing once dismissed or when the server says not eligible/complete. */}
         <SetupChecklistCard />
+        <MarketWaitlistPanel />
 
         <TodayScheduleSection />
         <NeedsResponseSection />

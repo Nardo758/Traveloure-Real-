@@ -20,6 +20,7 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
+import fs from "node:fs";
 import express from "express";
 import type { AddressInfo } from "node:net";
 import { sql } from "drizzle-orm";
@@ -37,6 +38,7 @@ const handoffRouter = (await import("../routes/handoff.routes")).default;
 const tripPassRouter = (await import("../routes/trip-pass.routes")).default;
 const tripsRouter = (await import("../routes/trips.routes")).default;
 const readyMadeRouter = (await import("../routes/ready-made.routes")).default;
+const bookingsRouter = (await import("../routes/bookings")).default;
 
 const RUN = crypto.randomUUID().slice(0, 8);
 const P = `p1s-${RUN}`;
@@ -134,6 +136,44 @@ for (const r of ROUTES) {
     assert.ok(!isWaitlistRefusal(open), `open: ${JSON.stringify(open.body)}`);
   });
 }
+
+test("W7 POST /api/bookings/process-cart is behind the waitlist purchase gate", async () => {
+  await setMode("waitlist");
+  const app = express();
+  app.use(express.json());
+  app.use((req, _res, next) => {
+    (req as any).user = { claims: { sub: traveler, name: "T" } };
+    (req as any).isAuthenticated = () => true;
+    next();
+  });
+  app.use("/api/bookings", bookingsRouter);
+  const server = app.listen(0);
+  await new Promise<void>((r) => server.once("listening", () => r()));
+  const { port } = server.address() as AddressInfo;
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/api/bookings/process-cart`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    const body = await res.json();
+    assert.equal(res.status, 403);
+    assert.deepEqual(body, { code: TRAVELER_WAITLIST, message: TRAVELER_WAITLIST_MESSAGE });
+  } finally {
+    server.close();
+  }
+});
+
+test("W8 POST /api/expert-booking-requests checks the purchase gate before it loads a listing", () => {
+  const src = fs.readFileSync(new URL("../routes.ts", import.meta.url), "utf8");
+  const start = src.indexOf('app.post("/api/expert-booking-requests"');
+  assert.ok(start > 0);
+  const end = src.indexOf("\n  app.post(", start + 20);
+  const slice = src.slice(start, end === -1 ? start + 8000 : end);
+  const gate = slice.indexOf("waitlistPurchaseDecisionFor");
+  const listing = slice.indexOf("getProviderServiceById");
+  assert.ok(gate > 0 && listing > gate, "the gate runs before a listing is loaded");
+});
 
 test("W6 the Ready-Made purchase keeps its own waitlist refusal", async () => {
   await setMode("waitlist");

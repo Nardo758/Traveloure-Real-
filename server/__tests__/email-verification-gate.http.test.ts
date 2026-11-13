@@ -443,7 +443,7 @@ describe("traveler sign-up", () => {
     invalidatePlatformFlagCache(TRAVELER_SIGNUP_MODE_SETTING);
   });
 
-  it("waitlist refuses a traveler before an account exists, and open mode lets the new account sign in", async () => {
+  it("waitlist mode creates a traveler account, and open mode lets a new account sign in", async () => {
     const tag = crypto.randomBytes(4).toString("hex");
     await db.execute(sql`
       INSERT INTO platform_settings (setting_key, setting_value, description)
@@ -452,13 +452,13 @@ describe("traveler sign-up", () => {
     `);
     invalidatePlatformFlagCache(TRAVELER_SIGNUP_MODE_SETTING);
     const waitEmail = `s09-wait-${tag}@t.test`;
-    const refused = await request(server, "POST", "/api/auth/register", {
+    const createdWait = await request(server, "POST", "/api/auth/register", {
       body: { email: waitEmail, password: `wait-${tag}-ok`, firstName: "Wait", lastName: "List", consent: true },
     });
-    assert.equal(refused.status, 403);
-    assert.equal(refused.data.code, TRAVELER_WAITLIST);
-    const [absent] = await db.select({ id: users.id }).from(users).where(eq(users.email, waitEmail));
-    assert.equal(absent, undefined);
+    assert.equal(createdWait.status, 202);
+    const [waitRow] = await db.select({ id: users.id }).from(users).where(eq(users.email, waitEmail));
+    assert.ok(waitRow);
+    createdIds.push(waitRow.id);
 
     await db.execute(sql`
       UPDATE platform_settings SET setting_value = 'open' WHERE setting_key = ${TRAVELER_SIGNUP_MODE_SETTING}

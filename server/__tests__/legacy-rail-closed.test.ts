@@ -37,8 +37,10 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { TRAVELER_SIGNUP_MODE_SETTING } from '@shared/launch-signup';
 import { db } from '../db';
 import { bookingService } from '../services/booking.service';
+import { invalidatePlatformFlagCache, pinPlatformFlagForTests } from '../services/platform-flags';
 import bookingsRouter from '../routes/bookings';
 import {
   CANONICAL_BOOKING_RAIL,
@@ -107,6 +109,10 @@ after(() => {
 function arm() {
   statements = 0;
   serviceCalls = 0;
+  // D-12 proves the cutoff. The waitlist purchase gate sits after that switch and, in waitlist
+  // mode, refuses before the service. This proof runs with the gate open so the cutoff is what
+  // decides whether the service is entered. The waitlist refusal is pinned in its own suite.
+  pinPlatformFlagForTests(TRAVELER_SIGNUP_MODE_SETTING, "open");
   (db as any).execute = async () => { statements += 1; return { rows: [] }; };
   (db as any).transaction = async (fn: Function) => {
     statements += 1;
@@ -126,6 +132,7 @@ function disarm() {
   db.transaction = originalTransaction;
   bookingService.processCart = originalProcessCart;
   delete process.env[LEGACY_BOOKINGS_CUTOFF_ENV];
+  invalidatePlatformFlagCache(TRAVELER_SIGNUP_MODE_SETTING);
 }
 
 const iso = (offsetMs: number) => new Date(Date.now() + offsetMs).toISOString();

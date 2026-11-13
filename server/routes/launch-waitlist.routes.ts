@@ -37,7 +37,8 @@ import { getAdminRole, recordAdminAudit } from "../services/admin-query.service"
 import { getLaunchMarketSlug } from "../services/platform-flags";
 import {
   WAITLIST_CSV_COLUMNS, confirmWaitlistUnsubscribe, deleteWaitlistRow, enqueueMarketOpened, joinWaitlistMarkets,
-  revokeWaitlistUnsubscribe, searchWaitlistByEmail, waitlistCounts, waitlistExportRows,
+  leavePartnerWaitlist, listWaitlistEntries, partnerWaitlistMarkets, revokeWaitlistUnsubscribe,
+  searchWaitlistByEmail, waitlistCounts, waitlistExportRows,
 } from "../services/launch-waitlist.service";
 import {
   WAITLIST_EMAIL_ERROR, WAITLIST_SEARCH_MIN_CHARS, WAITLIST_UNKNOWN_MARKET, resolveWaitlistMarkets, waitlistCityName,
@@ -47,7 +48,10 @@ import { logger } from "../infrastructure/logger";
 import { csvCell } from "../utils/csv";
 import { resolveWaitlistReferral } from "../services/waitlist-referral.service";
 import { notifyWaitlistProviderApply } from "../services/waitlist-apply-invite-email";
-import { isAdminRole } from "@shared/roles";
+import { isAdminRole, isExpertRole, isProviderRole } from "@shared/roles";
+import { users } from "@shared/models/auth";
+import { eq } from "drizzle-orm";
+import { db } from "../db";
 
 const router = Router();
 
@@ -140,6 +144,67 @@ async function adminMarketFilter(raw: unknown): Promise<string | null | undefine
   if (raw === "all") return null;
   return typeof raw === "string" && waitlistCityName(raw) ? raw : undefined;
 }
+
+function waitlistRoleForAccount(role: string | null | undefined): "expert" | "provider" | null {
+  if (isExpertRole(role)) return "expert";
+  if (isProviderRole(role)) return "provider";
+  return null;
+}
+
+async function sessionWaitlistAccount(req: any, res: any): Promise<{ email: string; role: "expert" | "provider"; contactName: string } | null> {
+  const userId = getUserId(req);
+  if (!userId) {
+    res.status(401).json({ message: "Unauthorized" });
+    return null;
+  }
+  const [user] = await db.select({ email: users.email, role: users.role, firstName: users.firstName, lastName: users.lastName }).from(users).where(eq(users.id, userId)).limit(1);
+  const role = waitlistRoleForAccount(user?.role);
+  const email = user?.email?.trim() ?? "";
+  if (!user || !role || !email) {
+    res.status(403).json({ code: "not_earner" });
+    return null;
+  }
+  const contactName = [user.firstName, user.lastName].filter(Boolean).join(" ").trim() || email;
+  return { email, role, contactName };
+}
+
+router.get("/api/me/waitlist-markets", isAuthenticated, async (req, res) => {
+  const account = await sessionWaitlistAccount(req, res);
+  if (!account) return;
+  res.setHeader("Cache-Control", "private, no-store");
+  res.json({ role: account.role, markets: await partnerWaitlistMarkets(account.email, account.role) });
+});
+
+router.post("/api/me/waitlist-markets", isAuthenticated, async (req, res) => {
+  const account = await sessionWaitlistAccount(req, res);
+  if (!account) return;
+  const market = typeof req.body?.market === "string" ? req.body.market.trim().toLowerCase() : "";
+  if (!waitlistCityName(market)) return res.status(400).json({ error: "Please choose a city from the list.", code: WAITLIST_UNKNOWN_MARKET });
+  await joinWaitlistMarkets(
+    { role: account.role, email: account.email, contactName: account.contactName },
+    [market],
+    null,
+  );
+  res.json({ ok: true, markets: await partnerWaitlistMarkets(account.email, account.role) });
+});
+
+router.delete("/api/me/waitlist-markets/:market", isAuthenticated, async (req, res) => {
+  const account = await sessionWaitlistAccount(req, res);
+  if (!account) return;
+  const market = String(req.params.market ?? "").trim().toLowerCase();
+  if (!waitlistCityName(market)) return res.status(400).json({ error: "Please choose a city from the list.", code: WAITLIST_UNKNOWN_MARKET });
+  await leavePartnerWaitlist(account.email, account.role, market);
+  res.json({ ok: true, markets: await partnerWaitlistMarkets(account.email, account.role) });
+});
+
+router.get("/api/admin/waitlist/entries", isAuthenticated, async (req, res) => {
+  const admin = await requireAdminUser(req, res);
+  if (!admin) return;
+  const marketSlug = await adminMarketFilter(req.query.market);
+  if (marketSlug === undefined) return res.status(400).json({ error: "Unknown market", code: WAITLIST_UNKNOWN_MARKET });
+  res.setHeader("Cache-Control", "no-store");
+  res.json({ rows: await listWaitlistEntries(marketSlug) });
+});
 
 router.get("/api/admin/waitlist", isAuthenticated, async (req, res) => {
   const admin = await requireAdminUser(req, res);
