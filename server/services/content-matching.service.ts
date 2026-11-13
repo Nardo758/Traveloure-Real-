@@ -402,6 +402,7 @@ async function resolveProviders(
         contentAffinityTags: providerServices.contentAffinityTags,
         providerFirstName: users.firstName,
         providerLastName: users.lastName,
+        providerHandle: users.handle,
       })
       .from(providerServices)
       .leftJoin(users, eq(providerServices.userId, users.id))
@@ -471,8 +472,9 @@ async function resolveProviders(
       const totalScore = (availScore + affinityBonus + neighborhoodBonus + geoBonus + ratingBonus + popularityBonus + seasonalBonus) * seasonalMultiplier;
 
       const providerName =
-        [row.providerFirstName, row.providerLastName].filter(Boolean).join(" ").trim() ||
-        "Provider";
+          [row.providerFirstName, row.providerLastName].filter(Boolean).join(" ").trim() ||
+          row.providerHandle ||
+          "Provider";
 
       return { row, totalScore, providerName, tags };
     });
