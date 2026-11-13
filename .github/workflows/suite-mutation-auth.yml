@@ -155,11 +155,10 @@ jobs:
       - name: scripts/mutation-auth generator + extractor tests
         run: npx tsx --test scripts/mutation-auth/extractor.test.ts scripts/mutation-auth/coverage.test.ts
       # The NPM ALIAS, as its own step. The step above runs the two files through a bare
-      # 	sx --test; this one runs them through 	est:mutation-auth-coverage, which is the
-      # command a developer types locally — and whose inner spawn was 
-px (a .CMD on
-      # Windows, unspawnable without a shell). Running the alias on the runner is what keeps
-      # that entry point proven, and it is cheap: no server, no database.
+      # `tsx --test`; this one runs them through `test:mutation-auth-coverage`, which is the
+      # command a developer types locally, and whose inner spawn was `npx` (a `.CMD` on
+      # Windows, unspawnable without a shell). Running the alias on the runner keeps that
+      # entry point proven, and it is cheap: no server, no database.
       - name: coverage test through its npm alias (the local entry point)
         run: npm run test:mutation-auth-coverage
       # Every field a client form submits is admitted or explicitly rejected by its
