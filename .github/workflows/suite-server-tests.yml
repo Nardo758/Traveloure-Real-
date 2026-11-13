@@ -277,6 +277,10 @@ jobs:
       # The admin offering-type writes. Both families answered 500 on every write until the
       # service calls named real helpers and all six stopped array-destructuring a single row
       # (server/__tests__/admin-offering-type-writes.db.test.ts). Handler-level, no port; the
+      # R4-8: the guest rail refuses a reversed window with the same 400 code as the signed-in rail.
+      # Pure (source pins + the service schema); needs no database.
+      - name: Guest date guard — end before start answers end_before_start (node:test, pure)
+        run: npx tsx --test server/__tests__/r4-8-guest-date-guard.test.ts
       # rows it writes carry its pid and are removed in after().
       - name: Admin offering-type writes — service and expert families (node:test, DB)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/admin-offering-type-writes.db.test.ts
