@@ -45,8 +45,18 @@ import {
   type FirstAddAnswer,
 } from "@/lib/plan-add-runner";
 
+/**
+ * R4-3: where "View plan" goes. A signed-in add names its trip, whose page is `/plans/:tripId`
+ * (App.tsx). A GUEST rail deliberately gets no View plan action: their plan has no page of its own
+ * yet, and inventing one would be a dead link — the toast keeps Undo and Change day for them.
+ */
+function viewPlanHref(rail: PlanAddRail): string | null {
+  return rail.kind === "guest" ? null : `/plans/${encodeURIComponent(rail.tripId)}`;
+}
+
 function addedActions(e: AddedEvent): ToastActionElement {
   const path = planItemPath(e.rail, e.itemId);
+  const planHref = viewPlanHref(e.rail);
   return (
     <span className="flex shrink-0 gap-1.5" data-testid="toast-added-actions">
       <ToastAction
@@ -63,6 +73,13 @@ function addedActions(e: AddedEvent): ToastActionElement {
       <ToastAction altText={ADD_COPY.changeDay} data-testid="toast-added-change-day" onClick={() => emitPlanAddFeedback({ kind: "change_day", event: e })}>
         {ADD_COPY.changeDay}
       </ToastAction>
+      {planHref ? (
+        // R4-3: "View plan" beside Undo and Change day — the EXISTING approved string (ADD_COPY.viewPlan),
+        // and the plan the add just landed on. No new copy.
+        <ToastAction altText={ADD_COPY.viewPlan} data-testid="toast-added-view-plan" onClick={() => window.location.assign(planHref)}>
+          {ADD_COPY.viewPlan}
+        </ToastAction>
+      ) : null}
     </span>
   ) as unknown as ToastActionElement;
 }
