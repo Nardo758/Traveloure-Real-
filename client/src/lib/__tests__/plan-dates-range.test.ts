@@ -29,6 +29,8 @@ describe("R1 validateRange", () => {
     assert.equal(validateRange("2026-11-12", "2026-11-12"), "ok", "same-day trips are allowed");
     assert.equal(validateRange("2026-11-12", "2026-11-15"), "ok");
     assert.equal(validateRange("2026-11-15", "2026-11-12"), "leave_before_arrive");
+  // R4-8: the boundary — a SAME-DAY window is a one-day trip, never 'inverted'.
+  assert.equal(validateRange("2026-11-15", "2026-11-15"), "ok", "same day is valid");
     assert.equal(validateRange("2026-11-12", null), "incomplete");
     assert.equal(validateRange(null, "2026-11-12"), "incomplete");
     assert.equal(validateRange("2026-02-30", "2026-03-01"), "incomplete", "not a real day");

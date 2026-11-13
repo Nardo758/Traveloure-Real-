@@ -23,6 +23,7 @@ import { grantConciergeAdvisorOnAccept } from "./services/concierge-engagement.s
 // (`describeAcceptance`, `describeCompletionDeclaration`), so no surface has to restate an
 // acceptance window or a dispute deadline on the client (§18 rule 1). No rail, no write, no column.
 import { describeCompletionDeclaration } from "@shared/declared-completion-window";
+import { tripDateRangeRefusal } from "@shared/trip-date-range";
 import { bannedCopyPromptLine } from "@shared/banned-copy";
 import { declaredCompletionWindowDays } from "./config/completion-windows.config";
 import { describeAcceptance } from "./services/booking-acceptance.service";
@@ -1653,6 +1654,19 @@ export async function registerRoutes(
       if (!isOwner && !isManagingEa && !isGuestWithToken) {
         return res.status(401).json({ message: "Unauthorized" });
       }
+
+      // R4-8 (QA round 4): a trip's window may never be saved reversed. The PATCH body is MERGED over
+      // the row, so a body that moves only ONE end is judged against the other end already stored -
+      // otherwise "end before start" is reachable one field at a time. Same-day is a one-day trip and
+      // stays valid. Calendar days are compared as their YYYY-MM-DD prefix, never through a Date, so
+      // no timezone can shift the verdict. The code is stable for callers; the message is the one the
+      // create rail already returns (trips.routes.ts:591), so no new copy.
+      // (Line comments, not a block: this file carries stray /* sequences inside strings, and a new
+      // block terminator re-pairs them in the unmounted-router guard's naive stripper.)
+      const nextStart = sanitizedInput.startDate ?? (trip.startDate as unknown as string | null);
+      const nextEnd = sanitizedInput.endDate ?? (trip.endDate as unknown as string | null);
+      const refusal = tripDateRangeRefusal(nextStart, nextEnd);
+      if (refusal) return res.status(400).json(refusal);
 
       const updatedTrip = await storage.updateTrip(req.params.id, sanitizedInput);
       // Ledger `2026-10-08-e1-zero-questions`: leg compute skips a plan whose dates are unconfirmed, so a
