@@ -56,8 +56,8 @@ function evidenceKeys(output: string): string[] {
 }
 
 const suites = specifications.map((specification) => {
-  const command = `npx tsx --test ${specification.file}`;
-  const result = spawnSync("npx", ["tsx", "--test", specification.file], {
+  const command = `node --import tsx --test ${specification.file}`;
+  const result = spawnSync(process.execPath, ["--import", "tsx", "--test", specification.file], {
     cwd: root,
     env: { ...process.env, ...(specification.live ? { MUTATION_AUTH_AUDIT_OK: "1" } : {}) },
     encoding: "utf8",
