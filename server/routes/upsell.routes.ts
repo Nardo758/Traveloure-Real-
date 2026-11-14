@@ -59,7 +59,6 @@ import {
   insertImpression,
   markImpressionClicked,
   getFeedCompositionConfig,
-  FEED_CONFIG_DEFAULTS,
   resolveTemplateKey,
 } from "../services/upsell-query.service";
 import { isAdminRole } from "@shared/roles";

@@ -78,7 +78,7 @@ router.get(
 
     res.json({
       count: sources.length,
-      markets: [...new Set(sources.map((s) => s.market))],
+      markets: Array.from(new Set(sources.map((s) => s.market))),
       sources: sources.map((s) => ({
         id: s.id,
         name: s.name,

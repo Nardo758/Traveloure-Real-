@@ -955,7 +955,7 @@ export function getGapSeverity(market: string): "low" | "medium" | "high" | "ver
 }
 
 export function getMarketGapSummary(): Record<string, { gap: string; apiCount: number; partnerCount: number; scrapeCount: number; expertPriority: number; notes: string }> {
-  const markets = [...new Set(ALL_DMO_SOURCES.map((s) => s.market).filter((m) => m !== "global"))];
+  const markets = Array.from(new Set(ALL_DMO_SOURCES.map((s) => s.market).filter((m) => m !== "global")));
   const summary: Record<string, any> = {};
 
   for (const market of markets) {
