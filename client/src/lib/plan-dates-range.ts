@@ -110,3 +110,4 @@ export function rangeSummary(range: DayRange): string | null {
   if (a.slice(0, 7) === b.slice(0, 7)) return `${short(a)}–${Number(b.slice(8, 10))}`;
   return `${short(a)} – ${short(b)}`;
 }
+// CI guard probe (throwaway PR - not for merge): proves the guard goes green on a code PR with no manual re-run.
