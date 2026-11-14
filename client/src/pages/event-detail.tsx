@@ -23,6 +23,13 @@ import { countdownLabel } from "@shared/city-events";
 import { EventRow } from "@/components/events/EventRow";
 import { planAroundSource } from "@/components/landing/events-strip";
 import { usePlanning, type PlanningSource } from "@/contexts/PlanningContext";
+import { DetailPlanActions, useDetailPlanState } from "@/components/plan/DetailPlanActions";
+import { planItemRefFromFeedItem } from "@shared/plan-item-ref";
+import { announceTripAdd } from "@/lib/plan-add-runner";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useAuth } from "@/hooks/use-auth";
+import { useSignupMode } from "@/lib/signup-mode";
+import { PLAN_START_HREF } from "@/lib/plan-entry";
 
 const FRAUNCES = "'Fraunces', Georgia, serif";
 const MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
@@ -90,12 +97,33 @@ export default function EventDetailPage() {
     );
   }
   if (data.kind === "missing") return <Missing />;
-  return <EventDetailBody page={data.page} onPlanAround={open} />;
+  return <EventDetailBody page={data.page} onPlanAround={open} sourceId={sourceId} />;
 }
 
 /** The page body, from the payload alone — rendered by the route and by the render test. */
-export function EventDetailBody({ page, onPlanAround }: { page: EventPagePayload; onPlanAround: (s: PlanningSource) => void }) {
+export function EventDetailBody({ page, onPlanAround, sourceId }: { page: EventPagePayload; onPlanAround: (s: PlanningSource) => void; sourceId?: string }) {
   const { event, countdown, organizer, goodToKnow, moreInCity, cityLocals, ended } = page;
+  // E2: the plan this traveler is on, read from useActivePlan (never a lookup by city), plus
+  // whether the event already sits on it. The key is what the resolver stamps for a city event.
+  const { user } = useAuth();
+  const { mode } = useSignupMode();
+  // A caller that cannot name the source id (the render test) claims no plan state.
+  const detailKey = sourceId ? `city_event:${sourceId}` : null;
+  const detail = useDetailPlanState(event.city, detailKey);
+
+  // E2: the add, through the one rail. NO placement day: the server places the event from its dates.
+  async function onAddEventToPlan(): Promise<void> {
+    const tripId = detail.plan?.tripId;
+    if (!tripId || !sourceId) return;
+    const ref = planItemRefFromFeedItem({ type: "city_event", sourceContentId: sourceId }, event.city, null);
+    if (!ref) return;
+    const res = await apiRequest("POST", `/api/trips/${tripId}/itinerary-items`, ref);
+    const row = await (res as Response).json().catch(() => null);
+    if (row?.id) announceTripAdd(tripId, row);
+    void queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/itinerary-items`] });
+    void queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+    void queryClient.invalidateQueries({ queryKey: ["/api/trips"] });
+  }
   const localsLine = cityLocalsLine(cityLocals, event.city);
   const verticalLabel = event.vertical ? VERTICAL_LABELS[event.vertical] : null;
 
@@ -194,6 +222,19 @@ export function EventDetailBody({ page, onPlanAround }: { page: EventPagePayload
         <aside className="flex flex-col gap-3 self-start rounded-[14px] border p-4" style={{ borderColor: "var(--earn-border)", background: "var(--earn-card)" }}>
           {!ended && (
             <>
+                {detail.plan || detail.alreadyOnDay != null ? (
+                  <DetailPlanActions
+                    page="event-detail"
+                    plan={detail.plan}
+                    alreadyOnDay={detail.alreadyOnDay}
+                    mode={mode}
+                    signedIn={!!user}
+                    onAdd={() => void onAddEventToPlan()}
+                    onPlanAround={() => onPlanAround(planAroundSource(event, "event_detail", page.showDates))}
+                    planAroundHref={PLAN_START_HREF}
+                  />
+                ) : (
+                  <>
               <button
                 type="button"
                 onClick={() => onPlanAround(planAroundSource(event, "event_detail", page.showDates))}
@@ -202,6 +243,8 @@ export function EventDetailBody({ page, onPlanAround }: { page: EventPagePayload
               >
                 Plan around it
               </button>
+                  </>
+                )}
               <p className="text-[12.5px]" style={{ color: "var(--earn-muted)" }}>
                 Starts a plan in {event.city} with this event's dates and venue filled in.
               </p>

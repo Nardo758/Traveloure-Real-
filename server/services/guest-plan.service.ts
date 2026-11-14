@@ -746,22 +746,35 @@ export async function savedRefsForUser(userId: string): Promise<SavedRefEntry[]>
     .from(itineraryItems)
     .innerJoin(trips, eq(trips.id, itineraryItems.tripId))
     .where(and(eq(trips.userId, userId), sql`(${trips.endDate} IS NULL OR ${trips.endDate} >= CURRENT_DATE)`));
-  const byKey = new Map<string, SavedRefEntry>();
+  return dedupeSavedRefs(rows);
+}
+
+/**
+ * Pure: the stored rows to the entries the route answers with. Deduped per (key, plan), NOT per key —
+ * the same event on two plans is TWO entries so the client can pick the one belonging to ITS plan.
+ * Within one pair the lowest day wins (an item repeated on the same plan is one answer). Sorted by
+ * key, then plan, so the payload is stable across requests.
+ */
+export function dedupeSavedRefs(rows: ReadonlyArray<{ contentType?: string | null; contentId?: string | null; providerServiceId?: string | null; affiliateProductId?: string | null; dayNumber?: number | null; planId: string | number }>): SavedRefEntry[] {
+  const byPair = new Map<string, SavedRefEntry>();
   for (const r of rows) {
     const key = savedRefKeyOfItem(r);
     if (!key) continue;
-    const dayNumber = typeof r.dayNumber === "number" ? r.dayNumber : null;
     const planId = String(r.planId);
-    const prior = byKey.get(key);
-    const better =
-      !prior ||
-      (dayNumber ?? Number.MAX_SAFE_INTEGER) < (prior.dayNumber ?? Number.MAX_SAFE_INTEGER) ||
-      ((dayNumber ?? Number.MAX_SAFE_INTEGER) === (prior.dayNumber ?? Number.MAX_SAFE_INTEGER) && planId < prior.planId);
-    if (better) byKey.set(key, { key, planId, dayNumber });
+    const dayNumber = typeof r.dayNumber === "number" ? r.dayNumber : null;
+    const pair = `${key}|${planId}`;
+    const prior = byPair.get(pair);
+    if (!prior || (dayNumber ?? Number.MAX_SAFE_INTEGER) < (prior.dayNumber ?? Number.MAX_SAFE_INTEGER)) {
+      byPair.set(pair, { key, planId, dayNumber });
+    }
   }
-  return Array.from(byKey.values()).sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+  return Array.from(byPair.values()).sort((a, b) =>
+    a.key === b.key ? (a.planId < b.planId ? -1 : a.planId > b.planId ? 1 : 0) : a.key < b.key ? -1 : 1,
+  );
 }
 
 export async function savedRefKeysForUser(userId: string): Promise<string[]> {
-  return (await savedRefsForUser(userId)).map((e) => e.key);
+  // UNCHANGED contract: unique keys, sorted. A key on two plans answers once here.
+  const entries = await savedRefsForUser(userId);
+  return Array.from(new Set(entries.map((e) => e.key))).sort();
 }
