@@ -133,18 +133,6 @@ jobs:
         run: |
           set -uo pipefail
 
-          # A change that cannot affect a suite legitimately skips it: the skip rules (scripts/ci/ci-skip-rules.cjs)
-          # return run=false for docs-only and other-workflow-only PRs. Demanding those suites would fail every
-          # workflow PR - including this one - so a change set with no non-docs, non-workflow file passes with a
-          # note instead. The bug this guard targets is the OTHER skip: the one caused by the draft flip on a PR
-          # that does touch code.
-          changed=$(gh api "repos/$REPO/pulls/${{ github.event.pull_request.number }}/files?per_page=100" --paginate \
-            --jq '.[].filename' | grep -Ev '\.md$|^\.github/workflows/' | head -5 || true)
-          if [ -z "$changed" ]; then
-            echo "workflow/docs-only change: the heavy suites are skipped by design (ci-skip-rules run=false), so there is nothing to require. PASS."
-            exit 0
-          fi
-          echo "code files changed, e.g. $(printf '%s' "$changed" | head -1) - the suites must have run."
           # Workflow display names (the file's `name:`), not the check names above.
           workflows=(
             "Suite Server Tests"
