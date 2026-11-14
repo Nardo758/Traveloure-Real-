@@ -30,6 +30,9 @@ name: Spec-Arming Gate
 # the PR body and diff).
 
 on:
+  # CI guard (required-suites-ran.yml): the ready flip must be able to START this gate, because its
+  # own paths: filter means GitHub creates no run for a ready_for_review event. Trigger only.
+  workflow_dispatch:
   pull_request:
     branches: [main]
     types: [opened, synchronize, reopened, ready_for_review, edited]
