@@ -44,7 +44,30 @@ export function refreshSavedRefs(client: QC): Promise<unknown> {
 const NO_PROVIDER_CLIENT = new QueryClient();
 const EMPTY: ReadonlySet<string> = new Set();
 
-async function fetchSavedRefs(): Promise<{ keys: string[] }> {
+/** E2: what the server now also returns per key - the plan it sits on, and the day it landed on. */
+export interface SavedRefEntry { key: string; planId: string; dayNumber: number | null }
+
+const EMPTY_ENTRIES: ReadonlyMap<string, SavedRefEntry> = new Map();
+
+function entriesFromRefs(refs: SavedRefEntry[] | undefined): ReadonlyMap<string, SavedRefEntry> {
+  const m = new Map<string, SavedRefEntry>();
+  for (const r of refs ?? []) if (r?.key) m.set(r.key, r);
+  return m;
+}
+
+/** Pure: the guest plan already carries both facts on each item, so no extra read is needed. */
+export function entriesFromGuestView(view: Pick<GuestPlanView, "items"> | null | undefined): ReadonlyMap<string, SavedRefEntry> {
+  const m = new Map<string, SavedRefEntry>();
+  const planId = (view as any)?.plan?.id;
+  if (typeof planId !== "string") return m;
+  for (const it of view?.items ?? []) {
+    const key = savedRefKeyOfItem(it as any);
+    if (key) m.set(key, { key, planId, dayNumber: typeof (it as any).dayNumber === "number" ? (it as any).dayNumber : null });
+  }
+  return m;
+}
+
+async function fetchSavedRefs(): Promise<{ keys: string[]; refs?: SavedRefEntry[] }> {
   const res = await fetch(SAVED_REFS_QUERY_KEY[0], { credentials: "include" });
   if (!res.ok) throw new Error(`${res.status}`);
   return res.json();
@@ -59,14 +82,14 @@ export function useSavedRefKeys(): ReadonlySet<string> {
  * R4b-3 ruling (Nov 6, 2026): which rail answered. Signed in, "Saved to plan" is INFORMATIONAL — the press still opens
  * the picker (the same item may go on a second plan). The guest rail has one plan, so there the saved action is inert.
  */
-function useSavedRefRead(): { keys: ReadonlySet<string>; guestRail: boolean } {
+function useSavedRefRead(): { keys: ReadonlySet<string>; guestRail: boolean; entries: ReadonlyMap<string, SavedRefEntry>; guestPlanId: string | null } {
   const client = useContext(QueryClientContext);
   const qc = client ?? NO_PROVIDER_CLIENT;
   const { mode } = useSignupMode();
   const auth = useQuery({ queryKey: ["/api/auth/user"], queryFn: fetchUser, retry: false, staleTime: 5 * 60_000, enabled: !!client }, qc);
   const signedIn = !!auth.data;
   const authKnown = !!client && auth.isFetched;
-  const owner = useQuery<{ keys: string[] }>(
+  const owner = useQuery<{ keys: string[]; refs?: SavedRefEntry[] }>(
     { queryKey: SAVED_REFS_QUERY_KEY, queryFn: fetchSavedRefs, retry: false, staleTime: 30_000, enabled: authKnown && signedIn },
     qc,
   );
@@ -75,9 +98,9 @@ function useSavedRefRead(): { keys: ReadonlySet<string>; guestRail: boolean } {
     qc,
   );
   return useMemo(() => {
-    if (!client) return { keys: EMPTY, guestRail: false };
-    if (signedIn) return { keys: new Set(owner.data?.keys ?? []), guestRail: false };
-    return { keys: savedKeysFromGuestView(guest.data), guestRail: true };
+    if (!client) return { keys: EMPTY, guestRail: false, entries: EMPTY_ENTRIES, guestPlanId: null };
+    if (signedIn) return { keys: new Set(owner.data?.keys ?? []), guestRail: false, entries: entriesFromRefs(owner.data?.refs), guestPlanId: null };
+    return { keys: savedKeysFromGuestView(guest.data), guestRail: true, entries: entriesFromGuestView(guest.data), guestPlanId: guest.data?.plan?.id ?? null };
   }, [client, signedIn, owner.data, guest.data]);
 }
 
@@ -93,6 +116,21 @@ export function useRefSavedState(key: string | null | undefined): { saved: boole
   return { saved, inert: savedActionInert(saved, guestRail) };
 }
 
+/**
+ * E2: the entry for ONE key — the plan it sits on and the day it landed on, from the SAME cache the
+ * "Saved to plan" state already reads. No extra fetch on either rail: the signed-in payload now carries
+ * `refs`, and the guest plan carries the same two facts on each item.
+ */
+export function useSavedRefEntry(key: string | null | undefined): SavedRefEntry | null {
+  const { entries } = useSavedRefRead();
+  return key ? entries.get(key) ?? null : null;
+}
+
+/** Pure: the guest rail's entry for a key (same facts, no server read). */
+export function guestRefEntry(view: Pick<GuestPlanView, "items"> | null | undefined, key: string | null | undefined): SavedRefEntry | null {
+  if (!key) return null;
+  return entriesFromGuestView(view).get(key) ?? null;
+}
 export function useRefSaved(key: string | null | undefined): boolean {
   return useRefSavedState(key).saved;
 }
