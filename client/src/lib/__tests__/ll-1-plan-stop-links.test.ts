@@ -78,5 +78,5 @@ test("LL-1: the pending strings live in ONE file and are marked for Leon", () =>
   assert.equal(PENDING_LL1_STRINGS.backToPlan, "Back to plan");
   assert.equal(PENDING_LL1_STRINGS.onDay(3), "On Day 3");
   const marks = (src.match(/\/\/ PENDING Leon wording/g) ?? []).length;
-  assert.ok(marks >= 7, `every placeholder is marked; found ${marks} marks`);
+  assert.equal(marks, 5, "only the five icon labels are still pending; onDay/backToPlan are approved");
 });

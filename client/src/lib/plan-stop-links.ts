@@ -9,13 +9,13 @@
  *   2. Which travel-mode icon a leg shows. walk / train / bus / taxi only; an unknown mode shows NO
  *      icon rather than a guessed one (the spec's "no ranking, no invented data" line).
  *
- * PENDING STRINGS — every one of these needs Leon's "Wording approved — Leon" before merge. They are
+ * STRINGS — "On Day {n}" and "Back to plan" are approved (Leon, #2006 comment 6868952788). Every ICON. They are
  * plain placeholders, not final copy, and they are the only new user-facing text in this change.
  */
 export const PENDING_LL1_STRINGS = {
-  // PENDING Leon wording
+  // Wording approved — Leon (#2006, comment 6868952788).
   onDay: (n: number) => `On Day ${n}`,
-  // PENDING Leon wording
+  // Wording approved — Leon (#2006, comment 6868952788).
   backToPlan: "Back to plan",
   // PENDING Leon wording — one screen-reader label per icon
   ariaWalk: "Walk to the next stop",
