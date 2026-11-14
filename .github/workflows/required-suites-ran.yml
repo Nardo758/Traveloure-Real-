@@ -100,7 +100,7 @@ jobs:
               # MISSING is only a bug when this workflow's OWN on.pull_request.paths would have matched.
               # (--decide is the wrong oracle here: it answers "would the run be skipped once triggered",
               # and on #2008 it said run=true for suites whose paths never match a client-only file.)
-              verdict=$(node scripts/ci/paths-match.cjs "$workflow" --stdin <<< "$changed_files" 2>&1 || echo nopaths)
+              verdict=$(printf '%s' "$changed_files" | node scripts/ci/paths-match.cjs --stdin "$workflow" 2>&1 || echo nopaths)
               case "$verdict" in
                 nomatch)
                   echo "$suite — never triggered: no changed file matches its on.pull_request.paths, so its absence is on purpose. passing with a note."
