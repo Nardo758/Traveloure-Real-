@@ -17,7 +17,9 @@
  *
  * The VIEW is pure props so it can be rendered with `renderToString`; the hook next to it does the
  * live reads the pages need.
+import * as React from "react";
  */
+import { useActivePlan } from "@/hooks/use-active-plan";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { AddToPlanButton } from "@/components/plan/AddToPlanButton";
@@ -160,18 +162,19 @@ export function useDetailPlanState(city: string | null | undefined, itemKey: str
   plan: DetailPlanRef | null;
   alreadyOnDay: number | null;
 } {
-  const { plan } = useDetailPlanBase(city);
+  // E2: the plan the traveler is ON, never a lookup by city. useActivePlan (#1984) is the one
+  // precedence: the URL tripId, then the bound plan, then the most recently updated.
+  const { active, signedIn, loading } = useActivePlan();
+  const usable =
+    !loading && active && active.datesConfirmedAt && sameCity(active.destination ?? null, city)
+      ? ({ tripId: active.id, datesConfirmed: true } as DetailPlanRef)
+      : null;
   const saved = useSavedRefEntry(itemKey);
   const guest = useQuery<GuestPlanView | null>({ queryKey: GUEST_PLAN_QUERY_KEY, enabled: false });
-  const onThisPlan = saved && plan && saved.planId === plan.tripId ? saved : null;
-  const guestEntry = !plan && !saved ? guestRefEntry(guest.data, itemKey) : null;
+  // The saved-refs entry counts ONLY when it belongs to this plan - hence the planId compare, and
+  // hence the server answering one entry per (key, plan) instead of one per key.
+  const onThisPlan = usable && saved && saved.planId === usable.tripId ? saved : null;
+  const guestEntry = !signedIn && !usable ? guestRefEntry(guest.data, itemKey) : null;
   const day = onThisPlan?.dayNumber ?? guestEntry?.dayNumber ?? null;
-  return { plan, alreadyOnDay: typeof day === "number" ? day : null };
-}
-
-export function useDetailPlanBase(city: string | null | undefined): { plan: DetailPlanRef | null } {
-  const trips = useQuery<TripWindowRow[]>({ queryKey: ["/api/trips"] });
-  const rows = Array.isArray(trips.data) ? trips.data : [];
-  const match = rows.find((row) => row.datesConfirmedAt && sameCity(row.destination, city)) ?? null;
-  return { plan: match ? { tripId: match.id, datesConfirmed: true } : null };
+  return { plan: usable, alreadyOnDay: typeof day === "number" ? day : null };
 }
