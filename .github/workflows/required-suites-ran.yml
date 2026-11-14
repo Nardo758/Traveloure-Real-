@@ -93,8 +93,20 @@ jobs:
             seen=$((seen + 1))
             line=$(awk -F'\t' -v want="$suite" '$1 == want' "$checks" | sort -t$'\t' -k3 | tail -1)
             if [ -z "$line" ]; then
-              echo "::error title=$suite::$suite — no check-run at all at ${SHA:0:9} (missing). Push a commit so its workflow runs."
-              fail=1
+              # MISSING is only a bug when this PR COULD have triggered the suite. A workflow- or docs-only
+              # PR does not match most suites' paths: filters, so their workflows never start and no
+              # check-run is ever made. Ask the same one skip rule, then judge.
+              event_file="$RUNNER_TEMP/missing-event.json"
+              printf '{"pull_request":{"draft":false,"number":%s}}' "$PR" > "$event_file"
+              decision=$(GITHUB_EVENT_PATH="$event_file" GITHUB_REPOSITORY="$REPO" GITHUB_TOKEN="$GH_TOKEN" \
+                WORKFLOW_REF=".github/workflows/$workflow" \
+                node scripts/ci/ci-skip-rules.cjs --decide 2>&1 || true)
+              if printf '%s' "$decision" | grep -q 'run=false'; then
+                echo "$suite - never triggered for these files (its paths filter does not match); passing with a note. $decision"
+              else
+                echo "::error title=$suite::$suite - no check-run at all at ${SHA:0:9} although this PR CAN trigger it (missing). Push a commit so its workflow runs."
+                fail=1
+              fi
               continue
             fi
             state=$(printf '%s' "$line" | cut -f2)
