@@ -127,8 +127,6 @@ export function DetailPlanActions(props: DetailPlanActionsProps) {
       >
         Plan around it
       </Link>
-      <span className="text-xs text-muted-foreground" data-testid={`${page}-add-needs-plan`}>
-      </span>
     </div>
   );
 }

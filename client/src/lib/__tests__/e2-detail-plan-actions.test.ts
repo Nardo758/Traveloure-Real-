@@ -10,14 +10,25 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createElement } from "react";
+import React, { createElement } from "react";
 import { renderToString } from "react-dom/server";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { Router } from "wouter";
 import { DetailPlanActions } from "../../components/plan/DetailPlanActions";
 import { PENDING_LL1_STRINGS } from "../plan-stop-links";
 import { planItemRefFromFeedItem } from "@shared/plan-item-ref";
 import { dedupeSavedRefs } from "../../../../server/services/guest-plan.service";
 
-const html = (el: Parameters<typeof renderToString>[0]) => renderToString(el);
+// The repo JSX transform is classic, so the module must see React on the global before it renders.
+(globalThis as any).React = React;
+
+/** Same harness as add-to-plan-button.test.tsx: Router + a fresh QueryClient, no jsdom. */
+const html = (node: Parameters<typeof renderToString>[0]) => {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return renderToString(
+    createElement(Router as any, { ssrPath: "/" }, createElement(QueryClientProvider as any, { client }, node)) as any,
+  );
+};
 
 function view(over: Record<string, unknown> = {}) {
   return html(
