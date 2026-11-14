@@ -23,7 +23,7 @@ import { countdownLabel } from "@shared/city-events";
 import { EventRow } from "@/components/events/EventRow";
 import { planAroundSource } from "@/components/landing/events-strip";
 import { usePlanning, type PlanningSource } from "@/contexts/PlanningContext";
-import { DetailPlanActions, useDetailPlanState } from "@/components/plan/DetailPlanActions";
+import { DetailPlanActions, useDetailPlanState, type DetailPlanRef } from "@/components/plan/DetailPlanActions";
 import { planItemRefFromFeedItem } from "@shared/plan-item-ref";
 import { announceTripAdd } from "@/lib/plan-add-runner";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -81,6 +81,27 @@ export default function EventDetailPage() {
     retry: false,
   });
 
+  // E2: the plan this traveler is on (useActivePlan - never a lookup by city), and whether the event
+  // already sits on it. The key is what the resolver stamps for a city event.
+  const { user } = useAuth();
+  const { mode } = useSignupMode();
+  const detailKey = sourceId ? `city_event:${sourceId}` : null;
+  const detail = useDetailPlanState(data?.kind === "page" ? data.page.event.city : null, detailKey);
+
+  // E2: the add, through the one rail. NO placement day: the server places the event from its dates.
+  async function addEventToPlan(tripId: string | null): Promise<void> {
+    if (!tripId || !sourceId || data?.kind !== "page") return;
+    const city = data.page.event.city;
+    const ref = planItemRefFromFeedItem({ type: "city_event", sourceContentId: sourceId }, city, null);
+    if (!ref) return;
+    const res = await apiRequest("POST", `/api/trips/${tripId}/itinerary-items`, ref);
+    const row = await (res as Response).json().catch(() => null);
+    if (row?.id) announceTripAdd(tripId, row);
+    void queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/itinerary-items`] });
+    void queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+    void queryClient.invalidateQueries({ queryKey: ["/api/trips"] });
+  }
+
   if (isLoading) {
     return (
       <div className="mx-auto max-w-[960px] px-4 py-10 text-[14px]" style={{ color: "var(--earn-muted)" }} data-testid="event-detail-loading">
@@ -97,36 +118,30 @@ export default function EventDetailPage() {
     );
   }
   if (data.kind === "missing") return <Missing />;
-  return <EventDetailBody page={data.page} onPlanAround={open} sourceId={sourceId} />;
+  return (
+    <EventDetailBody
+      page={data.page}
+      onPlanAround={open}
+      detail={{ plan: detail.plan, alreadyOnDay: detail.alreadyOnDay, mode, signedIn: !!user }}
+      onAdd={() => void addEventToPlan(detail.plan?.tripId ?? null)}
+    />
+  );
 }
 
 /** The page body, from the payload alone — rendered by the route and by the render test. */
-export function EventDetailBody({ page, onPlanAround, sourceId }: { page: EventPagePayload; onPlanAround: (s: PlanningSource) => void; sourceId?: string }) {
-  const { event, countdown, organizer, goodToKnow, moreInCity, cityLocals, ended } = page;
-  // E2: the plan this traveler is on, read from useActivePlan (never a lookup by city), plus
-  // whether the event already sits on it. The key is what the resolver stamps for a city event.
-  const { user } = useAuth();
-  const { mode } = useSignupMode();
-  // A caller that cannot name the source id (the render test) claims no plan state.
-  const detailKey = sourceId ? `city_event:${sourceId}` : null;
-  const detail = useDetailPlanState(event.city, detailKey);
+export interface EventDetailPlanState {
+  plan: DetailPlanRef | null;
+  alreadyOnDay: number | null;
+  mode: "waitlist" | "open";
+  signedIn: boolean;
+}
 
-  // E2: the add, through the one rail. NO placement day: the server places the event from its dates.
-  async function onAddEventToPlan(): Promise<void> {
-    const tripId = detail.plan?.tripId;
-    if (!tripId || !sourceId) return;
-    const ref = planItemRefFromFeedItem({ type: "city_event", sourceContentId: sourceId }, event.city, null);
-    if (!ref) return;
-    const res = await apiRequest("POST", `/api/trips/${tripId}/itinerary-items`, ref);
-    const row = await (res as Response).json().catch(() => null);
-    if (row?.id) announceTripAdd(tripId, row);
-    void queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/itinerary-items`] });
-    void queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
-    void queryClient.invalidateQueries({ queryKey: ["/api/trips"] });
-  }
+/** The page body, from the payload alone - rendered by the route and by the render test. PURE: every plan
+ *  fact arrives as a prop, so the render test needs no providers (that is what E2 broke first time). */
+export function EventDetailBody({ page, onPlanAround, detail, onAdd }: { page: EventPagePayload; onPlanAround: (s: PlanningSource) => void; detail?: EventDetailPlanState; onAdd?: () => void }) {
+  const { event, countdown, organizer, goodToKnow, moreInCity, cityLocals, ended } = page;
   const localsLine = cityLocalsLine(cityLocals, event.city);
   const verticalLabel = event.vertical ? VERTICAL_LABELS[event.vertical] : null;
-
   return (
     <div className="mx-auto flex max-w-[960px] flex-col gap-6 px-4 py-6 md:py-10" data-testid="event-detail">
       <BackLink />
@@ -222,14 +237,14 @@ export function EventDetailBody({ page, onPlanAround, sourceId }: { page: EventP
         <aside className="flex flex-col gap-3 self-start rounded-[14px] border p-4" style={{ borderColor: "var(--earn-border)", background: "var(--earn-card)" }}>
           {!ended && (
             <>
-                {detail.plan || detail.alreadyOnDay != null ? (
+                {detail?.plan || detail?.alreadyOnDay != null ? (
                   <DetailPlanActions
                     page="event-detail"
                     plan={detail.plan}
                     alreadyOnDay={detail.alreadyOnDay}
-                    mode={mode}
-                    signedIn={!!user}
-                    onAdd={() => void onAddEventToPlan()}
+                    mode={detail.mode}
+                    signedIn={detail.signedIn}
+                    onAdd={onAdd}
                     onPlanAround={() => onPlanAround(planAroundSource(event, "event_detail", page.showDates))}
                     planAroundHref={PLAN_START_HREF}
                   />
