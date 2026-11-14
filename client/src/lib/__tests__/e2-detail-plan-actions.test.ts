@@ -17,7 +17,7 @@ import { Router } from "wouter";
 import { DetailPlanActions } from "../../components/plan/DetailPlanActions";
 import { PENDING_LL1_STRINGS } from "../plan-stop-links";
 import { planItemRefFromFeedItem } from "@shared/plan-item-ref";
-import { dedupeSavedRefs } from "../../../../server/services/guest-plan.service";
+import { dedupeSavedRefs } from "@shared/saved-refs"; // shared, never a server service module
 
 // The repo JSX transform is classic, so the module must see React on the global before it renders.
 (globalThis as any).React = React;
