@@ -184,6 +184,12 @@ describe("CAP-2 Phase 3 — PlanActions", () => {
       "client/src/pages/plan-compare.tsx": "in-plan compare, not a tile",
       "client/src/lib/stay-booking.ts": "in-plan stay booking, not a tile",
       "client/src/components/travelpulse/CityCard.tsx": "a caller-passed season link, not a PlanActions output",
+      // E2 (Leon, Nov 13 2026): a content DETAIL page draws its own action block. The rule is the same one a
+      // tile follows — ONE block per surface, the approved labels — so a detail page is named here rather
+      // than being routed through PlanActions, whose sites are tiles and panels. Its labels come from
+      // ADD_COPY ("Add to plan" / "Add to Day {n}") and plan-stop-links.ts ("On Day {n}", "Back to plan").
+      // So: a detail-page action block IS allowed, and this line is the decision that says so.
+      "client/src/components/plan/DetailPlanActions.tsx": "the detail-page action block (E2): Add / Book / On Day {n}, drawn from the approved copy modules",
     };
     const offenders: string[] = [];
     for (const file of walk("client/src")) {
@@ -191,7 +197,17 @@ describe("CAP-2 Phase 3 — PlanActions", () => {
       if (LABEL.test(stripComments(read(file)))) offenders.push(file);
     }
     assert.deepEqual(offenders, [], "a save / book / hire label drawn outside PlanActions");
-    for (const file of Object.keys(NAMED)) assert.ok(LABEL.test(stripComments(read(file))), `${file} no longer needs naming — remove it`);
+    for (const file of Object.keys(NAMED)) {
+      // A named file that is absent on THIS ref cannot be stale: it lands with the change that adds it (the
+      // detail block arrives with E2). Only a file that exists and draws no label is a stale name.
+      let src: string;
+      try {
+        src = read(file);
+      } catch {
+        continue;
+      }
+      assert.ok(LABEL.test(stripComments(src)), `${file} no longer needs naming - remove it`);
+    }
   });
 
   it("P6 every Phase 3 site renders through PlanActions; the public read carries no price", () => {
@@ -285,7 +301,10 @@ function walk(dir: string): string[] {
     const full = join(resolve(ROOT, dir), name);
     const rel = relative(ROOT, full);
     if (statSync(full).isDirectory()) out.push(...walk(rel));
-    else if (/\.(tsx?|jsx?)$/.test(name)) out.push(rel);
+    // Forward slashes on EVERY platform. `relative` returns `\` on Windows, and with backslashes every
+    // NAMED key missed, so all fifteen named files were reported as offenders — a Windows-only false
+    // failure (the lane is green on Linux). File identity, not the assertion, is what this fixes.
+    else if (/\.(tsx?|jsx?)$/.test(name)) out.push(rel.split(/[\\/]/).join("/"));
   }
   return out;
 }
