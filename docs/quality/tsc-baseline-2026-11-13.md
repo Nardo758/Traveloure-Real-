@@ -1,0 +1,273 @@
+# `npm run check` — baseline inventory and fix plan (Phase 0)
+
+**Measured on `main` @ `5f9678966`, clean tree, this machine (Node v24.14.1, TypeScript from the lockfile):**
+
+```
+npm run check  →  110 errors in 30 files      (exit 2)
+```
+
+No code has been changed for PR 2 yet. This document is Phase 0: the per-file list, the causes grouped, and the PR split I propose. Implementation starts only after Leon's go.
+
+## Why it matters
+
+`npm run check` is not a CI lane today, so 110 type errors are invisible to every gate that runs. Several are not cosmetic — the groups below include three **missing exports** in admin routes and a `username` column read that the schema does not have. A green typecheck is also what makes the `--import tsx` tooling and the drizzle upgrade safe to keep moving.
+
+## Errors by code
+
+| Code | Count | Usual cause |
+|---|---|---|
+| TS2339 | 35 | property read off a narrower type/select shape |
+| TS2345 | 14 | argument type mismatch (mostly `null` vs `string`, drizzle insert shapes) |
+| TS2322 | 10 | assignment of widened value to a literal/typed slot |
+| TS2769 | 9 | no overload matches (drizzle insert/update, express `.use`, fetch init) |
+| TS7053 | 7 | indexing a non-indexable row type with `0` |
+| TS2802 | 6 | `Set`/`Map` iteration without `downlevelIteration` |
+| TS7006 | 5 | implicit `any` parameters (all in one file, cascading from TS2339) |
+| TS18048 | 4 | possibly-undefined access |
+| TS2552 | 3 | cannot find name — **missing exports** |
+| TS2440 | 3 | import conflicts with a local declaration |
+| TS2461 | 3 | iterating a non-iterable object type |
+| TS2352 | 2 | invalid cast |
+| TS18046 | 2 | value of type `unknown` |
+| TS2554 | 2 | wrong argument count |
+| TS2740 / TS2353 / TS2739 / TS2367 / TS2678 | 1 each | missing props, unknown property, bad comparison |
+
+## Errors by file
+
+| File | Errors |
+|---|---|
+| `server/routes.ts` | 17 |
+| `server/routes/admin.routes.ts` | 14 |
+| `client/src/pages/provider/profile.tsx` | 13 |
+| `server/storage.ts` | 7 |
+| `server/content/scrapers/DMOCrawler.ts` | 7 |
+| `server/services/itinerary-intelligence.service.ts` | 6 |
+| `server/services/upsell-query.service.ts` | 5 |
+| `server/services/vendor-management.service.ts` | 4 |
+| `server/migrations/run-eso-backfill.ts` | 3 |
+| `server/routes/expert-workspace.routes.ts` | 3 |
+| `client/src/pages/itinerary-comparison.tsx` | 3 |
+| `client/src/pages/expert/analytics.tsx` | 3 |
+| `server/seed-travelpulse.ts` | 2 |
+| `server/routes/webhooks.routes.ts` | 2 |
+| `server/services/pricing.service.ts` | 2 |
+| `server/migrations/migrate-entry.ts` | 2 |
+| `server/migrations/run-migrations.ts` | 2 |
+| `server/itinerary-optimizer.ts` | 2 |
+| `server/static.ts` | 2 |
+| `server/vite.ts` | 1 |
+| `server/services/smart-sequencing.service.ts` | 1 |
+| `server/services/gem-discovery.service.ts` | 1 |
+| `server/content/providers/DMOSourceRegistry.ts` | 1 |
+| `client/src/lib/validations.ts` | 1 |
+| `client/src/pages/admin/content-tracking.tsx` | 1 |
+| `client/src/pages/itinerary-view.tsx` | 1 |
+| `server/services/admin-query.service.ts` | 1 |
+| `server/services/content-matching.service.ts` | 1 |
+| `server/routes/upsell.routes.ts` | 1 |
+| `server/seeds/phase-d-kyoto-vendors.seed.ts` | 1 |
+
+## The 110 errors
+
+| Location | Code | Message |
+|---|---|---|
+| `client/src/lib/validations.ts:73` | TS2339 | Property 'merge' does not exist on type 'ZodEffects<ZodObject<{ destination: ZodString; st… |
+| `client/src/pages/admin/content-tracking.tsx:184` | TS2345 | Argument of type '{ method: string; body: string; headers: { "Content-Type": string; }; }'… |
+| `client/src/pages/expert/analytics.tsx:804` | TS2339 | Property 'progress' does not exist on type '{ title: string; description: string; icon: Fo… |
+| `client/src/pages/expert/analytics.tsx:808` | TS2339 | Property 'progress' does not exist on type '{ title: string; description: string; icon: Fo… |
+| `client/src/pages/expert/analytics.tsx:810` | TS2339 | Property 'progress' does not exist on type '{ title: string; description: string; icon: Fo… |
+| `client/src/pages/itinerary-comparison.tsx:74` | TS2440 | Import declaration conflicts with local declaration of 'TransportLegData'. |
+| `client/src/pages/itinerary-comparison.tsx:74` | TS2440 | Import declaration conflicts with local declaration of 'TransportAlternative'. |
+| `client/src/pages/itinerary-comparison.tsx:427` | TS2352 | Conversion of type 'Response' to type '{ shareToken: string; shareUrl: string; expiresAt: … |
+| `client/src/pages/itinerary-view.tsx:647` | TS2739 | Type '{ trip: PlanCardTrip; traveloureScore: number \| null \| undefined; shareToken: string… |
+| `client/src/pages/provider/profile.tsx:167` | TS2339 | Property 'businessName' does not exist on type '{ role: string \| null; email: string \| nul… |
+| `client/src/pages/provider/profile.tsx:168` | TS2339 | Property 'businessType' does not exist on type '{ role: string \| null; email: string \| nul… |
+| `client/src/pages/provider/profile.tsx:170` | TS2339 | Property 'address' does not exist on type '{ role: string \| null; email: string \| null; id… |
+| `client/src/pages/provider/profile.tsx:171` | TS2339 | Property 'phone' does not exist on type '{ role: string \| null; email: string \| null; id: … |
+| `client/src/pages/provider/profile.tsx:173` | TS2339 | Property 'website' does not exist on type '{ role: string \| null; email: string \| null; id… |
+| `client/src/pages/provider/profile.tsx:186` | TS2339 | Property 'amenities' does not exist on type '{ role: string \| null; email: string \| null; … |
+| `client/src/pages/provider/profile.tsx:190` | TS2339 | Property 'capacities' does not exist on type '{ role: string \| null; email: string \| null;… |
+| `client/src/pages/provider/profile.tsx:192` | TS2339 | Property 'photos' does not exist on type '{ role: string \| null; email: string \| null; id:… |
+| `client/src/pages/provider/profile.tsx:340` | TS7006 | Parameter 'photo' implicitly has an 'any' type. |
+| `client/src/pages/provider/profile.tsx:373` | TS7006 | Parameter 'cap' implicitly has an 'any' type. |
+| `client/src/pages/provider/profile.tsx:373` | TS7006 | Parameter 'index' implicitly has an 'any' type. |
+| `client/src/pages/provider/profile.tsx:457` | TS7006 | Parameter 'amenity' implicitly has an 'any' type. |
+| `client/src/pages/provider/profile.tsx:457` | TS7006 | Parameter 'index' implicitly has an 'any' type. |
+| `server/content/providers/DMOSourceRegistry.ts:958` | TS2802 | Type 'Set<string>' can only be iterated through when using the '--downlevelIteration' flag… |
+| `server/content/scrapers/DMOCrawler.ts:188` | TS2345 | Argument of type '{ query: string; maxResults: number; searchDepth: string; includeAnswer:… |
+| `server/content/scrapers/DMOCrawler.ts:295` | TS2339 | Property 'id' does not exist on type 'ErrorResponse \| BatchScrapeResponse'. |
+| `server/content/scrapers/DMOCrawler.ts:301` | TS2339 | Property 'id' does not exist on type 'ErrorResponse \| BatchScrapeResponse'. |
+| `server/content/scrapers/DMOCrawler.ts:348` | TS2339 | Property 'id' does not exist on type 'ErrorResponse \| CrawlResponse'. |
+| `server/content/scrapers/DMOCrawler.ts:354` | TS2339 | Property 'id' does not exist on type 'ErrorResponse \| CrawlResponse'. |
+| `server/content/scrapers/DMOCrawler.ts:389` | TS2740 | Type '{}' is missing the following properties from type 'ZodType<any, ZodTypeDef, any>': _… |
+| `server/content/scrapers/DMOCrawler.ts:410` | TS2345 | Argument of type '{ query: string; maxResults: number; searchDepth: string; includeAnswer:… |
+| `server/itinerary-optimizer.ts:1192` | TS2345 | Argument of type 'string \| null' is not assignable to parameter of type 'string \| undefine… |
+| `server/itinerary-optimizer.ts:1740` | TS2345 | Argument of type 'string \| null' is not assignable to parameter of type 'string \| undefine… |
+| `server/migrations/migrate-entry.ts:13` | TS2339 | Property 'applied' does not exist on type 'MigrationResult'. |
+| `server/migrations/migrate-entry.ts:13` | TS2339 | Property 'skipped' does not exist on type 'MigrationResult'. |
+| `server/migrations/run-eso-backfill.ts:60` | TS2339 | Property 'externalId' does not exist on type 'PgTableWithColumns<{ name: "expert_service_o… |
+| `server/migrations/run-eso-backfill.ts:64` | TS2339 | Property 'externalId' does not exist on type 'PgTableWithColumns<{ name: "expert_service_o… |
+| `server/migrations/run-eso-backfill.ts:73` | TS2769 | No overload matches this call. |
+| `server/migrations/run-migrations.ts:259` | TS2802 | Type 'Set<string>' can only be iterated through when using the '--downlevelIteration' flag… |
+| `server/migrations/run-migrations.ts:260` | TS2802 | Type 'Set<string>' can only be iterated through when using the '--downlevelIteration' flag… |
+| `server/routes.ts:6934` | TS2345 | Argument of type 'string \| null' is not assignable to parameter of type 'string'. |
+| `server/routes.ts:6951` | TS18048 | 'traveler' is possibly 'undefined'. |
+| `server/routes.ts:6951` | TS18048 | 'traveler' is possibly 'undefined'. |
+| `server/routes.ts:6971` | TS2345 | Argument of type 'string \| null' is not assignable to parameter of type 'string'. |
+| `server/routes.ts:6972` | TS2345 | Argument of type 'string \| null' is not assignable to parameter of type 'string'. |
+| `server/routes.ts:6986` | TS18048 | 'traveler' is possibly 'undefined'. |
+| `server/routes.ts:6986` | TS18048 | 'traveler' is possibly 'undefined'. |
+| `server/routes.ts:7086` | TS2345 | Argument of type 'string \| null' is not assignable to parameter of type 'string'. |
+| `server/routes.ts:7087` | TS2345 | Argument of type 'string \| null' is not assignable to parameter of type 'string'. |
+| `server/routes.ts:7796` | TS2345 | Argument of type 'string \| null \| undefined' is not assignable to parameter of type 'strin… |
+| `server/routes.ts:7858` | TS2353 | Object literal may only specify known properties, and 'travelerId' does not exist in type … |
+| `server/routes.ts:8496` | TS2345 | Argument of type 'string \| null' is not assignable to parameter of type 'string'. |
+| `server/routes.ts:8497` | TS2339 | Property 'title' does not exist on type '{ status: string \| null; city: string \| null; ser… |
+| `server/routes.ts:8513` | TS2322 | Type 'string \| null' is not assignable to type 'string'. |
+| `server/routes.ts:8519` | TS2339 | Property 'title' does not exist on type '{ status: string \| null; city: string \| null; ser… |
+| `server/routes.ts:12445` | TS2339 | Property 'title' does not exist on type '{ time: string; name: string; type: string; durat… |
+| `server/routes.ts:14114` | TS2554 | Expected 0 arguments, but got 1. |
+| `server/routes/admin.routes.ts:7388` | TS7053 | Element implicitly has an 'any' type because expression of type '0' can't be used to index… |
+| `server/routes/admin.routes.ts:7389` | TS7053 | Element implicitly has an 'any' type because expression of type '0' can't be used to index… |
+| `server/routes/admin.routes.ts:7390` | TS7053 | Element implicitly has an 'any' type because expression of type '0' can't be used to index… |
+| `server/routes/admin.routes.ts:7391` | TS7053 | Element implicitly has an 'any' type because expression of type '0' can't be used to index… |
+| `server/routes/admin.routes.ts:8071` | TS7053 | Element implicitly has an 'any' type because expression of type '0' can't be used to index… |
+| `server/routes/admin.routes.ts:8076` | TS7053 | Element implicitly has an 'any' type because expression of type '0' can't be used to index… |
+| `server/routes/admin.routes.ts:8076` | TS7053 | Element implicitly has an 'any' type because expression of type '0' can't be used to index… |
+| `server/routes/admin.routes.ts:8189` | TS2554 | Expected 2 arguments, but got 1. |
+| `server/routes/admin.routes.ts:8812` | TS2552 | Cannot find name 'createServiceOfferingType'. Did you mean 'createServiceOfferingTypeRow'? |
+| `server/routes/admin.routes.ts:8834` | TS2552 | Cannot find name 'updateServiceOfferingType'. Did you mean 'updateServiceOfferingTypeRow'? |
+| `server/routes/admin.routes.ts:8845` | TS2552 | Cannot find name 'deleteServiceOfferingType'. Did you mean 'deleteServiceOfferingTypeRow'? |
+| `server/routes/admin.routes.ts:8865` | TS2461 | Type '{ id: string; displayName: string; createdAt: Date \| null; updatedAt: Date \| null; o… |
+| `server/routes/admin.routes.ts:8886` | TS2461 | Type '{ id: string; offeringTypeKey: string; serviceTier: string; displayName: string; tag… |
+| `server/routes/admin.routes.ts:8897` | TS2461 | Type '{ id: string; displayName: string; createdAt: Date \| null; updatedAt: Date \| null; o… |
+| `server/routes/expert-workspace.routes.ts:81` | TS2802 | Type 'Set<string>' can only be iterated through when using the '--downlevelIteration' flag… |
+| `server/routes/expert-workspace.routes.ts:851` | TS2769 | No overload matches this call. |
+| `server/routes/expert-workspace.routes.ts:1105` | TS2345 | Argument of type '{ includePaths: string[]; excludePaths: string[]; maxDepth: any; respect… |
+| `server/routes/upsell.routes.ts:62` | TS2440 | Import declaration conflicts with local declaration of 'FEED_CONFIG_DEFAULTS'. |
+| `server/routes/webhooks.routes.ts:182` | TS2367 | This comparison appears to be unintentional because the types 'DisabledReason' and '""' ha… |
+| `server/routes/webhooks.routes.ts:330` | TS2678 | Type '"transfer.paid"' is not comparable to type '"identity.verification_session.verified"… |
+| `server/seed-travelpulse.ts:116` | TS2352 | Conversion of type '{ id: string; event_name: string; event_type: string; city: string; co… |
+| `server/seed-travelpulse.ts:121` | TS2769 | No overload matches this call. |
+| `server/seeds/phase-d-kyoto-vendors.seed.ts:101` | TS2802 | Type 'Set<string>' can only be iterated through when using the '--downlevelIteration' flag… |
+| `server/services/admin-query.service.ts:31` | TS2322 | Type '{ role: string; } \| { role: string \| null; } \| null' is not assignable to type '{ ro… |
+| `server/services/content-matching.service.ts:405` | TS2339 | Property 'username' does not exist on type 'PgTableWithColumns<{ name: "users"; schema: un… |
+| `server/services/gem-discovery.service.ts:480` | TS2769 | No overload matches this call. |
+| `server/services/itinerary-intelligence.service.ts:413` | TS2339 | Property 'serviceType' does not exist on type '{ status: string \| null; origin: string \| n… |
+| `server/services/itinerary-intelligence.service.ts:413` | TS2339 | Property 'serviceType' does not exist on type '{ status: string \| null; origin: string \| n… |
+| `server/services/itinerary-intelligence.service.ts:416` | TS2339 | Property 'serviceType' does not exist on type '{ status: string \| null; origin: string \| n… |
+| `server/services/itinerary-intelligence.service.ts:427` | TS2339 | Property 'serviceType' does not exist on type '{ status: string \| null; origin: string \| n… |
+| `server/services/itinerary-intelligence.service.ts:454` | TS2339 | Property 'serviceType' does not exist on type '{ status: string \| null; origin: string \| n… |
+| `server/services/itinerary-intelligence.service.ts:455` | TS2339 | Property 'serviceType' does not exist on type '{ status: string \| null; origin: string \| n… |
+| `server/services/pricing.service.ts:84` | TS18046 | 'base_price' is of type 'unknown'. |
+| `server/services/pricing.service.ts:84` | TS18046 | 'price_per_person' is of type 'unknown'. |
+| `server/services/smart-sequencing.service.ts:1403` | TS2322 | Type 'string' is not assignable to type 'number'. |
+| `server/services/upsell-query.service.ts:650` | TS2322 | Type 'number' is not assignable to type '4'. |
+| `server/services/upsell-query.service.ts:651` | TS2322 | Type 'number' is not assignable to type '2'. |
+| `server/services/upsell-query.service.ts:652` | TS2322 | Type 'number' is not assignable to type '6'. |
+| `server/services/upsell-query.service.ts:653` | TS2322 | Type 'string' is not assignable to type '"Picked for your days"'. |
+| `server/services/upsell-query.service.ts:654` | TS2322 | Type 'string' is not assignable to type '"Sponsored"'. |
+| `server/services/vendor-management.service.ts:317` | TS2339 | Property 'vendorType' does not exist on type '{ id: string; createdAt: Date \| null; update… |
+| `server/services/vendor-management.service.ts:321` | TS2339 | Property 'contactPerson' does not exist on type '{ id: string; createdAt: Date \| null; upd… |
+| `server/services/vendor-management.service.ts:322` | TS2339 | Property 'website' does not exist on type '{ id: string; createdAt: Date \| null; updatedAt… |
+| `server/services/vendor-management.service.ts:324` | TS2339 | Property 'eventDate' does not exist on type '{ id: string; createdAt: Date \| null; updated… |
+| `server/static.ts:175` | TS2769 | No overload matches this call. |
+| `server/static.ts:179` | TS2769 | No overload matches this call. |
+| `server/storage.ts:4485` | TS2802 | Type 'Set<string>' can only be iterated through when using the '--downlevelIteration' flag… |
+| `server/storage.ts:5841` | TS2339 | Property 'duration' does not exist on type '{ status: string \| null; city: string \| null; … |
+| `server/storage.ts:5887` | TS2769 | No overload matches this call. |
+| `server/storage.ts:6946` | TS2322 | Type '{ requesterName: string \| undefined; id: string; expertId: string; amount: string; c… |
+| `server/storage.ts:6973` | TS2322 | Type '{ requesterName: string \| undefined; id: string; providerId: string; amount: string;… |
+| `server/storage.ts:8177` | TS2769 | No overload matches this call. |
+| `server/storage.ts:8190` | TS2345 | Argument of type '{ updatedAt: Date; serviceType?: string \| undefined; tripId?: string \| u… |
+| `server/vite.ts:32` | TS2769 | No overload matches this call. |
+
+## Causes, grouped — and the fix for each
+
+### C1 — Query/select shape is narrower than the code that reads it
+
+`itinerary-intelligence.service.ts` 413-455 (`serviceType` ×6), `vendor-management.service.ts` 317-324 (`vendorType`, `contactPerson`, `website`, `eventDate` ×4), `routes.ts` 8497/8519/12445 (`title`), `storage.ts` 5841 (`duration`), `run-eso-backfill.ts` 60/64 (`externalId`), `content-matching.service.ts` 405 (`username`), `provider/profile.tsx` 167-192 (8 provider fields) plus the 5 cascading TS7006, `expert/analytics.tsx` 804-810 (`progress`), `migrate-entry.ts` 13.
+
+**Fix:** for each site decide which is true — the column exists and the `select` forgot it (add it to the select *only where the value is already public to that caller*), or the column does not exist and the read is stale and goes. `content-matching.service.ts:405` is the sharp one: `users` has **no `username`**; the column is `handle`, so this is a live bug, not a typing artefact.
+
+**Risk:** adding a column to a `select` changes a payload shape. Every addition gets a line in the PR body naming the caller that receives it and why it is safe. Nothing is added "because tsc said so".
+
+### C2 — Nullable column passed where a value is required
+
+`routes.ts` 6934/6971/6972/7086/7087/7796/8496 (`string | null` → `string`), `routes.ts` 6951/6986 (`traveler` possibly undefined ×4), `itinerary-optimizer.ts` 1192/1740, `admin-query.service.ts` 31, `pricing.service.ts` 84 (`unknown` parsing ×2).
+
+**Fix:** narrow at the boundary that already proves the value exists (the route has the guard; the type does not know it). Where no guard exists I add one — and that is a **behaviour change**, so each instance is called out in the PR body rather than silently asserted with `!`. No non-null assertions by default.
+
+### C3 — `Set`/`Map` iteration (6 errors)
+
+`run-migrations.ts` 259/260, `storage.ts` 4485, `expert-workspace.routes.ts` 81, `DMOSourceRegistry.ts` 958, `phase-d-kyoto-vendors.seed.ts` 101.
+
+**Fix:** `for (const x of Array.from(set))` / `[...set]`. Semantically identical iteration; no runtime change. I will not touch `target`/`downlevelIteration` in `tsconfig` — that would ripple through 30 files at once.
+
+### C4 — `ZodEffects` has no `.merge` (the error named in the dispatch)
+
+`client/src/lib/validations.ts:73`.
+
+**Fix:** `.merge` is an object-schema method; the receiver is a `ZodEffects` (a `.refine`). The object must be merged *before* the refinement (or the refinement re-applied after), so the runtime parse order is unchanged. Small and local; the before/after chain goes in the PR.
+
+### C5 — Import conflicts (3 errors)
+
+`itinerary-comparison.tsx:74` (×2), `upsell.routes.ts:62`. **Fix:** alias the import. No behaviour change.
+
+### C6 — Overload mismatches (drizzle insert/update, express `.use`, fetch init)
+
+`storage.ts` 5887/8177/8190 (`counterOffer` Json vs object), `gem-discovery.service.ts` 480, `static.ts` 175/179 and `vite.ts` 32 (express path typing), `expert-workspace.routes.ts` 851/1105, `run-eso-backfill.ts` 73, `seed-travelpulse.ts` 121, `DMOCrawler.ts` 188/410, `content-tracking.tsx` 184.
+
+**Fix:** type the insert/update value against the column's own type (`typeof table.$inferInsert`) instead of inventing an object shape; for express, use the overload matching how the middleware is registered. These are the ones most likely to hide real drift — the `counterOffer` family is the drizzle 0.45 upgrade surfacing, so the fix is the schema's inferred type, not a cast.
+
+### C7 — Literal widening
+
+`upsell-query.service.ts` 650-654 (`4`/`2`/`6`/`"Picked for your days"`/`"Sponsored"`), `smart-sequencing.service.ts` 1403 (`string` → `number`).
+
+**Fix:** `satisfies`/`as const` at the source, or widen the declared target. The `smart-sequencing` one is a real unit mismatch — I will read its caller before choosing.
+
+### C8 — Missing exports in admin routes (needs a decision)
+
+`admin.routes.ts` 8812/8834/8845 (`createServiceOfferingType` / `updateServiceOfferingType` / `deleteServiceOfferingType`; tsc suggests `…ServiceOffer…`), with the three TS2461 at 8865/8886/8897 right beside them.
+
+**Fix options:** (a) rename the calls to the real exports if the rename was intended and the routes are live; (b) if the routes are superseded they come **out** — but deleting routes is not a type-only change, so that is Leon's call, not mine. I will report what the storage layer actually exports and which case this is.
+
+### C9 — Indexing a row type with `0` (7 errors)
+
+`admin.routes.ts` 7388-7391, 8071, 8076. **Fix:** type the row (the query returns a tuple/aggregate, the code reads element 0). Type-only.
+
+### C10 — Long tail
+
+`itinerary-comparison.tsx:427` and `seed-travelpulse.ts:116` (invalid casts — likely fall out of C6's typing), `webhooks.routes.ts:182` (comparison of disjoint types), `:330` (`"transfer.paid"` not in the union — possibly a dead handler), `routes.ts:7858` (`travelerId` not a known property), `:14114` and `admin.routes.ts:8189` (argument counts), `itinerary-view.tsx:647` (missing props), `DMOCrawler.ts` 295/301/348/354/389 (union narrowing — check for the error variant before reading `.id`).
+
+## Proposed PR split (each ≤ 40 files, each lands green on its own)
+
+| PR | Scope | Files | ≈ Errors |
+|---|---|---|---|
+| 2a | C3 (Set iteration) + C5 (import conflicts) | 6 | 9 |
+| 2b | C1 + C9 (select shapes, provider profile, analytics, migrate-entry, admin indexing) | 9 | 31 |
+| 2c | C2 + C7 (nullability at boundaries, literal widening) | 6 | 21 |
+| 2d | C6 + C10 (drizzle/express overloads, casts, webhooks, DMOCrawler unions) | 9 | 22 |
+| 2e | C4 (ZodEffects) + C8 (admin exports, after Leon's decision) | 2 | 7 |
+| 2f | **the gate**: add `npm run check` as a required CI lane, then flip the last error to 0 | 1 workflow | — |
+
+The split partitions all 30 files with no file in two groups, so the **Files** counts are exact; the error counts are indicative until each PR opens. A PR is green-in-isolation because no file appears in two groups. The final PR adds the lane; until then `npm run check` stays advisory and I report the running count per PR.
+
+## Overlap with open PRs — must be honoured
+
+| Open PR | Overlap | Consequence |
+|---|---|---|
+| **#1986** (ready) | `server/routes.ts` — it edits that file, and C2 has **17 errors** there | 2c/2d wait for #1986 to merge, or rebase on it. I do not touch `server/routes.ts` while #1986 is open |
+| **#1987** (draft) | `shared/schema.ts`, `client/src/pages/travel-experts.tsx` | no error in those files; no schema change planned |
+| #1983 | docs only | none |
+| #1705 (HELD) | `plan-item-ref.ts` and friends — **reserved** | not touched by any group |
+| PR 1 (#1994) | `scripts/mutation-auth/*` | disjoint |
+
+Realistic order: **2a → 2b → (after #1986) 2c → 2d → 2e → 2f**. 2a, 2b and the client files in 2b/2c are startable immediately.
+
+## Rules I will hold to
+
+- **Types only.** No runtime behaviour change is intended; where a guard must be added (C2), it is listed individually in the PR body.
+- **No blanket `any`, no `@ts-ignore`, no `@ts-expect-error`.** If one is genuinely unavoidable I list it with the reason and the alternative I rejected — target is zero.
+- No migrations, no schema changes, **no new user-facing strings** (no copy is touched by any group).
+- Nothing merged by me; each PR stays draft until Leon's go.
