@@ -1,0 +1,163 @@
+# CI guard — a required suite must HAVE RUN, not merely have reported.
+#
+# THE BUG THIS EXISTS FOR: a skipped check counts as passing for branch protection, so a PR can look
+# mergeable while the heavy suites never ran at all. #1994 and #2006 both did.
+#
+# WHY THEY DID (corrected Nov 14 — the first draft of this comment blamed `paths:` filters, and the run
+# list disproves it): #1984, #1988 and #1993 each got a `Suite Server Tests` run seconds after the ready
+# flip, so the flip DOES start these workflows. #1994 and #2006 failed for a different reason — the flip
+# came ~3 seconds after the push, while that push's runs did not exist yet, so nothing new was created for
+# the head and the only check-runs on it were the draft-era skips.
+#
+# THE SIGNAL IS THE RUN, NOT THE CHECK-RUN. A workflow run appears on the head as soon as it is queued; its
+# jobs' check-runs appear only when runners pick them up, which on a busy pool can take many minutes. An
+# earlier version of this guard waited on check-runs, so a queued suite looked identical to one that never
+# triggered, and it reddened a probe PR that was in fact about to run. So:
+#
+#   1. wait up to ~2 minutes for a RUN per suite at the head (any status: queued, in progress, completed);
+#   2. a suite with a run has RAN — that is the whole requirement; a suite whose check is `skipped` is
+#      judged by the repo's one skip rule (`ci-skip-rules.cjs --decide`) for that workflow and these files;
+#   3. no run at all after the grace period ⇒ judge the workflow's own `on.pull_request.paths` against the
+#      PR's changed files (`scripts/ci/paths-match.cjs`): no match is a purposeful skip and passes with a
+#      note, a match means it should have run and fails.
+#
+# ONE LIST. `REQUIRED_SUITES` is the only place the suites are named: the check-run name, a `|`, then the
+# workflow FILE (which is also how a run is matched to its suite).
+#
+# No app code, no `paths:` filter changed, no repo or branch-protection setting touched.
+
+name: Required Suites Ran
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [main]
+    # CI-1b (c): the canonical paths list ci-skip-rules requires on a non-required PR workflow.
+    # Docs-only and OTHER-workflow-only changes do not run it: neither can change what the suites cover,
+    # so there is no skip to guard against there. Safe on ready_for_review - the flip does create runs.
+    paths:
+      - '**'
+      - '!**/*.md'
+      - 'CLAUDE.md'
+      - 'generated/**'
+      - 'client/public/.well-known/**'
+      - '!.github/workflows/**'
+      - '.github/workflows/required-suites-ran.yml'
+
+
+permissions:
+  contents: read
+  checks: read
+  actions: read
+  pull-requests: read
+
+concurrency:
+  group: required-suites-ran-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+env:
+  # check-run name | workflow file that produces it
+  REQUIRED_SUITES: |
+    suite-server-tests (server/__tests__ as a class — DB + app)|suite-server-tests.yml
+    e2e-ai-stub (provider console · spec coverage · unwired specs)|dev-server-gates.yml
+    e2e-live-config (home · slip rail · discover · cart redirect)|dev-server-gates.yml
+    spec-arming-gate (green-run evidence)|spec-arming-gate.yml
+    scheduler-jobs (idempotency + endpoint auth, #1712)|scheduler-jobs-gate.yml
+    fee-preview (Trip-Pass informational waiver)|fee-preview-gate.yml
+    fee-resolution-authority (DECISIONS.md rulings 47, 48, 51)|fee-resolution-authority-gate.yml
+
+jobs:
+  guard:
+    # A draft PR is work in progress: skipping here is correct and is not the bug.
+    if: github.event.pull_request.draft == false
+    name: guard (every required suite ran)
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-26.04' }}
+    steps:
+      - uses: actions/checkout@v5.1.0
+
+      - name: Require a run per suite at the head, then judge the ones with none
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -uo pipefail
+          runs="$RUNNER_TEMP/runs.tsv"
+          checks="$RUNNER_TEMP/checks.tsv"
+
+          # (1) SHORT grace for the runs to appear — the signal that a suite will report at all.
+          for attempt in $(seq 1 8); do
+            gh api "repos/$REPO/actions/runs?head_sha=$SHA&per_page=100" --paginate \
+              --jq '.workflow_runs[] | [.path, .status, (.conclusion // "")] | @tsv' > "$runs"
+            missing=0
+            while IFS='|' read -r suite workflow; do
+              [ -z "$suite" ] && continue
+              awk -F'\t' -v want=".github/workflows/$workflow" '$1 == want {found=1} END {exit !found}' "$runs" || missing=$((missing + 1))
+            done <<< "$REQUIRED_SUITES"
+            if [ "$missing" -eq 0 ]; then
+              echo "every required suite has a run at ${SHA:0:9} (attempt $attempt)"
+              break
+            fi
+            echo "attempt $attempt: $missing suite(s) have no run yet — waiting 15s"
+            sleep 15
+          done
+
+          # The PR's changed files, once: only the no-run branch needs them.
+          changed_files="$RUNNER_TEMP/files.txt"
+          gh api "repos/$REPO/pulls/$PR/files?per_page=100" --paginate --jq '.[].filename' > "$changed_files" || : > "$changed_files"
+
+          # Check-runs are read only to answer "was it SKIPPED"; absence of a check-run is no longer a verdict.
+          gh api "repos/$REPO/commits/$SHA/check-runs?per_page=100" --paginate \
+            --jq '.check_runs[] | [.name, (.conclusion // .status), .started_at // ""] | @tsv' > "$checks"
+
+          fail=0
+          seen=0
+          while IFS='|' read -r suite workflow; do
+            [ -z "$suite" ] && continue
+            seen=$((seen + 1))
+            run_line=$(awk -F'\t' -v want=".github/workflows/$workflow" '$1 == want' "$runs" | sort -t$'\t' -k2 | tail -1)
+
+            # (2) A run exists ⇒ the suite RAN. Queued, in progress or done, it is going to report.
+            if [ -n "$run_line" ]; then
+              state=$(printf '%s' "$run_line" | cut -f2)
+              echo "$suite — run exists ($state); counts as ran"
+              # A skipped CHECK under that run is judged by the one skip rule, so a skip that the change set
+              # cannot explain is still caught.
+              check_state=$(awk -F'\t' -v want="$suite" '$1 == want' "$checks" | sort -t$'\t' -k3 | tail -1 | cut -f2)
+              if [ "$check_state" = "skipped" ]; then
+                event_file="$RUNNER_TEMP/event.json"
+                printf '{"pull_request":{"draft":false,"number":%s}}' "$PR" > "$event_file"
+                decision=$(GITHUB_EVENT_PATH="$event_file" GITHUB_REPOSITORY="$REPO" GITHUB_TOKEN="$GH_TOKEN" \
+                  WORKFLOW_REF=".github/workflows/$workflow" \
+                  node scripts/ci/ci-skip-rules.cjs --decide 2>&1 || true)
+                if printf '%s' "$decision" | grep -q 'run=false'; then
+                  echo "  its check is skipped, and the skip rule explains it: $decision"
+                else
+                  echo "::error title=$suite::$suite — its check is SKIPPED although this PR's files CAN affect it. $decision"
+                  fail=1
+                fi
+              fi
+              continue
+            fi
+
+            # (3) No run after the grace period: judge the workflow's own paths filter.
+            verdict=$(printf '%s' "$changed_files" | node scripts/ci/paths-match.cjs --stdin "$workflow" 2>&1 || echo nopaths)
+            case "$verdict" in
+              nomatch)
+                echo "$suite — no run, and no changed file matches its on.pull_request.paths: purposeful, passing with a note."
+                ;;
+              *)
+                echo "::error title=$suite::$suite — NO RUN at ${SHA:0:9} although this PR's files match its paths filter ($verdict). Push a commit so its workflow runs."
+                fail=1
+                ;;
+            esac
+          done <<< "$REQUIRED_SUITES"
+
+          if [ "$seen" -eq 0 ]; then
+            echo "::error::REQUIRED_SUITES is empty — the guard is not enforcing anything."
+            fail=1
+          fi
+
+          echo "checked $seen required suite(s) at $SHA"
+          exit "$fail"
