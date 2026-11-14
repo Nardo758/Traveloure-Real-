@@ -32,6 +32,18 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     branches: [main]
+    # CI-1b (c): the canonical paths list ci-skip-rules requires on a non-required PR workflow.
+    # Docs-only and OTHER-workflow-only changes do not run it: neither can change what the suites cover,
+    # so there is no skip to guard against there. Safe on ready_for_review - the flip does create runs.
+    paths:
+      - '**'
+      - '!**/*.md'
+      - 'CLAUDE.md'
+      - 'generated/**'
+      - 'client/public/.well-known/**'
+      - '!.github/workflows/**'
+      - '.github/workflows/required-suites-ran.yml'
+
 
 permissions:
   contents: read
