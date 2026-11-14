@@ -718,21 +718,36 @@ export async function deleteUnclaimedGuestPlan(tripId: string): Promise<boolean>
  * R4b-3 (round 4b, Nov 6, 2026): the `kind:source_id` keys a signed-in traveler's plans hold — their own plans that
  * have not ended — read from the stored items, so "Saved to plan" survives a reload. No price, no amount, no item body.
  */
-export async function savedRefKeysForUser(userId: string): Promise<string[]> {
+/**
+ * E2 (Leon, Nov 13 2026): the same read, but each key also carries the plan it sits on and the day it
+ * landed on — what a content detail page needs to say "On Day {n}" and link back to that plan. ADDITIVE:
+ * no column, no route, no migration.
+ *
+ * The pure rule lives in `shared/saved-refs.ts`, because the CLIENT test that covers it must not import a
+ * server service module (that import is a module-load crash on Linux). Behaviour is unchanged.
+ */
+import { dedupeSavedRefs, type SavedRefEntry } from "@shared/saved-refs";
+
+export type { SavedRefEntry };
+
+export async function savedRefsForUser(userId: string): Promise<SavedRefEntry[]> {
   const rows = await db
     .select({
       contentType: itineraryItems.contentType,
       contentId: itineraryItems.contentId,
       providerServiceId: itineraryItems.providerServiceId,
       affiliateProductId: itineraryItems.affiliateProductId,
+      dayNumber: itineraryItems.dayNumber,
+      planId: trips.id,
     })
     .from(itineraryItems)
     .innerJoin(trips, eq(trips.id, itineraryItems.tripId))
     .where(and(eq(trips.userId, userId), sql`(${trips.endDate} IS NULL OR ${trips.endDate} >= CURRENT_DATE)`));
-  const keys = new Set<string>();
-  for (const r of rows) {
-    const k = savedRefKeyOfItem(r);
-    if (k) keys.add(k);
-  }
-  return Array.from(keys).sort();
+  return dedupeSavedRefs(rows);
+}
+
+export async function savedRefKeysForUser(userId: string): Promise<string[]> {
+  // UNCHANGED contract: unique keys, sorted. A key on two plans answers once here.
+  const entries = await savedRefsForUser(userId);
+  return Array.from(new Set(entries.map((e) => e.key))).sort();
 }

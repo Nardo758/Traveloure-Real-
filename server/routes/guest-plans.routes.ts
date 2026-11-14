@@ -49,6 +49,7 @@ import {
   readGuestPlan,
   saveGuestPlanItem,
   savedRefKeysForUser,
+  savedRefsForUser,
   type GuestSaveTimings,
   updateGuestPlan,
 } from "../services/guest-plan.service";
@@ -234,9 +235,11 @@ router.patch("/api/guest-plans/current/items/:id", guestOnly, savesPerSession, a
 /** R4b-3: the signed-in rail's saved keys — "Saved to plan" reads the plan's own items (survives a reload). */
 router.get("/api/plans/saved-refs", isAuthenticated, async (req, res) => {
   try {
-    const keys = await savedRefKeysForUser(getUserId(req)!);
+    const refs = await savedRefsForUser(getUserId(req)!);
+    // E2 (Leon, Nov 13 2026): `keys` is unchanged for every existing reader; `refs` adds the plan and the
+    // day each key sits on. Additive payload, same route, same cache header.
     res.set("Cache-Control", "private, no-store");
-    res.json({ keys });
+    res.json({ keys: refs.map((r) => r.key), refs });
   } catch (err: any) {
     logger.error({ route: "GET /api/plans/saved-refs", code: err?.code, err: err?.message }, "saved refs read failed");
     res.status(500).json({ code: "error" });
