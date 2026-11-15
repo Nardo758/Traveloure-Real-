@@ -54,7 +54,10 @@ describe("PS-5 — Finalize", () => {
     // An item with no stated path is not a platform item (§13).
     assert.deepEqual(splitBulkCheckoutByPath([{ id: "x", routingStatus: "in_planning", booking: null }]).platform, []);
     // The modal routes `platformItems`, lists `selfBookItems`, and navigates only when something was staged.
-    assert.ok(MODAL.includes("items: platformItems,"));
+    // Row 328 scoped the payload to `scopeItems` (which IS `platformItems` unless the press named one item),
+  // so the pin follows the name the modal now uses rather than the old literal.
+  assert.ok(MODAL.includes("items: scopeItems,"), "the modal routes its scoped platform set");
+  assert.ok(MODAL.includes(": platformItems;"), "and the scope falls back to every platform item");
     assert.ok(MODAL.includes('data-testid="finalize-self-book-note"'));
     assert.ok(MODAL.includes("if (result.succeeded > 0) setLocation(BUY_NOW_CART_PATH);"));
     assert.ok(!MODAL.includes("result.attempted === 0) setLocation"));
