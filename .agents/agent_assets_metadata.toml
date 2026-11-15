@@ -300,3 +300,17 @@ mtime_ms = 1790936771372
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/f076e28a-d96d-4081-86fc-598a8310b85e/5e1634ee-578e-4dcc-8bbd-26ed7ce14e2e"
 storage_version_token = "1790936929075876"
 content_type = "text/markdown"
+
+[[outputs]]
+id = "ymbLKuYBAFWnv5DijaMiA"
+uri = "file://generated-artifacts/publish-b6d736745/local-main-10-commit-audit.md"
+type = "text"
+title = "Audit of all 10 local-only commits"
+description = "Full requested git log/stat output, git cherry results, and per-file comparisons with GitHub main. Includes the 821 local-only deletions."
+logical_id = "67d585a5-f611-4254-b3f2-582d27d0c3ce"
+content_hash = "sha256:8207353eb07c57115033fd6f5ae8a37261a50e19adcc6c5e78ebb19ab709a2c3"
+size = 218818
+mtime_ms = 1794700852796
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:796e6056-bc9f-472e-ba38-753fa8c7073d/67d585a5-f611-4254-b3f2-582d27d0c3ce/b7d0e8a9-2d6b-4b69-b52f-be088f2fa4bd"
+storage_version_token = "1794700854092595"
+content_type = "text/markdown"
