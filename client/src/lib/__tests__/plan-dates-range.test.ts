@@ -3,9 +3,10 @@
  *
  *   R1 validate: same day ok, leave after arrive ok, leave before arrive is the one refusal, partial is incomplete
  *   R2 (deleted with `shiftRange`, QA round 3 option A — an earlier tap no longer moves the trip)
- *   R3 nextRange (QA round 3, Leon, Nov 11, 2026 — option A): a tap never silently rewrites the arrive day; an earlier
- *      tap is the leave day and the pair is refused; while refused, an earlier tap starts over and a later one clears it;
- *      a prefilled range follows the same rule; month/year/leap boundaries are calendar-day arithmetic
+ *   R3 nextRange (QA round 3 option A, Leon, Nov 11, 2026, as amended by ruling (a), Nov 15): picking, an earlier tap is
+ *      the leave day and the pair is refused; while refused, an earlier tap starts over and a later one clears it; with
+ *      both days set (a prefilled plan included) a tap starts a NEW range — so a trip moves later as well as earlier
+ *      (#2019 B8); month/year/leap boundaries are calendar-day arithmetic
  *   R4 initialRange: no prefill when the dates were never chosen; confirmed dates prefill
  *   R5 rangeSummary formats like the header chip and claims nothing when nothing is picked
  *   R6 the refusal sentence is the approved wording, verbatim
@@ -51,12 +52,12 @@ describe("R3 nextRange — one tap (option A)", () => {
     assert.deepEqual(r, { start: "2026-11-12", end: "2026-11-10" });
     assert.ok(refused(r), "the approved sentence shows and Save is disabled");
   });
-  it("with both picked, an earlier tap is refused too (line 86); on/after arrive is the new leave", () => {
-    const r = nextRange({ start: "2026-11-12", end: "2026-11-15" }, "2026-11-09");
-    assert.deepEqual(r, { start: "2026-11-12", end: "2026-11-09" });
-    assert.ok(refused(r));
-    assert.deepEqual(nextRange({ start: "2026-11-12", end: "2026-11-15" }, "2026-11-20"), { start: "2026-11-12", end: "2026-11-20" });
-    assert.deepEqual(nextRange({ start: "2026-11-12", end: "2026-11-15" }, "2026-11-12"), { start: "2026-11-12", end: "2026-11-12" });
+  it("ruling (a): with both days set, any tap starts a new range there — earlier, later, or the arrive day itself", () => {
+    const set = { start: "2026-11-12", end: "2026-11-15" };
+    assert.deepEqual(nextRange(set, "2026-11-09"), { start: "2026-11-09", end: null });
+    assert.deepEqual(nextRange(set, "2026-11-20"), { start: "2026-11-20", end: null });
+    assert.deepEqual(nextRange(set, "2026-11-12"), { start: "2026-11-12", end: null });
+    assert.deepEqual(nextRange({ start: "2026-11-12", end: "2026-11-12" }, "2026-11-14"), { start: "2026-11-14", end: null }, "a same-day range too");
   });
   it("while refused: an earlier tap starts a new range; an on/after tap sets the leave day and clears it", () => {
     const shown = { start: "2026-11-12", end: "2026-11-09" };
@@ -66,21 +67,35 @@ describe("R3 nextRange — one tap (option A)", () => {
     assert.equal(validateRange(cleared.start, cleared.end), "ok");
     assert.deepEqual(nextRange(shown, "2026-11-12"), { start: "2026-11-12", end: "2026-11-12" }, "the arrive day itself clears it");
   });
-  it("a prefilled plan (Dec 1–4) moves to Nov 28–Dec 1 in three taps, the refusal said on the way", () => {
+  it("a prefilled plan moves EARLIER in two taps (Dec 1–4 → Nov 28–Dec 1)", () => {
     let r = { start: "2026-12-01" as string | null, end: "2026-12-04" as string | null };
-    r = nextRange(r, "2026-11-28");
-    assert.ok(refused(r), "first tap: refused, never a silent restart");
     r = nextRange(r, "2026-11-28");
     assert.deepEqual(r, { start: "2026-11-28", end: null });
     r = nextRange(r, "2026-12-01");
     assert.deepEqual(r, { start: "2026-11-28", end: "2026-12-01" });
   });
-  it("the arrive day never changes outside the refused state", () => {
+  it("#2019 B8: a prefilled plan moves LATER in two taps (Dec 25 2026 → Dec 1–4 2027)", () => {
+    let r = { start: "2026-12-25" as string | null, end: "2026-12-28" as string | null };
+    r = nextRange(r, "2027-12-01");
+    assert.deepEqual(r, { start: "2027-12-01", end: null });
+    r = nextRange(r, "2027-12-04");
+    assert.deepEqual(r, { start: "2027-12-01", end: "2027-12-04" });
+  });
+  it("picking (arrive only), the refusal still holds: an earlier tap is refused, never a silent restart", () => {
     let r = { start: "2026-11-20" as string | null, end: null as string | null };
-    for (const d of ["2026-11-25", "2026-11-22", "2026-11-30", "2026-11-20"]) {
-      r = nextRange(r, d);
-      assert.equal(r.start, "2026-11-20", JSON.stringify(r));
-    }
+    r = nextRange(r, "2026-11-18");
+    assert.ok(refused(r), "the approved sentence shows and Save is disabled");
+    assert.equal(r.start, "2026-11-20", "the arrive day is not rewritten while picking");
+  });
+  it("a full sequence: arrive, leave, then a restart from the complete range", () => {
+    let r = { start: null as string | null, end: null as string | null };
+    r = nextRange(r, "2026-11-20");
+    r = nextRange(r, "2026-11-25");
+    assert.deepEqual(r, { start: "2026-11-20", end: "2026-11-25" });
+    r = nextRange(r, "2026-11-22");
+    assert.deepEqual(r, { start: "2026-11-22", end: null }, "the complete range restarts at the tapped day");
+    r = nextRange(r, "2026-11-30");
+    assert.deepEqual(r, { start: "2026-11-22", end: "2026-11-30" });
   });
   it("calendar-day arithmetic across month, year and leap boundaries", () => {
     assert.deepEqual(nextRange({ start: "2026-12-30", end: null }, "2027-01-02"), { start: "2026-12-30", end: "2027-01-02" });

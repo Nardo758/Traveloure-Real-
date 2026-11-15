@@ -185,7 +185,7 @@ test.describe("Single planning entry — PlanEntry", () => {
     expect(mints, "nothing is minted before Step 2 is answered").toBe(0);
   });
 
-  test("QA round 3 option A: an earlier leave day shows the refusal; a tap while refused starts over", async ({ page }) => {
+  test("date range: an earlier leave day shows the refusal; a tap while refused starts over; a complete range restarts (ruling (a))", async ({ page }) => {
     await openEntryFromHero(page);
     await page.getByTestId("plan-entry-around-date").click();
     await page.getByTestId("plan-entry-date-pick").click();
@@ -206,12 +206,18 @@ test.describe("Single planning entry — PlanEntry", () => {
     await tapPlanDay(cal, day(14));
     await expect(alert).toHaveCount(0);
     await expect(cal.getByTestId("plan-entry-dates-summary")).toHaveText(/11–14$/);
-    // A tap after the arrive day while refused sets the leave day and clears the refusal.
+    // Ruling (a), Nov 15: with both days set, a tap starts a NEW range there — later as well as earlier — no refusal.
+    await tapPlanDay(cal, day(20));
+    await expect(alert).toHaveCount(0);
+    await tapPlanDay(cal, day(22));
+    await expect(cal.getByTestId("plan-entry-dates-summary")).toHaveText(/20–22$/);
+    // Picking again from the new arrive day: an earlier day is refused; a tap on/after the arrive day clears it.
     await tapPlanDay(cal, day(9));
+    await tapPlanDay(cal, day(7));
     await expect(alert).toBeVisible();
     await tapPlanDay(cal, day(13));
     await expect(alert).toHaveCount(0);
-    await expect(cal.getByTestId("plan-entry-dates-summary")).toHaveText(/11–13$/);
+    await expect(cal.getByTestId("plan-entry-dates-summary")).toHaveText(/9–13$/);
   });
 
   for (const entry of [

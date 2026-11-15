@@ -7,11 +7,10 @@
  * month with the picker's own previous/next buttons, then taps that month's day (never an outside
  * day from the neighbouring month). A same-day trip is the same day tapped twice.
  *
- * QA round 3 option A (Leon, Nov 11, 2026): on a calendar that already holds an arrive day, a tap before it is the
- * LEAVE day and the pair is refused; a second tap there, while the refusal shows, starts a new range. So on a
- * prefilled calendar `pickPlanDates` taps the new arrive day twice when the first tap was refused. STATED LIMIT: a new
- * arrive day AFTER a prefilled one is read as a leave day (option A never moves the arrive day forward on one tap) —
- * pick on an empty calendar, or an earlier arrive day, from this helper.
+ * The tap rule (`nextRange`; option A as amended by ruling (a), Nov 15, 2026): a calendar holding a complete range —
+ * a prefilled plan's dates — starts a new range on the first tap, so a new window is two taps, earlier OR later. With
+ * only an arrive day held, an earlier tap is a refused leave day; a second tap there starts over, which is why
+ * `pickPlanDates` taps the arrive day again when it sees the refusal.
  */
 import type { Locator } from "@playwright/test";
 
@@ -50,7 +49,7 @@ export async function tapPlanDay(root: Locator, day: string): Promise<void> {
 /** Pick `start`..`end` (`YYYY-MM-DD`) on the one calendar inside `root`. */
 export async function pickPlanDates(root: Locator, start: string, end: string): Promise<void> {
   await tapPlanDay(root, start);
-  // A prefilled calendar: an earlier arrive day was read as a refused leave day; tap it again to start there.
+  // Only an arrive day was held and the new arrive day is earlier: it was read as a refused leave day — tap it again.
   if (await root.locator('[role="alert"]').isVisible()) await tapPlanDay(root, start);
   await tapPlanDay(root, end);
 }
