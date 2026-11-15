@@ -77,6 +77,7 @@ import type { PhotoView } from "@shared/place-photos";
 import { planItemDomId } from "@shared/plan-jump-targets";
 import { usePlanRowLook } from "./row-look";
 import { BoardRowFrame, boardDotFor } from "./BoardRowFrame";
+import { placeholderStopReason } from "@/lib/plan-placeholder";
 import { slipRsvpByLine } from "@/lib/guest-landing";
 
 export type ItemRowMode = "edit" | "read";
@@ -498,6 +499,10 @@ function BoardItemRow(
   const { item: a, mode, anchor = null, menu = null, highlighted = false, place, factsLine, closing, timedEntry } = props;
   const time = anchor ? (anchor.time !== undefined ? anchor.time : a.time || null) : a.time || null;
   const title = anchor ? anchor.title || a.name : a.name;
+  // Row 326 (M2): a stop that names no place is a SLOT, not a mapped place. The gate decides (one rule);
+  // this row only stops pretending - it carries `data-placeholder` and draws no place dot.
+  const placeholderReason = placeholderStopReason({ name: a.name, locationName: (a as any).locationName ?? null }, null);
+  const isSlot = placeholderReason !== null;
   const dot = boardDotFor({ isAnchor: !!anchor, anchorFromTool: anchor?.fromTool ?? null, hasFacts: !!factsLine, withExpert: !!props.pen });
   const rsvpByLine = slipRsvpByLine(a.rsvpBy);
   const titleClass = `min-w-0 break-words text-left text-base font-semibold leading-tight ${props.visited?.checked ? "text-[color:var(--slip-muted)] line-through" : "text-[color:var(--slip-ink)]"}`;
@@ -648,6 +653,7 @@ function BoardItemRow(
         timeTestId={`slip-item-time-${a.id}`}
         timeSlot={props.timeEdit && !anchor ? props.timeEdit.cell : null}
         dot={dot}
+      {...(isSlot ? { "data-placeholder": "true" } : {})}
         menu={props.showMenu ? <ItemRowMenuButton id={a.id} menu={menu!} isAnchor={!!anchor} locked={!!a.locked} board /> : null}
       >
         {props.photo ? <PlacePhoto photo={props.photo} size="thumb" testId={`slip-item-photo-${a.id}`} onClick={props.onOpenDetails} /> : null}
