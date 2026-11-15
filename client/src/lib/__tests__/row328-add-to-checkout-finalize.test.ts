@@ -1,11 +1,12 @@
 ﻿/**
- * Row 328 (Leon, Nov 15) — "Add to checkout" on the Trip Card opens Finalize with that item in hand.
+ * Row 328 (Leon, Nov 15) — "Add to checkout" on the Trip Card opens Finalize with that item picked.
  *
  * The control lives on the board (`ActivitiesSection`), the modal lives in the slip rail (`SlipRail`), with no
  * shared parent state; `finalize-request.ts` is the one channel between them. The wording does not change.
  *
- * Pinned: the button still says "Add to checkout" and still stages the route, the press asks for Finalize
- * with ITS itemId, the rail listens and passes the item on, and the modal accepts it.
+ * The modal READS the item: when the press named an item that goes to checkout, the modal's set — count,
+ * payload, and what the traveler confirms — is that item alone. Opened any other way, whole-plan behaviour is
+ * untouched.
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -38,4 +39,13 @@ test("the rail owns the modal: it listens and hands the item over", () => {
   assert.match(rail, /focusItemId=\{finalizeFocusItemId\}/, "and passes it to the modal");
   const modal = fs.readFileSync("client/src/components/plancard/FinalizeBookingModal.tsx", "utf8");
   assert.match(modal, /focusItemId\?: string \| null/, "the modal accepts it");
+});
+
+test("the modal READS the item: its checkout set is that item alone", () => {
+  const modal = fs.readFileSync("client/src/components/plancard/FinalizeBookingModal.tsx", "utf8");
+  assert.match(modal, /const scopeItems = focusItemId && focusedIsPlatform/, "it scopes off the pressed item");
+  assert.match(modal, /platformItems\.filter\(\(i: any\) => i\.id === focusItemId\)/, "to exactly that row");
+  assert.match(modal, /const checkoutCount = scopeItems\.length/, "the count follows the scope");
+  assert.match(modal, /items: scopeItems,/, "and so does the payload");
+  assert.match(modal, /: platformItems;/, "with the whole plan as the fallback");
 });

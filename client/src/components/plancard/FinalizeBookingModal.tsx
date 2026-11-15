@@ -96,7 +96,14 @@ export function FinalizeBookingModal({
   // Row 328: the press names an item. It is marked, and the platform set is scoped to it when it is one of
   // them - so "with that item picked" is true rather than implied by the plan's count.
   const focusedIsPlatform = !!focusItemId && platformItems.some((i: any) => i.id === focusItemId);
-  const checkoutCount = platformItems.length;
+  // Row 328: "with that item picked" is now the modal's own promise, not the caller's. When the press named
+  // an item that goes to checkout, the modal's set — and therefore its count, its payload and what the
+  // traveler is asked to confirm — IS that item. Opened any other way (focusItemId null, or a self-book
+  // item) the whole-plan behaviour is untouched.
+  const scopeItems = focusItemId && focusedIsPlatform
+    ? platformItems.filter((i: any) => i.id === focusItemId)
+    : platformItems;
+  const checkoutCount = scopeItems.length;
   // Folded pre-gate (adopt-finalize-conform row 13): the old separate "Finalize without booking?"
   // dialog's fact, stated inline here instead. Same predicate SlipView's gate used — items staged
   // to checkout but not yet booked. §13: rendered only when the count is real and non-zero.
@@ -108,7 +115,7 @@ export function FinalizeBookingModal({
     try {
       if (lane === "myself") {
         const result = await runBulkRouteToCheckout({
-          items: platformItems,
+          items: scopeItems,
           postRoute: (itemId) =>
             apiRequest("POST", `/api/trips/${trip.id}/items/${itemId}/route`, { to: "ready_for_checkout" }),
           invalidate: () => {
