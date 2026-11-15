@@ -8,6 +8,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   ACTION_KEYS,
+  ASK_CHOICES,
   ITEM_MENU_KEYS,
   SECONDARY_ORDER,
   askExpertAllowed,
@@ -73,14 +74,42 @@ test("rule 1: on surface=plan the primary is Details, and the 4+1 menu is offere
   assert.ok(!got.secondary.some((a) => a.key === "book"), "no Book on the plan surface");
 });
 
-test("rule 2: Ask an expert is NOT gated like Book — unpriced and present in waitlist", () => {
+test("rule 2: Ask an expert is NOT a provider submit — unpriced, in waitlist AND for a signed-out guest", () => {
   const expert = item({ type: "expert", placeable: false, hasExpert: true, priced: false, detailHref: "/p/abc" });
-  const waitlist = resolveActions(expert, card({ mode: "waitlist", signedIn: false }));
-  assert.equal(waitlist.primary?.key, "ask_expert");
-  assert.equal(waitlist.primary?.priced, false, "the human ask is never priced");
+  for (const ctx of [card({ mode: "waitlist", signedIn: false }), card({ signedIn: false }), card()]) {
+    const got = resolveActions(expert, ctx);
+    assert.equal(got.primary?.key, "ask_expert", "Ask leads for an expert, whoever is looking");
+    assert.equal(got.primary?.priced, false, "the human ask is never priced");
+    assert.deepEqual(
+      got.primary?.askChoices,
+      ["local_expert", "travel_expert", "event_planner"],
+      "the press opens the three-kind chooser",
+    );
+  }
   assert.equal(askExpertAllowed(expert, { mode: "waitlist", signedIn: false, surface: "card" }), true);
-  // An expert with no availability falls back to Details.
-  assert.equal(resolveActions({ ...expert, hasExpert: false }, card()).primary?.key, "details");
+  assert.equal(askExpertAllowed(expert, { mode: "open", signedIn: true, surface: "plan" }), true, "even on a plan sheet");
+});
+
+test("rule 2b: an expert with nobody available offers View profile, not a bare Details", () => {
+  const offline = item({ type: "expert", placeable: false, hasExpert: false, detailHref: "/p/abc" });
+  const got = resolveActions(offline, card());
+  assert.equal(got.primary?.key, "details");
+  assert.equal(got.primary?.labelKey, "view_profile", "its own label key, same destination");
+});
+
+test("rule 1b: a bookable hotel is Book when open and signed in, and Add otherwise", () => {
+  const hotel = item({ type: "hotel", bookable: true, priced: true });
+  assert.equal(resolveActions(hotel, card()).primary?.key, "book", "open + signed in");
+  assert.equal(resolveActions(hotel, card({ mode: "waitlist", signedIn: false })).primary?.key, "add", "waitlist");
+  assert.equal(resolveActions(hotel, card({ signedIn: false, mode: "open" })).primary?.key, "add", "signed-out guest");
+});
+
+test("rule 3b: the heart is signed-in only, and a waitlist guest's write is Add", () => {
+  const gem = item();
+  const guest = resolveActions(gem, card({ mode: "waitlist", signedIn: false }));
+  assert.ok(!guest.secondary.some((a) => a.key === "save"), "no heart for a guest");
+  assert.equal(guest.primary?.key, "add", "Add is the guest's write");
+  assert.ok(resolveActions(gem, card()).secondary.some((a) => a.key === "save"), "signed in keeps the heart");
 });
 
 test("rule 3: the heart is signed-in only; a waitlist guest gets Add instead", () => {
@@ -141,6 +170,11 @@ test("open plan: an expert reviewing a hired plan gets it as a secondary, not a 
   assert.equal(open?.primary, false);
   const traveler = resolveActions(item(), { mode: "open", signedIn: true, surface: "plan", role: "traveler" });
   assert.ok(!traveler.secondary.some((a) => a.key === "open_plan"), "never for a traveler");
+});
+
+test("the Ask chooser names the three kinds, as label keys only", () => {
+  assert.deepEqual(ASK_CHOICES.map((c) => c.kind), ["local_expert", "travel_expert", "event_planner"]);
+  assert.deepEqual(ASK_CHOICES.map((c) => c.labelKey), ["ask_local", "ask_trip_planner", "ask_event_planner"]);
 });
 
 test("the ruled orders and key sets are the ones the spec names", () => {

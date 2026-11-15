@@ -92,6 +92,8 @@ export interface ResolvedAction {
   key: ActionKey;
   /** The approved string key a surface resolves; the engine never carries the words. */
   labelKey: string;
+  /** `ask_expert` only: the chooser the press opens. Empty for every other action. */
+  askChoices?: readonly AskChoiceKind[];
   href?: string;
   /** Only `official_site`, and never on `surface=plan` in LL-1. */
   external?: boolean;
@@ -123,6 +125,7 @@ function action(key: ActionKey, opts: { labelKey?: string; href?: string; extern
   return {
     key,
     labelKey: opts.labelKey ?? key,
+    ...(key === "ask_expert" ? { askChoices: ASK_CHOICES.map((c) => c.kind) } : {}),
     ...(opts.href ? { href: opts.href } : {}),
     ...(opts.external ? { external: true } : {}),
     priced: opts.priced ?? false,
@@ -146,7 +149,22 @@ export function bookAllowed(item: ContentItem, ctx: ActionContext): boolean {
   return item.bookable && pricedAllowed(ctx) && ctx.signedIn === true && ctx.surface !== "plan";
 }
 
-/** The human ask: unpriced, so it survives waitlist; it needs an expert to exist. */
+/**
+ * THE ASK CHOOSER (spec §5). "Ask an expert" is ONE unpriced button; tapping it opens these three kinds.
+ * It is NOT a provider submit: it shows in waitlist mode and to a signed-out guest, never with a price.
+ * labelKeys only - the words live in the approved tables, except the two the spec marks NEW.
+ */
+export const ASK_CHOICES = [
+  { kind: "local_expert", labelKey: "ask_local" },
+  { kind: "travel_expert", labelKey: "ask_trip_planner" },
+  { kind: "event_planner", labelKey: "ask_event_planner" },
+] as const;
+export type AskChoiceKind = (typeof ASK_CHOICES)[number]["kind"];
+
+/**
+ * The human ask: unpriced, NOT gated by mode or sign-in. It needs an expert to exist for the city; the press
+ * opens the chooser above, then the chosen rail (and, for a guest, the existing sign-in gate after the tap).
+ */
 export function askExpertAllowed(item: ContentItem, ctx: ActionContext): boolean {
   return item.hasExpert === true && item.type === "expert";
 }
@@ -198,6 +216,8 @@ export function primaryKeyFor(item: ContentItem, ctx: ActionContext): ActionKey 
       if (bookAllowed(item, ctx)) return "book";
       return addAllowed(item, ctx) ? "add" : item.detailHref ? "details" : null;
     case "expert":
+      // "Ask an expert", or View profile when nobody is available for the city. Both are Details-shaped when
+      // there is no Ask: the labelKey differs, the destination does not.
       return askExpertAllowed(item, ctx) ? "ask_expert" : "details";
     case "viator":
     case "deal":
@@ -220,6 +240,10 @@ export function resolveActions(item: ContentItem, ctx: ActionContext): ResolvedA
         const a = action(primaryKey, {
           href: primaryKey === "details" ? item.detailHref ?? undefined : undefined,
           priced: primaryKey === "book" || primaryKey === "hire",
+          // An expert card with nobody available offers View profile: same destination, its own label key.
+          ...(primaryKey === "details" && item.type === "expert" && !askExpertAllowed(item, ctx)
+            ? { labelKey: "view_profile" }
+            : {}),
         });
         a.primary = true;
         return a;
