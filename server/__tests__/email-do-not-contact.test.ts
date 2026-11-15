@@ -19,7 +19,7 @@ import {
   SUPPRESSED_DO_NOT_CONTACT,
   SUPPRESSED_HARD_BOUNCE,
   suppressionRefusalReason,
-} from "../services/email-suppression";
+} from "../services/email-suppression-rule";
 
 const TRANSACTIONAL = "provider_booking_alert";
 const MARKETING = "waitlist_apply_invite";
@@ -56,8 +56,13 @@ test("security mail still arrives for a do-not-contact row (a password reset is 
 test("the gate stays the ONE place sendEmail consults, and the senders reach it through sendEmail", () => {
   const emailService = fs.readFileSync("server/services/email.service.ts", "utf8");
   assert.match(emailService, /addressSuppressionHit/, "sendEmail consults the gate");
+  // The RULE lives in the db-free module (that is why this test can run without postgres); the gate imports
+  // and re-exports it, so there is still exactly one decision.
+  const rule = fs.readFileSync("server/services/email-suppression-rule.ts", "utf8");
+  assert.match(rule, /reasons\.has\(DO_NOT_CONTACT_REASON\)/, "the reason is decided in the rule, not at a call site");
   const gate = fs.readFileSync("server/services/email-suppression.ts", "utf8");
-  assert.match(gate, /reasons\.has\(DO_NOT_CONTACT_REASON\)/, "the reason is decided here, not at a call site");
+  assert.match(gate, /from "\.\/email-suppression-rule"/, "and the gate re-exports it rather than repeating it");
+  assert.doesNotMatch(gate, /reasons\.has\(DO_NOT_CONTACT_REASON\)/, "no second copy of the decision");
   // The four invite senders all leave through the shared send path (one of the two modules below), so the
   // gate covers them without a per-sender check.
   const outbox = fs.readFileSync("server/services/email-outbox.service.ts", "utf8");
