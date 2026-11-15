@@ -184,6 +184,10 @@ jobs:
       - name: Well-known static mount pin (LD 43(e))
         run: npx tsx --test server/__tests__/well-known-static.test.ts
 
+      # QA round 4 R4-9: every 400 on POST /api/trips/:tripId/itinerary-items is logged with its code (no DB).
+      - name: Add-rail refusals are logged with their code (QA round 4 R4-9)
+        run: npx tsx --test server/__tests__/r4-item-write-refusal.test.ts
+
       # 2026-09-06-expert-work-protected (CLAUDE.md Locked Decision 42 D3 + D4): expert work is
       # protected where money is protected — rows carrying expert_note or origin='expert' join
       # the optimizer baseline's constraint set, itineraryItemRebuildDeletable() and BOTH

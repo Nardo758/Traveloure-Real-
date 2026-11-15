@@ -44,7 +44,8 @@ describe("Lane 8 cleanup", () => {
     assert.match(hook, /pending: path === "wait",/);
     assert.match(hook, /return \(item\) => queueSave\(item\);/, "a press during the wait is queued");
     assert.doesNotMatch(hook, /createHeldPress|useRef/, "the slot is module state, never a card ref");
-    assert.match(read("client/src/components/browse-shell.tsx"), /if \(!isLoading && user\) \{\s*return <DashboardLayout>/);
+    // QA round 4 R4-4 (a) (sanctioned edit): the console shell carries the Trip Strip in its subheader slot.
+    assert.match(read("client/src/components/browse-shell.tsx"), /if \(!isLoading && user\) \{\s*return <DashboardLayout subheader=\{<SignedInTripStrip \/>\}>/);
     const runner = read("client/src/lib/plan-add-runner.ts");
     assert.match(runner, /let slot: QueuedAdd \| null = null;/, "one slot");
     assert.match(runner, /export function useAddPending\(/);

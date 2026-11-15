@@ -220,6 +220,26 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
           CI: 'true'
 
+      # QA round 4 R4-3: every signed-in add raises the one add toast — View plan, PLAN_ADD_TOAST_MS (8 s).
+      - name: Signed-in add toast (QA round 4 R4-3)
+        if: ${{ !cancelled() }}
+        run: npx playwright test playwright/tests/journeys/j-signed-in-add-toast.spec.ts --project=chromium --workers=1 --reporter=list,json
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: playwright-json/signed-in-add-toast.json
+          BASE_URL: http://localhost:5000
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          CI: 'true'
+
+      # QA round 4 R4-4: signed in — the Trip Strip on the browse page, the phone menu button's name, no signed-out flash.
+      - name: Signed-in chrome (QA round 4 R4-4)
+        if: ${{ !cancelled() }}
+        run: npx playwright test playwright/tests/journeys/j-signed-in-chrome.spec.ts --project=chromium --workers=1 --reporter=list,json
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: playwright-json/signed-in-chrome.json
+          BASE_URL: http://localhost:5000
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          CI: 'true'
+
       # Step 8d (ledger `2026-10-07-step8d-guest-map`): the SIGNED-OUT round trip — start page → modal →
       # the guest map (no plan) → Add → sign up in the existing modal → exactly one plan, the answers
       # kept, exactly one Day 1 item; a reload creates nothing. It also closes 8b-2's signed-out gate,

@@ -82,7 +82,8 @@ describe("console grammar — one scope, tokens only", () => {
   it("T4 BrowseShell is the one chrome chooser: session in, DashboardLayout or Layout out", () => {
     const shell = codeClient("components/browse-shell.tsx");
     assert.ok(shell.includes("useAuth"), "BrowseShell must read the session");
-    assert.ok(shell.includes("<DashboardLayout>"), "BrowseShell must render DashboardLayout for a signed-in traveler");
+    // QA round 4 R4-4 (a) (sanctioned edit): the console shell now carries the Trip Strip in its subheader slot.
+    assert.ok(/<DashboardLayout( subheader=\{<SignedInTripStrip \/>\})?>/.test(shell), "BrowseShell must render DashboardLayout for a signed-in traveler");
     assert.ok(shell.includes("<Layout>"), "BrowseShell must render the public Layout for a guest");
   });
 

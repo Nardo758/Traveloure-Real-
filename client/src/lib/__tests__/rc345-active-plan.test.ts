@@ -109,7 +109,8 @@ describe("RC-3 — the ONE binder mounts above every shell", () => {
     assert.equal(layout.includes("useTripContextSync("), false);
     assert.equal(layout.includes('from "@/lib/trip-context"'), false);
     // BrowseShell still renders DashboardLayout for a signed-in traveler — the case RC-3 is about.
-    assert.match(read("client/src/components/browse-shell.tsx"), /<DashboardLayout>\{children\}<\/DashboardLayout>/);
+    // QA round 4 R4-4 (a) (sanctioned edit): the console shell carries the Trip Strip in its subheader slot.
+    assert.match(read("client/src/components/browse-shell.tsx"), /<DashboardLayout subheader=\{<SignedInTripStrip \/>\}>\{children\}<\/DashboardLayout>/);
   });
 
   it("B3: the bind announces itself synchronously, before the hand-off and hydrate it awaits", async () => {
