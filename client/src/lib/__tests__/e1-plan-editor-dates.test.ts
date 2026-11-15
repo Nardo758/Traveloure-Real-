@@ -60,7 +60,10 @@ test("E1: a one-day OCCASION still collapses its range (that branch is untouched
 test("E1: Save and Next are disabled, and the sentence renders under Last day", () => {
   assert.match(SRC, /disabled=\{saving \|\| datesBackwards\}/, "Save is disabled on a backwards range");
   assert.match(SRC, /disabled=\{datesBackwards\}/, "Next is disabled on a backwards range");
-  const msg = SRC.match(/data-testid="text-etp-dates-backwards"[\s\S]{0,160}?LEAVE_BEFORE_ARRIVE_MESSAGE/);
-  assert.ok(msg, "the approved sentence is rendered in the backwards-only block");
+  // E4 moved the When step onto the ONE calendar: the refusal sentence is the calendar's, rendered under its
+  // grid (`etp-dates-error`) from the same LEAVE_BEFORE_ARRIVE_MESSAGE constant.
+  assert.match(SRC, /<PlanDatesCalendar[\s\S]{0,260}?testId="etp-dates"/, "the When step IS the one calendar");
+  const cal = fs.readFileSync("client/src/components/plan/PlanDatesCalendar.tsx", "utf8");
+  assert.match(cal, /testId\}-error[\s\S]{0,80}?LEAVE_BEFORE_ARRIVE_MESSAGE/, "the calendar carries the sentence");
   assert.equal(LEAVE_BEFORE_ARRIVE_MESSAGE, "Leave date can't be before your arrive date.");
 });

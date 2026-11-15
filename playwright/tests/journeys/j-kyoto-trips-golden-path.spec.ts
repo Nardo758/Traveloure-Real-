@@ -389,9 +389,10 @@ test.describe("1 · entry and occasion", () => {
     await edit.click();
     expect(await appears(testid(page, "plan-modal"), 10_000)).toBe(true);
     const next = testid(page, "button-planning-next");
-    for (let i = 0; i < 6 && !(await appears(testid(page, "input-etp-start-date"), 600)); i++) await next.click();
-    await testid(page, "input-etp-start-date").fill(`${year}-12-01`);
-    await testid(page, "input-etp-end-date").fill(`${year}-12-04`);
+    for (let i = 0; i < 6 && !(await appears(testid(page, "etp-dates-grid"), 600)); i++) await next.click();
+    // E4: the When step IS the one calendar now, so the golden path picks days instead of typing dates.
+    await page.locator("[data-day='" + year + "-12-01']").first().click();
+    await page.locator("[data-day='" + year + "-12-04']").first().click();
     const patched = await actAndAwait(
       page,
       async () => {
