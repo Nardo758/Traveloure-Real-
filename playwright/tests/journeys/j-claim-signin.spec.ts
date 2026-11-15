@@ -58,6 +58,18 @@ test.use({ viewport: { width: 1440, height: 900 } });
 
 test("TB2: guest save → sign in → sign out → guest save → sign in again lands on the new plan", async ({ page }) => {
   test.setTimeout(120_000);
+  // QA round 4 R4-2: once a claim is sent, no guest read follows it (prod: a leftover GET /api/guest-plans/current ~0.3s
+  // after the claim's 200, answered 409 signed_in, 3/3).
+  let claimSent = false;
+  const readsAfterClaim: string[] = [];
+  page.on("request", (r) => {
+    const path = new URL(r.url()).pathname;
+    if (path === "/api/guest-plans/claim") claimSent = true;
+    else if (claimSent && r.method() === "GET" && path === "/api/guest-plans/current") readsAfterClaim.push(r.url());
+  });
+  page.on("response", (r) => {
+    if (r.status() === 409 && new URL(r.url()).pathname.startsWith("/api/guest-plans")) readsAfterClaim.push(`409 ${r.url()}`);
+  });
   await page.goto("/", { waitUntil: "domcontentloaded" });
 
   const guestSave = async (title: string): Promise<string> => {
@@ -80,9 +92,12 @@ test("TB2: guest save → sign in → sign out → guest save → sign in again 
   const first = await guestSave("Kyoto trip A");
   await signIn();
   await expect(page).toHaveURL(new RegExp(`/plans/${first}(\\?|$)`), { timeout: 30_000 });
+  await page.waitForTimeout(1500);
+  expect(readsAfterClaim, "no guest read after the claim (R4-2)").toEqual([]);
   expect(await owner(first), "the first guest plan is the account's").toBe(account.id);
 
-  // 2. Sign out from the console sidebar: the tab's claim memo is forgotten.
+  // 2. Sign out from the console sidebar: the tab's claim memo is forgotten. Signed out, guest reads are this page's again.
+  claimSent = false;
   await testid(page, "button-sidebar-logout").click({ timeout: 20_000 });
   await expect(page).toHaveURL(/\/$/, { timeout: 20_000 });
   expect(await page.evaluate(() => sessionStorage.getItem("traveloure_guest_claimed_for")), "memo cleared on sign-out").toBeNull();
@@ -92,5 +107,7 @@ test("TB2: guest save → sign in → sign out → guest save → sign in again 
   expect(second).not.toBe(first);
   await signIn();
   await expect(page).toHaveURL(new RegExp(`/plans/${second}(\\?|$)`), { timeout: 30_000 });
+  await page.waitForTimeout(1500);
+  expect(readsAfterClaim, "no guest read after the second claim (R4-2)").toEqual([]);
   expect(await owner(second), "the second guest plan is the account's too").toBe(account.id);
 });

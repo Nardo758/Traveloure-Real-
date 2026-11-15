@@ -3,7 +3,7 @@
  *
  *   C1  The first guest request with no cookie gets an httpOnly guest cookie; that cookie names the same plan after.
  *   C2  A guest whose browser keeps cookies is NOT named by the `X-Guest-Session` header: a request with only the header
- *       is a new guest (a cleared cookie never brings the old plan back — the ruling).
+ *       names no guest (a cleared cookie never brings the old plan back — the ruling); a read mints none (R4-1).
  *   C3  Cookies off (`X-Guest-Cookies: off`): the header id names the guest and no cookie is set.
  *   C4  The claim reads the cookie's guest; with no cookie it reads the body id only when cookies are off; it never mints.
  *   C5  The resolver, pure: cookie, then header-when-cookies-off, then a new id; a malformed cookie is ignored.
@@ -116,10 +116,10 @@ describe("Lane 6 guest cookie", () => {
     tripIds.add(off.json.plan.id);
     const cleared = await call("GET", "/api/guest-plans/current", { header });
     // R3-1 (round 3 ruling; sanctioned edit): "no plan yet" answers 200 with null, never a 404.
-    assert.equal(cleared.status, 200, "no cookie, cookies on: a new guest");
-    assert.equal(cleared.json, null, "with no plan");
-    const minted = cookieFrom(cleared.setCookie);
-    assert.ok(minted && minted !== header, "a new cookie, never the header's id");
+    assert.equal(cleared.status, 200, "no cookie, cookies on: no guest named");
+    assert.equal(cleared.json, null, "with no plan — the header's plan is not restored");
+    // QA round 4 R4-1 (Leon, Nov 13, 2026; sanctioned edit): only the create mints a guest — a read sets no cookie.
+    assert.equal(cleared.setCookie, null, "a read never mints a guest");
   });
 
   it("C3 cookies off: the header names the guest and no cookie is set", async () => {
