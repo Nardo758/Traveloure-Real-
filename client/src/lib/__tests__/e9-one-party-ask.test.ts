@@ -1,4 +1,4 @@
-﻿/**
+/**
  * E9 (Leon, Nov 13): ONE party ask.
  *
  * The editor's Who step already reads `partyFields(selectedOccasion)` / `asksKidsCount(...)`
@@ -19,8 +19,8 @@ const MODAL = fs.readFileSync("client/src/components/trip/plan-modal.tsx", "utf8
 test("both surfaces read the one rule", () => {
   assert.match(MODAL, /partyFields\(selectedOccasion\)/, "the editor step reads partyFields");
   assert.match(MODAL, /asksKidsCount\(selectedOccasion\)/, "and asksKidsCount");
-  assert.match(PANEL, /partyFields\(partyOccasion\)/, "the slip panel reads the same rule");
-  assert.match(PANEL, /asksKidsCount\(partyOccasion\)/, "and the same kids question");
+  assert.match(PANEL, /partyFields\(occasion\)/, "the slip panel reads the same rule");
+  assert.match(PANEL, /asksKidsCount\(occasion\)/, "and the same kids question");
 });
 
 test("the panel's labels come from the rule, not literals", () => {

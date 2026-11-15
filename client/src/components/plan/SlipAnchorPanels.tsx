@@ -14,8 +14,8 @@
  *                        sent as an answer (§13: unanswered is not "no pet", not "0 children").
  */
 import { DEFAULT_ADULTS } from "@shared/plan-vocabulary";
-import { useOccasionSwitches } from "@/hooks/use-occasion-switches";
 import { asksKidsCount, partyFields } from "@/lib/plan-steps";
+import type { OccasionSwitchRow } from "@/lib/occasion-switches";
 import { api } from "@shared/routes";
 import { useEffect, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
@@ -224,9 +224,12 @@ export function InlineWhoPanel({
   onSaved,
   onCancel,
   submit,
+  occasion = null,
 }: {
   tripId: string;
   current: PartyAnswers;
+  /** E9: the plan's occasion row, handed down by the caller that already resolved it. Never fetched here. */
+  occasion?: OccasionSwitchRow | null;
   onSaved?: () => void;
   onCancel?: () => void;
   /**
@@ -279,10 +282,9 @@ export function InlineWhoPanel({
   // E9 (Leon, Nov 13): ONE party ask. The panel reads the same `partyFields` rule the editor's Who step
   // reads, so a plan whose occasion says "Attendees" says Attendees here too, and an occasion that asks no
   // kids count draws no second field. The testids do not move.
-  const { occasion: partyOccasion } = useOccasionSwitches(tripId);
-  const partyAsk = partyFields(partyOccasion);
+  const partyAsk = partyFields(occasion);
   const adultsLabel = partyAsk.find((f) => f.key === "adults")?.label ?? "Adults";
-  const wantsKids = asksKidsCount(partyOccasion);
+  const wantsKids = asksKidsCount(occasion);
 
   return (
     <div className="rounded-lg border border-border bg-card p-3 space-y-3" data-testid="slip-who-panel">
