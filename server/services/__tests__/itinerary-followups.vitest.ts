@@ -130,6 +130,78 @@ async function claim(fixture: Fixture, kind: ItineraryFollowupKind) {
 }
 const sender = () => vi.fn(async (_params: SendEmailParams) => ({ ok: true, id: "intercepted-provider-not-live" }));
 
+for (const entry of ITINERARY_FOLLOWUPS) {
+  test(`${entry.kind}: database failure after cancellation decision rolls back and permits a safe retry`, async () => {
+    await withFixture(async (fixture) => {
+      const send = sender();
+      _outboxTestHooks.sendEmailFn = send;
+      await db.update(itineraryComparisons).set({ status: "archived" })
+        .where(eq(itineraryComparisons.id, fixture.itineraryId));
+      const id = await claim(fixture, entry.kind);
+      const before = await notices(fixture.userId);
+      const readyBefore = await db.select().from(emailOutbox)
+        .where(sql`${emailOutbox.metadata}->>'comparisonId' = ${fixture.itineraryId}`);
+      const decision = [
+        { outboxId: id, emailType: entry.kind, reason: "Itinerary removed or no longer ready" },
+        "[itinerary-followup] cancelled; not sent",
+      ];
+      const log = vi.spyOn(logger, "info").mockImplementation(() => {});
+      const transaction = db.transaction.bind(db);
+      // Run the real worker and UPDATE in a real transaction. Fail with a PostgreSQL
+      // error after the callback has logged its decision, but before COMMIT.
+      const fault = vi.spyOn(db, "transaction").mockImplementationOnce((run, config) =>
+        transaction(async (tx) => {
+          const result = await run(tx);
+          expect(result).toBe("cancelled");
+          expect(log.mock.calls).toEqual([decision]); // exact three-field privacy allowlist
+          const [uncommitted] = await tx.select().from(emailOutbox).where(eq(emailOutbox.id, id));
+          expect(uncommitted).toMatchObject({
+            status: "cancelled", lastError: "Itinerary removed or no longer ready", retryAfter: null,
+          });
+          expect(send).not.toHaveBeenCalled();
+          await tx.execute(sql`SELECT 1 / 0`);
+          return result;
+        }, config));
+      try {
+        // Drizzle wraps the PostgreSQL error; assert its SQLSTATE, not wrapper wording.
+        await expect(deliverItineraryFollowup(id, send)).rejects.toMatchObject({
+          cause: { code: "22012" },
+        });
+        fault.mockRestore();
+        // The decision survived in the log, but the cancellation did NOT commit.
+        // It is neither a commit receipt nor independent proof of provider absence.
+        expect(log.mock.calls).toEqual([decision]);
+        expect(await notices(fixture.userId)).toEqual(before);
+        expect(await db.select().from(emailOutbox)
+          .where(sql`${emailOutbox.metadata}->>'comparisonId' = ${fixture.itineraryId}`)).toEqual(readyBefore);
+        expect(send).not.toHaveBeenCalled();
+
+        // The claimed row is still processing with its original retry/attempt/payload
+        // fields. A fresh worker can re-evaluate it and commit cancellation safely.
+        expect(await deliverItineraryFollowup(id, send)).toBe("cancelled");
+        const committed = await notices(fixture.userId);
+        expect(committed.find((row) => row.id === id)).toEqual({
+          ...before.find((row) => row.id === id)!,
+          status: "cancelled", lastError: "Itinerary removed or no longer ready",
+          retryAfter: null, updatedAt: expect.any(Date),
+        });
+        expect(committed.filter((row) => row.id !== id)).toEqual(before.filter((row) => row.id !== id));
+        expect(log.mock.calls).toEqual([decision, decision]);
+        expect(await deliverItineraryFollowup(id, send)).toBe("skipped");
+        await deliverQueuedEmail(id);
+        expect(await notices(fixture.userId)).toEqual(committed);
+        expect(await db.select().from(emailOutbox)
+          .where(sql`${emailOutbox.metadata}->>'comparisonId' = ${fixture.itineraryId}`)).toEqual(readyBefore);
+        expect(log.mock.calls).toEqual([decision, decision]);
+        expect(send).not.toHaveBeenCalled();
+      } finally {
+        fault.mockRestore();
+        log.mockRestore();
+      }
+    });
+  });
+}
+
 for (const planState of ["deleted", "archived"] as const) {
   test(`${planState} plan: already-sent follow-ups stay sent without a cancellation decision`, async () => {
     await withFixture(async (fixture) => {

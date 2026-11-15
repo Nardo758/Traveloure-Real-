@@ -185,3 +185,77 @@ The code gap behind **W-C29-DECISION-LOG** is implemented and verified on this
 task's branch, pending review/merge. **C29 remains WAITING; the four-part live
 absence proof and broader release are not complete.** No delivery activation,
 merge, or publish was performed.
+
+## Cancellation decision rollback regression — 2026-11-15
+
+Added three provider-free cases in
+`server/services/__tests__/itinerary-followups.vitest.ts`, one each for
+`itinerary_nudge_2h`, `itinerary_followup_24h`, and
+`itinerary_reengagement_5d`.
+
+### Injected failure and observed rollback
+
+Each case archives its fixture plan, claims the reminder as `processing`, and
+captures the complete reminder rows plus the separate ready-notice rows.
+A one-shot test wrapper invokes the real `db.transaction` callback. After that
+callback returns `cancelled`, the wrapper verifies that the row is cancelled
+**inside the still-open transaction** and that the decision was logged. It then
+executes `SELECT 1 / 0` on that same transaction before commit. The worker promise
+rejects with PostgreSQL SQLSTATE **22012** in the Drizzle error's cause.
+
+For all three reminder types, assertions passed for:
+
+- Exactly one emitted decision before the failure, with only `outboxId`,
+  `emailType`, and fixed `reason: "Itinerary removed or no longer ready"`;
+  static message `[itinerary-followup] cancelled; not sent`.
+- After rejection, **all reminder rows exactly equal their pre-transaction
+  snapshots**, including the claimed row's `processing` status, retry timestamp,
+  attempt count, last error, payload, metadata, and update timestamp. Ready
+  notices also exactly equal their snapshots. The cancellation UPDATE rolled
+  back; the earlier, separately committed claim did not.
+- **Zero intercepted sender calls** before failure, after rollback, after retry,
+  and after terminal repeats. Both direct-worker and outbox-dispatch sender
+  paths use the test spy; no live transport is invoked.
+- With fault injection removed and the plan still archived, a fresh worker
+  returns `cancelled` and persists only the intended cancellation fields
+  (`status`, `lastError`, `retryAfter`, `updatedAt`). Other reminders and ready
+  notices remain unchanged. The retry emits a second identical decision.
+- A further worker call returns `skipped`; an outbox-dispatch repeat also leaves
+  rows unchanged, emits no third decision, and makes no send.
+
+**Interpretation:** the first decision exists even though its cancellation
+transaction failed. It records the worker's in-transaction decision, **not a
+committed cancellation, delivery receipt, or independent proof of provider
+absence**. Repeated identical decisions can represent rollback followed by
+retry. In this fixture, separate database reads establish rollback/commit and
+sender-spy assertions establish zero calls. Real provider-event and QA-inbox
+absence were not observed; C29's live absence-proof status is unchanged.
+Logging timing/semantics remain unchanged and require separate founder approval
+to change. The three-field privacy allowlist and all production eligibility,
+send, and retry behavior are unchanged.
+
+### Execution evidence and limits
+
+- Used a private loopback PostgreSQL **16.10** database materialized from the
+  current Drizzle schema (**1016 statements**, `pg_trgm` installed), not a proof
+  of the migration chain. The retained messaging verifier cloned an empty,
+  constraint-preserving schema and reported `ISOLATED_SCHEMA_REMOVED=true`
+  after the run. No shared-development or production fixtures were written.
+- The verifier and its children ran in an explicit allowlisted environment with
+  no real provider credentials. The database instance was stopped afterward.
+- Ran the full `vitest.itinerary-followups.config.ts` suite through the retained
+  `automation-baseline-reporter.mjs` adapter and `run-messaging-gate.mjs
+  --isolated-db --http-harness`. **31 collected: 29 passed, 2 failed, 0 skipped.**
+  All **3/3 new rollback cases passed** (181.77 ms, 96.72 ms, 97.57 ms).
+  The two existing HTTP cases failed on **404 instead of 200**: unsubscribe GET
+  and authenticated preferences GET. Their failures are not rollback-test
+  failures and this run is **not** claimed as a green full-suite result.
+- `tsc --noEmit --pretty false` exited 2 with **103 repository diagnostics**;
+  none named the edited test file. This is not a globally clean typecheck.
+  `git diff --check` passed.
+- Runtime SHA-256 remains
+  `21b1ad46aec66e5b19cb6f58a57f2987f8906d284679486bfdfcbdc29f0a5912`.
+  Test SHA-256:
+  `58b08fb5ff492a511ee10a727cf8934b1f67eefcd5aa5943f5eff5d8ee128402`.
+  No application source, migration, workflow, delivery activation, or publish
+  changed as part of this task.
