@@ -397,10 +397,13 @@ test.describe("1 · entry and occasion", () => {
     // The grid's BUTTONS are its day cells; the month navigation sits outside it. No React-Day-Picker
     // attribute is assumed (this calendar emits no `data-day` at all).
     const grid = testid(page, "etp-dates-grid");
-    const dayCells = grid.getByRole("button");
+    // ONLY ENABLED day cells: the calendar carries a `min`, so the past days of the visible month are
+    // disabled and Playwright would wait on one forever. React-Day-Picker v8 names every day button
+    // `name="day"` - that is the stable contract, not a data attribute.
+    const dayCells = grid.locator('button[name="day"]:not([disabled])');
     await expect(dayCells.first()).toBeVisible({ timeout: 10_000 });
-    await dayCells.nth(8).click();
-    await dayCells.nth(12).click();
+    await dayCells.nth(0).click();
+    await dayCells.nth(3).click();
     const patched = await actAndAwait(
       page,
       async () => {
