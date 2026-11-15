@@ -59,6 +59,25 @@ import { AskAiDrawer } from "./AskAiDrawer";
 import { ExpertSuggestionsPanel } from "./ExpertSuggestionsPanel";
 import { useReopenMutation } from "./use-reopen-mutation";
 import { TripCardConciergeTasks } from "./TripCardConciergeTasks";
+import { format } from "date-fns";
+import { bookingConfirmedOrLater } from "@/lib/item-booking-state";
+/** The fields UI-6b reads off a My Bookings row; the page's own DTO is wider. */
+interface MyBookingRowLike {
+  id: string;
+  status?: string | null;
+  confirmationCode?: string | null;
+  confirmedAt?: string | null;
+  provider?: { displayName?: string | null } | null;
+}
+
+/**
+ * UI-6b (P2-B): the bookings card's heading.
+ *
+ * PENDING Leon wording — this is NEW user-facing copy and the one string UI-6b needs. Nothing else in the
+ * slice invents a word. Proposed: "Bookings". The card renders only in open mode, only for the plan owner,
+ * and only when a REAL booking exists, so the heading is never drawn over an empty section.
+ */
+export const PENDING_UI6B_BOOKINGS_HEADING = "Bookings";
 
 export interface TripCardRailTrip {
   id: string;
@@ -304,6 +323,18 @@ export function TripCardRail({ trip, isOwner, itemCount }: TripCardRailProps) {
     staleTime: 60_000,
   });
   const waitlist = !useBookingActionsShown();
+  // UI-6b (P2-B): the plan's REAL bookings. The read is My Bookings' OWN query key (`/api/my-bookings`), so
+  // the cache is shared with `useBookingCopyReads` and the strip - no new route, no server change. Enabled
+  // only for the owner in open mode, so a waitlist plan never even asks.
+  const { data: myBookings } = useQuery<MyBookingRowLike[]>({
+    queryKey: ["/api/my-bookings"],
+    enabled: isOwner && !waitlist,
+    retry: false,
+    staleTime: 60_000,
+  });
+  // "Real" is the shared rule (`bookingConfirmedOrLater`), never a second vocabulary: a pending or
+  // cancelled row is not a booking this card may claim.
+  const realBookings = (Array.isArray(myBookings) ? myBookings : []).filter((b) => bookingConfirmedOrLater(b.status));
   if (!isOwner) return null;
   const advisor = advisorData?.advisor ?? null;
   return (
@@ -314,6 +345,32 @@ export function TripCardRail({ trip, isOwner, itemCount }: TripCardRailProps) {
           QW-6 (Leon ruled yes): a BOUGHT concierge engagement's task log is a post-purchase view, not a
           paid action, so it stays. Only the card's paid parts (hire, message, storefront) are hidden. */}
       {waitlist ? <WaitlistExpertTasks trip={trip} advisor={advisor} /> : <YourExpertCard trip={trip} advisor={advisor} />}
+      {/* UI-6b (P2-B): real bookings, open mode only, drawn through the rail's own RailCard - so it takes the
+          card family's 16 px inset and the board's 11/600/0.08em eyebrow with no second grammar. Nothing is
+          drawn in waitlist mode or with no real booking (§13 - never an empty heading). */}
+      {!waitlist && realBookings.length > 0 ? (
+        <RailCard card="bookings" title={PENDING_UI6B_BOOKINGS_HEADING}>
+          <ul className="space-y-2">
+            {realBookings.map((b) => (
+              <li key={b.id} className="text-[12.5px]" data-testid={`trip-card-rail-booking-${b.id}`}>
+                <span className="font-semibold" style={{ color: "var(--slip-ink)" }}>
+                  {b.provider?.displayName ?? PENDING_UI6B_BOOKINGS_HEADING}
+                </span>
+                {b.confirmationCode ? (
+                  <span className="ml-1 font-mono text-[11px]" style={{ color: "var(--slip-muted)" }}>
+                    #{b.confirmationCode}
+                  </span>
+                ) : null}
+                {b.confirmedAt ? (
+                  <span className="block text-[11px]" style={{ color: "var(--slip-muted)" }}>
+                    {format(new Date(b.confirmedAt), "MMM d, yyyy")}
+                  </span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </RailCard>
+      ) : null}
       {/* 3 · ASK AI — the SAME drawer the slip mounts (L16 lane 4, ledger
           `2026-09-17-l16-lane4-postfinal`), in the Suggestion card's slot, with the suggestion
           panel — which draws nothing unless the expert has actually posted one — directly beneath

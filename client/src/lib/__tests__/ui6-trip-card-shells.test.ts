@@ -48,9 +48,16 @@ describe("UI-6a — Trip Card shells", () => {
     assert.match(RAIL, /className="space-y-3 p-4"/);
   });
 
-  it("T5 P2-B is not built yet: no bookings section until its heading is approved", () => {
-    assert.doesNotMatch(RAIL, /trip-card-rail-bookings/);
-    assert.doesNotMatch(RAIL, /Bookings section/);
+  // T5 was the "not built yet" pin. UI-6b builds it, so the pin moves to WHAT UI-6b guarantees rather
+  // than to its absence: the heading is a marked PENDING constant, the card is the rail's own RailCard
+  // (hence `trip-card-rail-bookings`), and it is gated on open mode plus a REAL booking.
+  it("T5 P2-B: the bookings card exists, behind a PENDING heading, open mode and real bookings only", () => {
+    assert.match(RAIL, /PENDING_UI6B_BOOKINGS_HEADING/, "the heading is one marked constant");
+    assert.match(RAIL, /\/\*\*[\s\S]*PENDING Leon wording[\s\S]*\*\/\s*export const PENDING_UI6B_BOOKINGS_HEADING/, "it carries the PENDING mark");
+    assert.match(RAIL, /RailCard card="bookings"/, "drawn through the rail card family");
+    assert.match(RAIL, /!waitlist && realBookings\.length > 0/, "open mode only, and never over an empty section");
+    assert.match(RAIL, /bookingConfirmedOrLater\(b\.status\)/, "real bookings use the shared rule");
+    assert.match(RAIL, /queryKey: \["\/api\/my-bookings"\]/, "it reads My Bookings own key - no new route");
   });
 
   it("T6 the days root shares the card family's one inset", () => {
