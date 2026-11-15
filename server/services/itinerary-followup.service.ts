@@ -15,6 +15,7 @@ import {
 } from "./marketing-email-footer";
 import { computeOutboxExpiresAt } from "./email-outbox-expiry";
 import { outboxSettleForSendRefusal } from "./email-suppression";
+import { logger } from "../infrastructure/logger";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 export interface FollowupMetadata {
@@ -162,6 +163,7 @@ export async function deliverItineraryFollowup(outboxId: number, sender: (params
     const cancel = async (reason: string) => {
       await tx.update(emailOutbox).set({ status: "cancelled", lastError: reason, retryAfter: null, updatedAt: new Date() })
         .where(eq(emailOutbox.id, outboxId));
+      logger.info({ outboxId, emailType: row.emailType, reason }, "[itinerary-followup] cancelled; not sent");
       return "cancelled" as const;
     };
     if (!user || user.isDeleted || user.isSuspended || user.email !== row.toEmail ||

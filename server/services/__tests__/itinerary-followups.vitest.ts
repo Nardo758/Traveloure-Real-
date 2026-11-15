@@ -8,11 +8,12 @@ import {
   coordinationStates, coordinationBookings,
 } from "@shared/schema";
 import { persistGenerationOutcome } from "../itinerary-generation-outcome.service";
-import { deliverItineraryFollowup, type FollowupMetadata } from "../itinerary-followup.service";
+import { deliverItineraryFollowup, scheduleItineraryFollowups, type FollowupMetadata } from "../itinerary-followup.service";
 import { deliverQueuedEmail, _outboxTestHooks } from "../email-outbox.service";
 import { ITINERARY_FOLLOWUPS, type ItineraryFollowupKind } from "../itinerary-followup-email";
 import type { SendEmailParams } from "../email.service";
 import { MARKETING_EMAIL_FOOTER_FIELDS, type MarketingEmailFooterKey } from "@shared/marketing-email-footer";
+import { logger } from "../../infrastructure/logger";
 
 const FAKE_FOOTER: Record<MarketingEmailFooterKey, string> = {
   marketing_email_sender_name: "Example Sender LLC",
@@ -78,6 +79,7 @@ async function withFixture(run: (fixture: Fixture) => Promise<void>, options: {
       if (options.expert) await tx.insert(localExpertForms).values({
         id: randomUUID(), userId: fixture.expertId, city: fixture.destination,
         firstName: "QA Expert", displayName: "QA Expert", status: "approved", acceptsNewHandoffs: true,
+        identityVerificationStatus: "verified", stripeConnectStatus: "complete",
       });
       await tx.insert(providerServices).values({
         id: fixture.serviceId, userId: fixture.providerId, serviceName: "QA ONLY - follow-up fixture",
@@ -110,6 +112,7 @@ async function withFixture(run: (fixture: Fixture) => Promise<void>, options: {
       await tx.delete(affiliateBookingRequests).where(eq(affiliateBookingRequests.userId, fixture.userId));
       await tx.execute(sql`DELETE FROM bookings WHERE user_id = ${fixture.userId}`);
       await tx.execute(sql`DELETE FROM email_outbox WHERE metadata->>'travelerId' = ${fixture.userId}
+        OR metadata->>'comparisonId' = ${fixture.itineraryId}
         OR metadata->>'comparisonId' IN (SELECT id FROM itinerary_comparisons WHERE user_id = ${fixture.userId})`);
       await tx.delete(users).where(sql`${users.id} IN (${fixture.userId}, ${fixture.providerId}, ${fixture.expertId})`);
     });
@@ -126,6 +129,116 @@ async function claim(fixture: Fixture, kind: ItineraryFollowupKind) {
   return row.id;
 }
 const sender = () => vi.fn(async (_params: SendEmailParams) => ({ ok: true, id: "intercepted-provider-not-live" }));
+
+for (const planState of ["deleted", "archived"] as const) {
+  test(`${planState} plan: already-sent follow-ups stay sent without a cancellation decision`, async () => {
+    await withFixture(async (fixture) => {
+      const send = sender();
+      _outboxTestHooks.sendEmailFn = send;
+      await db.update(emailOutbox).set({ status: "sent", sentAt: new Date(), retryAfter: null })
+        .where(sql`${emailOutbox.metadata}->>'travelerId' = ${fixture.userId}`);
+      const sentRows = await notices(fixture.userId);
+      if (planState === "deleted") await db.delete(itineraryComparisons)
+        .where(eq(itineraryComparisons.id, fixture.itineraryId));
+      else await db.update(itineraryComparisons).set({ status: "archived" })
+        .where(eq(itineraryComparisons.id, fixture.itineraryId));
+      const log = vi.spyOn(logger, "info").mockImplementation(() => {});
+      try {
+        for (const row of sentRows) {
+          expect(await deliverItineraryFollowup(row.id, send)).toBe("skipped");
+          await deliverQueuedEmail(row.id);
+        }
+        expect(await notices(fixture.userId)).toEqual(sentRows);
+        expect(send).not.toHaveBeenCalled();
+        expect(log).not.toHaveBeenCalled();
+      } finally {
+        log.mockRestore();
+      }
+    });
+  });
+  for (const initialStatus of ["pending", "failed", "processing"] as const) {
+    test(`${planState} plan: all follow-up types cancel from ${initialStatus}, log safely and never resurrect`, async () => {
+      await withFixture(async (fixture) => {
+        vi.stubEnv("EMAIL_TEMPLATE_ALLOWLIST", ITINERARY_FOLLOWUPS.map((entry) => entry.kind).join(","));
+        const send = sender();
+        _outboxTestHooks.sendEmailFn = send;
+        const readyNotices = await db.select().from(emailOutbox)
+          .where(sql`${emailOutbox.metadata}->>'comparisonId' = ${fixture.itineraryId}`);
+        const [originalPlan] = await db.select().from(itineraryComparisons)
+          .where(eq(itineraryComparisons.id, fixture.itineraryId));
+        if (planState === "deleted") {
+          await db.delete(itineraryComparisons).where(eq(itineraryComparisons.id, fixture.itineraryId));
+        } else {
+          await db.update(itineraryComparisons).set({ status: "archived" })
+            .where(eq(itineraryComparisons.id, fixture.itineraryId));
+        }
+        // Cancellation is a send-time decision, not a delete/archive trigger.
+        expect((await notices(fixture.userId)).map((row) => row.status)).toEqual(["pending", "pending", "pending"]);
+        const log = vi.spyOn(logger, "info").mockImplementation(() => {});
+        try {
+          for (const entry of ITINERARY_FOLLOWUPS) {
+            const row = (await notices(fixture.userId)).find((notice) => notice.emailType === entry.kind)!;
+            await db.update(emailOutbox).set({
+              status: initialStatus, retryAfter: new Date(Date.now() - 1000),
+              // Isolate the plan guard from the dispatcher's independent expiry guard.
+              expiresAt: new Date(Date.now() + 3_600_000),
+            }).where(eq(emailOutbox.id, row.id));
+            if (initialStatus === "processing") {
+              expect(await deliverItineraryFollowup(row.id, send)).toBe("cancelled");
+            } else {
+              await deliverQueuedEmail(row.id);
+            }
+            const [cancelled] = await db.select().from(emailOutbox).where(eq(emailOutbox.id, row.id));
+            expect(cancelled).toMatchObject({
+              status: "cancelled", lastError: "Itinerary removed or no longer ready",
+              retryAfter: null, attemptCount: row.attemptCount, metadata: row.metadata,
+              html: row.html, textBody: row.textBody,
+            });
+          }
+          expect(send).not.toHaveBeenCalled();
+          const decisions = log.mock.calls.filter((call) => call[1] === "[itinerary-followup] cancelled; not sent");
+          expect(decisions).toHaveLength(ITINERARY_FOLLOWUPS.length);
+          for (const row of await notices(fixture.userId)) {
+            // Exact equality enforces the privacy allowlist, not just absence of known PII.
+            expect(decisions).toContainEqual([
+              { outboxId: row.id, emailType: row.emailType, reason: "Itinerary removed or no longer ready" },
+              "[itinerary-followup] cancelled; not sent",
+            ]);
+          }
+          const terminalRows = await notices(fixture.userId);
+          // A stale worker must also be harmless while the plan is still unavailable,
+          // not only after it has been restored.
+          for (const row of terminalRows) {
+            expect(await deliverItineraryFollowup(row.id, send)).toBe("skipped");
+            await deliverQueuedEmail(row.id);
+          }
+          expect(await notices(fixture.userId)).toEqual(terminalRows);
+          expect(log.mock.calls.filter((call) => call[1] === "[itinerary-followup] cancelled; not sent"))
+            .toEqual(decisions);
+          if (planState === "deleted") await db.insert(itineraryComparisons).values(originalPlan);
+          else await db.update(itineraryComparisons).set({ status: originalPlan.status })
+            .where(eq(itineraryComparisons.id, fixture.itineraryId));
+          await db.transaction((tx) => scheduleItineraryFollowups(tx, {
+            itineraryId: fixture.itineraryId, travelerId: fixture.userId,
+            email: fixture.email, readyAt: new Date(),
+          }));
+          for (const row of terminalRows) {
+            expect(await deliverItineraryFollowup(row.id, send)).toBe("skipped");
+            await deliverQueuedEmail(row.id);
+          }
+          expect(await notices(fixture.userId)).toEqual(terminalRows);
+          expect(send).not.toHaveBeenCalled();
+          expect(log.mock.calls.filter((call) => call[1] === "[itinerary-followup] cancelled; not sent"))
+            .toEqual(decisions);
+          expect(await db.select().from(emailOutbox)
+            .where(sql`${emailOutbox.metadata}->>'comparisonId' = ${fixture.itineraryId}`)).toEqual(readyNotices);
+        } finally {
+          log.mockRestore();
+        }
+      });
+    });
+  }
+}
 
 for (let loop = 1; loop <= 2; loop++) {
   for (const entry of ITINERARY_FOLLOWUPS) {
@@ -403,5 +516,5 @@ test("actual outbox claim routes a due follow-up and will not claim a future one
     await Promise.all([deliverQueuedEmail(row.id), deliverQueuedEmail(row.id)]);
     expect(send).toHaveBeenCalledTimes(1);
     expect((await db.select().from(emailOutbox).where(eq(emailOutbox.id, row.id)))[0].status).toBe("sent");
-  });
+  }, { bookable: true, expert: true, ageHours: 3 });
 });

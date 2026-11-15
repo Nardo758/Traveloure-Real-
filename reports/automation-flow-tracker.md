@@ -83,3 +83,105 @@ logs, source-integrity comparison and cleanup records.
 | BUILT | EXISTS | WAITING | NOT BUILT | EXCLUDED | Total |
 |---:|---:|---:|---:|---:|---:|
 | 34 | 76 | 70 | 87 | 2 | 269 |
+
+## Approved itinerary cancellation decision log — provider-free receipts
+
+Founder approved the proposed three-file scope in this task's approval form.
+This section appends evidence; it does not replace the fixture receipts or
+reclassify the held inventory above.
+
+### Change and boundaries
+
+- `server/services/itinerary-followup.service.ts`: the existing local
+  cancellation helper now calls the existing application logger after its
+  cancellation update, with exactly `outboxId`, `emailType`, and the existing
+  fixed cancellation `reason`. The static message is
+  `[itinerary-followup] cancelled; not sent`. It records a decision, not a
+  provider receipt. No recipients, subject, body, metadata, or user/plan identity
+  is passed to the logger.
+- `server/services/__tests__/itinerary-followups.vitest.ts`: eight new cases
+  cover deleted/archived plans, all three follow-up types, pending/failed rows
+  through the real outbox dispatcher, processing rows through the worker,
+  already-sent rows, and cancelled rows retried before and after plan restoration.
+  Rescheduling the restored plan cannot resurrect cancelled rows or insert
+  replacements. Ready notices remain untouched. Exact logger argument equality
+  enforces the three-field privacy allowlist.
+- No runtime eligibility, expiry, consent/preferences, retry, or send-exit logic
+  changed. The dispatcher still delegates to the same worker and single send
+  exit. No new source file, migration, table, scheduler, or provider send.
+- All database fixtures ran in a newly created private local PostgreSQL 16.10
+  instance, materialized from the current Drizzle schema (with `pg_trgm`).
+  This is schema-built evidence, not an empty migration-chain proof.
+  Provider credentials were absent from the allowlisted child environments.
+  A private loopback HTTPS app mounted the existing authentication and
+  preferences handlers against that same private database, so the two HTTP
+  preference/unsubscribe cases ran rather than being skipped. It had email
+  sending disabled; test delivery callbacks were intercepted, never sent.
+  No shared-development or production fixture writes were used.
+
+### Pinned rounds and refinement
+
+Pinned command: `vitest run --config vitest.itinerary-followups.config.ts`,
+with `RUN_ITINERARY_FOLLOWUP_DB_TESTS=1`, a private database target, and the
+private HTTPS route harness. No test-name filter, skipped case, or provider
+credential was used in the four accepted rounds.
+
+| Round | Tests passed | Failed / skipped | Suite duration |
+|---|---:|---:|---:|
+| Clean 1 | 28/28 | 0 / 0 | 5.16 s |
+| Clean 2 | 28/28 | 0 / 0 | 3.22 s |
+| REFINE | Stale-worker assertions and deletion-safe fixture cleanup strengthened | No runtime changes | — |
+| Clean 3 | 28/28 | 0 / 0 | 3.21 s |
+| Clean 4 | 28/28 | 0 / 0 | 3.26 s |
+
+Final two rounds each ended with **zero fixture users and zero outbox rows**.
+The cancellation matrix includes 18 unavailable-plan/type/source-status
+combinations and six already-sent plan/type combinations. Repeated worker and
+dispatcher calls leave terminal rows unchanged and emit no second cancellation
+decision.
+
+Initial exploratory runs are not counted as clean rounds: two unrelated stale
+fixture assumptions surfaced (the named expert lacked current Identity/Connect
+eligibility, and the generic dispatch-claim fixture was already expired).
+Only fixture setup changed: the expert now satisfies the existing policy, and
+the claim test uses a three-hour-old itinerary. No assertion or runtime guard
+was relaxed. Refinement also found orphan ready notices when a test deleted its
+plan; teardown now includes the fixture's known comparison ID even after that
+plan is gone. Earlier private-instance leftovers were removed before the final
+two rounds; their cleanup counts are not presented as clean.
+
+Source SHA-256 pins:
+
+- Runtime, all four rounds:
+  `21b1ad46aec66e5b19cb6f58a57f2987f8906d284679486bfdfcbdc29f0a5912`.
+- Tests, first two rounds:
+  `f2cb05aeaab39ee60ad8c0ee6f5d76f65820382af6406071ebbb9ab237fc9cbd`.
+- Tests, final two rounds:
+  `40806a1a353e3436373e03be0dd546425553e472247ff75fbbf19aa4faab87de`.
+
+Additional checks:
+
+- Retained itinerary payload, outbox, and critical-email unit suites: 48/48,
+  zero failures/cancellations/skips.
+- Existing static guard harness: 81/81 stages passed.
+- Automation registry: 89 nodes validated; cron roster passed.
+- Mutation-auth manifest and coverage checks passed. The manifest check reported
+  its existing non-fatal stale-line-number notice; no rail changed.
+- Baseline/final typecheck: 103/103 existing diagnostics, zero new diagnostics;
+  not a globally clean typecheck.
+- Application workflow restarted and served the landing page successfully.
+  Startup applied zero migrations; mail sending remained disabled.
+
+### C29 absence-proof status
+
+| Required evidence | Result |
+|---|---|
+| Outbox decision | Private-fixture rows cancelled with the fixed plan-unavailable reason, no retry, no attempt increment, and no resurrection |
+| Decision log | Exact safe payload observed once per cancellation; terminal repeats do not emit another decision |
+| Real provider-event absence | **Not observed**; intercepted callbacks are not provider-event evidence |
+| QA-inbox absence | **Not observed**; no inbox or elapsed-time claim |
+
+The code gap behind **W-C29-DECISION-LOG** is implemented and verified on this
+task's branch, pending review/merge. **C29 remains WAITING; the four-part live
+absence proof and broader release are not complete.** No delivery activation,
+merge, or publish was performed.
