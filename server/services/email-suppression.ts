@@ -16,6 +16,13 @@ import {
   suppressionTreatsAsSecurity,
 } from "./email-outbox-classes";
 
+/**
+ * N3 (Leon, Nov 15): a traveler who asked not to be contacted. It rides the SAME table and the SAME gate —
+ * `reason = "do_not_contact"` — so no schema change is needed (`email_suppressions.reason` is a free-form
+ * varchar, migration 423).
+ */
+export const DO_NOT_CONTACT_REASON = "do_not_contact";
+export const SUPPRESSED_DO_NOT_CONTACT = "suppressed:do_not_contact";
 export const SUPPRESSED_HARD_BOUNCE = "suppressed:hard_bounce";
 export const SUPPRESSED_COMPLAINT = "suppressed:complaint";
 export const SUPPRESSION_LOOKUP_FAILED = "suppression_lookup_failed";
@@ -58,6 +65,9 @@ export function suppressionRefusalReason(input: {
   }
   if (bounce) return SUPPRESSED_HARD_BOUNCE;
   if (complaint) return SUPPRESSED_COMPLAINT;
+  // N3: a do-not-contact request refuses TRANSACTIONAL mail too (it is the traveler's own ask, not a
+  // deliverability signal), and never blocks security mail above - a password reset still has to arrive.
+  if (reasons.has(DO_NOT_CONTACT_REASON)) return SUPPRESSED_DO_NOT_CONTACT;
   return null;
 }
 
