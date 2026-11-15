@@ -14,6 +14,8 @@
  *                        sent as an answer (§13: unanswered is not "no pet", not "0 children").
  */
 import { DEFAULT_ADULTS } from "@shared/plan-vocabulary";
+import { useOccasionSwitches } from "@/hooks/use-occasion-switches";
+import { asksKidsCount, partyFields } from "@/lib/plan-steps";
 import { api } from "@shared/routes";
 import { useEffect, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
@@ -274,18 +276,30 @@ export function InlineWhoPanel({
     }
   };
 
+  // E9 (Leon, Nov 13): ONE party ask. The panel reads the same `partyFields` rule the editor's Who step
+  // reads, so a plan whose occasion says "Attendees" says Attendees here too, and an occasion that asks no
+  // kids count draws no second field. The testids do not move.
+  const { occasion: partyOccasion } = useOccasionSwitches(tripId);
+  const partyAsk = partyFields(partyOccasion);
+  const adultsLabel = partyAsk.find((f) => f.key === "adults")?.label ?? "Adults";
+  const wantsKids = asksKidsCount(partyOccasion);
+
   return (
     <div className="rounded-lg border border-border bg-card p-3 space-y-3" data-testid="slip-who-panel">
       <p className="text-sm font-semibold">{PLAN_PARTY_ASK}</p>
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
-          <Label htmlFor="slip-who-adults">Adults</Label>
+          <Label htmlFor="slip-who-adults">{adultsLabel}</Label>
           <Input id="slip-who-adults" type="number" min={1} inputMode="numeric" value={adults} onChange={(e) => setAdults(e.target.value)} data-testid="input-slip-who-adults" />
         </div>
-        <div className="space-y-1">
-          <Label htmlFor="slip-who-kids">Children</Label>
-          <Input id="slip-who-kids" type="number" min={0} inputMode="numeric" value={kids} onChange={(e) => setKids(e.target.value)} data-testid="input-slip-who-kids" />
-        </div>
+        {wantsKids ? (
+          <div className="space-y-1">
+            <Label htmlFor="slip-who-kids">
+              {partyAsk.find((f) => f.key === "kids")?.label ?? "Kids"}
+            </Label>
+            <Input id="slip-who-kids" type="number" min={0} inputMode="numeric" value={kids} onChange={(e) => setKids(e.target.value)} data-testid="input-slip-who-kids" />
+          </div>
+        ) : null}
       </div>
       {submit ? null : (
       <fieldset className="space-y-1">
