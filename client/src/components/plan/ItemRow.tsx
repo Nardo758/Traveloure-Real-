@@ -23,6 +23,7 @@ import { UpsellLine } from "./UpsellLine";
 import type { ReactNode } from "react";
 import { AlertTriangle, BadgeCheck, CheckCircle2, Circle, Clock, Lock, MoreHorizontal, Navigation } from "lucide-react";
 import { Link } from "wouter";
+import { isInAppHref, stopDetailHref } from "@/lib/plan-stop-links";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -353,10 +354,21 @@ export function ItemRow(props: ItemRowProps) {
             </>
           )}
         </div>
-        {showMenu ? <ItemRowMenuButton id={a.id} menu={menu!} isAnchor={!!anchor} locked={!!a.locked} /> : null}
+        {showMenu ? <ItemRowMenuButton id={a.id} menu={menu!} isAnchor={!!anchor} locked={!!a.locked} detailsHref={inAppDetailsHref(a)} /> : null}
       </div>
     </div>
   );
+}
+
+
+/**
+ * LL-1 (Leon, Nov 13): the stop's OWN in-app page, or null. `stopDetailHref` names the row's page and
+ * `isInAppHref` refuses anything outside the app, so a plan row can never become an external link; the
+ * caller keeps today's sheet when this is null.
+ */
+function inAppDetailsHref(item: PlanCardActivity | null | undefined): string | null {
+  const href = stopDetailHref(item as any);
+  return href && isInAppHref(href) ? href : null;
 }
 
 function hasAnyEntry(m: ItemRowMenu, isAnchor: boolean): boolean {
@@ -387,7 +399,7 @@ export const ITEM_MENU_LABELS = {
 /** R-ah: the row's own word for a locked item. Optimize, Regenerate and Build-around leave it in place. */
 export const ITEM_LOCKED_LABEL = "Kept · Optimize and redrafts leave it in place";
 
-function ItemRowMenuButton({ id, menu, isAnchor, locked, board = false }: { id: string; menu: ItemRowMenu; isAnchor: boolean; locked: boolean; board?: boolean }) {
+function ItemRowMenuButton({ id, menu, isAnchor, locked, board = false, detailsHref = null }: { id: string; menu: ItemRowMenu; isAnchor: boolean; locked: boolean; board?: boolean; detailsHref?: string | null }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -411,8 +423,17 @@ function ItemRowMenuButton({ id, menu, isAnchor, locked, board = false }: { id: 
         {menu.onAddAfter ? (
           <DropdownMenuItem onSelect={menu.onAddAfter} data-testid={`item-menu-add-after-${id}`}>{ITEM_MENU_LABELS.addAfter}</DropdownMenuItem>
         ) : null}
+        {/* LL-1 (Leon, Nov 13): Details goes to the stop's OWN in-app page when the item names one.
+            IN-APP ONLY - `isInAppHref` refuses an outside URL, and that case keeps today's sheet, so a plan
+            row never becomes an external link. Same label, same testid, same position. */}
         {menu.onDetails ? (
-          <DropdownMenuItem onSelect={menu.onDetails} data-testid={`item-menu-details-${id}`}>{ITEM_MENU_LABELS.details}</DropdownMenuItem>
+          detailsHref ? (
+            <DropdownMenuItem asChild data-testid={`item-menu-details-${id}`}>
+              <a href={detailsHref}>{ITEM_MENU_LABELS.details}</a>
+            </DropdownMenuItem>
+          ) : (
+            <DropdownMenuItem onSelect={menu.onDetails} data-testid={`item-menu-details-${id}`}>{ITEM_MENU_LABELS.details}</DropdownMenuItem>
+          )
         ) : null}
         {menu.onSwap ? (
           <DropdownMenuItem onSelect={menu.onSwap} data-testid={`item-menu-swap-${id}`}>{ITEM_MENU_LABELS.swap}</DropdownMenuItem>
