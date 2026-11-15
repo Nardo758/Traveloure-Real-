@@ -27,6 +27,42 @@ function readCredit(v: unknown): StockPhotoCredit | null {
     : null;
 }
 
+type StockPhotoAnswer = { photoUrl: string | null; credit: StockPhotoCredit | null };
+
+/**
+ * QA round 4 R4-10: ONE request per (place, city) for the page's life. Every card showing the same place shares the
+ * answer (and the request while it is in flight), so a feed re-render or a remount never asks the server again. A
+ * network failure is not kept: the next mount may ask once more.
+ */
+const stockPhotoAnswers = new Map<string, Promise<StockPhotoAnswer>>();
+
+export function fetchStockPhoto(
+  placeName: string,
+  city: string,
+  fetcher: typeof fetch = (...a) => fetch(...a),
+): Promise<StockPhotoAnswer> {
+  const key = `${placeName}\u0000${city}`;
+  const known = stockPhotoAnswers.get(key);
+  if (known) return known;
+  const ask = (async (): Promise<StockPhotoAnswer> => {
+    const qs = new URLSearchParams({ q: placeName, city, source: "unsplash" });
+    const res = await fetcher(`/api/media/place-photo?${qs}`);
+    if (!res.ok) return { photoUrl: null, credit: null };
+    const json = await res.json();
+    // CMS-1: a fallback photo is used only with its credit — never a bare URL.
+    const c = readCredit(json.credit);
+    return json.photoUrl && c ? { photoUrl: json.photoUrl, credit: c } : { photoUrl: null, credit: null };
+  })();
+  stockPhotoAnswers.set(key, ask);
+  ask.catch(() => stockPhotoAnswers.delete(key));
+  return ask;
+}
+
+/** Tests only. */
+export function _resetStockPhotoAnswers() {
+  stockPhotoAnswers.clear();
+}
+
 export function useGemPhoto(
   gemId: string,
   placeName: string,
@@ -58,19 +94,11 @@ export function useGemPhoto(
 
     (async () => {
       try {
-        // (b) Unsplash/Pexels
-        const qs2 = new URLSearchParams({ q: placeName, city, source: "unsplash" });
-        const res2 = await fetch(`/api/media/place-photo?${qs2}`);
-        if (res2.ok) {
-          const json2 = await res2.json();
-          // CMS-1: a fallback photo is used only with its credit — never a bare URL.
-          const c = readCredit(json2.credit);
-          if (!cancelled) {
-            setPhotoUrl(json2.photoUrl && c ? json2.photoUrl : null);
-            setCredit(json2.photoUrl && c ? c : null);
-          }
-        } else {
-          if (!cancelled) setPhotoUrl(null);
+        // (b) Unsplash/Pexels — one shared answer per place and city (R4-10).
+        const answer = await fetchStockPhoto(placeName, city);
+        if (!cancelled) {
+          setPhotoUrl(answer.photoUrl);
+          setCredit(answer.credit);
         }
       } catch {
         if (!cancelled) setPhotoUrl(null);

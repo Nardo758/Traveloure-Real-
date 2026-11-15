@@ -184,6 +184,11 @@ jobs:
       - name: Well-known static mount pin (LD 43(e))
         run: npx tsx --test server/__tests__/well-known-static.test.ts
 
+      # QA round 4 R4-10: a Pexels 429 opens a wait (Pexels's own Retry-After, else a doubling backoff from config) and
+      # every query's answer is cached; no network, no database.
+      - name: Pexels 429 backoff and cache (QA round 4 R4-10)
+        run: npx tsx --test server/__tests__/r4-pexels-backoff.test.ts
+
       # 2026-09-06-expert-work-protected (CLAUDE.md Locked Decision 42 D3 + D4): expert work is
       # protected where money is protected — rows carrying expert_note or origin='expert' join
       # the optimizer baseline's constraint set, itineraryItemRebuildDeletable() and BOTH
