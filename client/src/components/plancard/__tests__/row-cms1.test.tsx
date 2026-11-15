@@ -58,7 +58,8 @@ describe("CMS-1 — client", () => {
     assert.match(stored, /gem-image-credit-g3/);
     assert.doesNotMatch(stored, /Jane Doe/, "the record's stored credit wins");
     const hook = read("client/src/hooks/use-gem-photo.ts");
-    assert.match(hook, /setPhotoUrl\(json2\.photoUrl && c \? json2\.photoUrl : null\)/, "a fallback photo with no credit is not used");
+    // QA round 4 R4-10 (sanctioned edit): the rule moved into the one shared answer per place (`fetchStockPhoto`).
+    assert.match(hook, /return json\.photoUrl && c \? \{ photoUrl: json\.photoUrl, credit: c \} : \{ photoUrl: null, credit: null \};/, "a fallback photo with no credit is not used");
   });
 
   it("T5 /places route, /hidden-gems redirect, the heading", () => {

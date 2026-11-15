@@ -46,6 +46,7 @@ import {
 } from "@/lib/plan-stops";
 import { savePlanStops } from "@/lib/plan-stops-writer";
 // E1: the ONE refusal sentence the calendar and both server rails already use. No new copy.
+import { PlanDatesCalendar } from "@/components/plan/PlanDatesCalendar";
 import { LEAVE_BEFORE_ARRIVE_MESSAGE } from "@/lib/plan-dates-range";
 import { boundPlanCityChanged, sameCity } from "@/lib/plan-city";
 import { changeBoundPlanCity } from "@/lib/plan-city-writer";
@@ -1712,34 +1713,17 @@ export function PlanModal({
                   )}
                 </div>
               ) : (
-                <div className="grid grid-cols-2 gap-3" data-testid="etp-step3-range">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="etp-start">First day</Label>
-                    <Input
-                      id="etp-start"
-                      type="date"
-                      value={startDate}
-                      onChange={(e) => setStartDate(e.target.value)}
-                      data-testid="input-etp-start-date"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="etp-end">Last day</Label>
-                    <Input
-                      id="etp-end"
-                      type="date"
-                      min={startDate || undefined}
-                      value={endDate}
-                      onChange={(e) => setEndDate(e.target.value)}
-                      data-testid="input-etp-end-date"
-                    />
-                  </div>
-                  {datesBackwards && (
-                    <p className="mt-1 text-xs text-destructive" role="alert" data-testid="text-etp-dates-backwards">
-                      {LEAVE_BEFORE_ARRIVE_MESSAGE}
-                    </p>
-                  )}
-                </div>
+                /* E4: the ONE calendar - the same PlanDatesCalendar the slip, the pop-up and PlanEntry
+                   draw. It refuses a backwards range itself (same LEAVE_BEFORE_ARRIVE_MESSAGE), so the
+                   two raw date inputs and this step's local message are gone. */
+                <PlanDatesCalendar
+                  value={{ start: startDate || null, end: endDate || null }}
+                  onChange={(r) => {
+                    setStartDate(r.start ?? "");
+                    setEndDate(r.end ?? "");
+                  }}
+                  testId="etp-dates"
+                />
               )}
 
               {/* THE MAIN MOMENT on a RANGE. The ratified Step3When artboard shows a wedding —
