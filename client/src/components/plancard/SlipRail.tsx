@@ -43,6 +43,7 @@
  * with no public address gets a sentence, not a dead button; a card whose rows are all gated away
  * is not rendered at all.
  */
+import { onFinalizeRequest } from "@/lib/finalize-request";
 import { conciergeAccessLine } from "@/lib/concierge-hire-copy";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
@@ -1163,6 +1164,15 @@ export function FinishCard({
   const waitlist = !useBookingActionsShown();
   const { toast: finishToast } = useToast();
   const [finalizeModalOpen, setFinalizeModalOpen] = useState(false);
+  // One channel for "the board asked the modal to open" (row 328). The rail owns the modal, so the rail
+  // listens; unmounting the rail simply wins nothing.
+  useEffect(() => onFinalizeRequest((req) => {
+    setFinalizeFocusItemId(req.itemId);
+    setFinalizeModalOpen(true);
+  }), []);
+
+  // Row 328: the item the Trip Card's "Add to checkout" named, so the modal opens WITH it.
+  const [finalizeFocusItemId, setFinalizeFocusItemId] = useState<string | null>(null);
   // §8 phone delivery (ledger `2026-10-17-phone-delivery-calendar`): once Finalize has made a NEW
   // final, "Get your Trip Card on your phone" follows the booking chooser. The dialog closes
   // itself, without drawing anything, when no channel's admin switch is on.
@@ -1233,6 +1243,7 @@ export function FinishCard({
   const chooser = (
     <>
       <FinalizeBookingModal
+        focusItemId={finalizeFocusItemId}
         open={finalizeModalOpen}
         onOpenChange={(open) => {
           setFinalizeModalOpen(open);

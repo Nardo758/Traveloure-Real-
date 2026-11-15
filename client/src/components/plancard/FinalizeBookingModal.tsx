@@ -70,11 +70,14 @@ export function FinalizeBookingModal({
   onOpenChange,
   trip,
   activities,
+  focusItemId = null,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   trip: FinalizeTrip;
   activities: PlanCardActivity[];
+  /** Row 328: the row the press came from. Present ⇒ the modal opened WITH an item in hand. */
+  focusItemId?: string | null;
 }) {
   const { toast } = useToast();
   const { showBulkResult } = useRouteRefusalToast(trip.id);
@@ -90,6 +93,9 @@ export function FinalizeBookingModal({
   const agentAvailable = bookableStops.length > 0;
   // Row PS-5: only platform items go to checkout; the rest are listed as the traveler's own to book.
   const { platform: platformItems, selfBook: selfBookItems } = splitBulkCheckoutByPath(activities as any[]);
+  // Row 328: the press names an item. It is marked, and the platform set is scoped to it when it is one of
+  // them - so "with that item picked" is true rather than implied by the plan's count.
+  const focusedIsPlatform = !!focusItemId && platformItems.some((i: any) => i.id === focusItemId);
   const checkoutCount = platformItems.length;
   // Folded pre-gate (adopt-finalize-conform row 13): the old separate "Finalize without booking?"
   // dialog's fact, stated inline here instead. Same predicate SlipView's gate used — items staged

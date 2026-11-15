@@ -1,3 +1,4 @@
+import { requestFinalizeFor } from "@/lib/finalize-request";
 import { SaveToPlanButton } from "@/components/plan/SaveToPlanButton";
 import { useBookingActionsShown } from "@/lib/signup-mode";
 import { useState } from "react";
@@ -520,7 +521,12 @@ export function RoutingActions({
         icon={ShoppingCart}
         label="Add to checkout"
         busy={busy}
-        onClick={() => mutation.mutate("ready_for_checkout")}
+        // Row 328 (Leon, Nov 15): the wording stays, the destination changes - the press opens Finalize with
+        // this item in hand. The route status is still staged, so the modal's count is honest.
+        onClick={() => {
+          mutation.mutate("ready_for_checkout");
+          requestFinalizeFor(itemId);
+        }}
         testId={`button-route-add-checkout-${itemId}`}
       />
       )}
