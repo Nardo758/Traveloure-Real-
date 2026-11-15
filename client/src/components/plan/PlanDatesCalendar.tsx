@@ -22,7 +22,9 @@
  * 343px a phone gives after its 16px gutters. One month is shown at every width.
  */
 import { useMemo, useState, type ReactNode } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Calendar } from "@/components/ui/calendar";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   LEAVE_BEFORE_ARRIVE_MESSAGE,
@@ -105,6 +107,18 @@ export function PlanDatesCalendar({
       </p>
       <Calendar
         mode="range"
+        // E4: a deterministic handle per day, so a test (or a future a11y probe) never depends on
+        // React-Day-Picker's internal attributes. It rides the day's own content, so the button keeps its
+        // behaviour, its disabled state and its accessible name.
+        components={{
+          DayContent: ({ date }) => (
+            <span data-testid={`${testId}-day-${fromLocalDate(date)}`}>{date.getDate()}</span>
+          ),
+          // Carried over from `ui/calendar`: passing `components` replaces its whole set, and the nav must
+          // not fall back to different icons.
+          IconLeft: ({ className, ...props }: any) => <ChevronLeft className={cn("h-4 w-4", className)} {...props} />,
+          IconRight: ({ className, ...props }: any) => <ChevronRight className={cn("h-4 w-4", className)} {...props} />,
+        }}
         numberOfMonths={1}
         month={month}
         onMonthChange={setMonth}

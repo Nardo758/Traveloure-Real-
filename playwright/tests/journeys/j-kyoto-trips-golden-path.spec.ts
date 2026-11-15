@@ -397,13 +397,14 @@ test.describe("1 · entry and occasion", () => {
     // The grid's BUTTONS are its day cells; the month navigation sits outside it. No React-Day-Picker
     // attribute is assumed (this calendar emits no `data-day` at all).
     const grid = testid(page, "etp-dates-grid");
-    // ONLY ENABLED day cells: the calendar carries a `min`, so the past days of the visible month are
-    // disabled and Playwright would wait on one forever. React-Day-Picker v8 names every day button
-    // `name="day"` - that is the stable contract, not a data attribute.
-    const dayCells = grid.locator('button[name="day"]:not([disabled])');
-    await expect(dayCells.first()).toBeVisible({ timeout: 10_000 });
-    await dayCells.nth(0).click();
-    await dayCells.nth(3).click();
+    // The calendar now exposes a deterministic handle per day (`<testid>-day-YYYY-MM-DD`), so the golden
+    // path names the two days it wants and steps forward until December is on screen - no reliance on
+    // React-Day-Picker attributes, no "nth of whatever is enabled today".
+    const decFirst = grid.getByTestId(`etp-dates-day-${year}-12-01`);
+    const nextMonth = page.locator('button[name="next-month"]').first();
+    for (let i = 0; i < 14 && (await decFirst.count()) === 0; i++) await nextMonth.click();
+    await decFirst.click();
+    await grid.getByTestId(`etp-dates-day-${year}-12-04`).click();
     const patched = await actAndAwait(
       page,
       async () => {
