@@ -397,13 +397,14 @@ test.describe("1 · entry and occasion", () => {
     // The grid's BUTTONS are its day cells; the month navigation sits outside it. No React-Day-Picker
     // attribute is assumed (this calendar emits no `data-day` at all).
     const grid = testid(page, "etp-dates-grid");
-    // The calendar now exposes a deterministic handle per day (`<testid>-day-YYYY-MM-DD`), so the golden
-    // path names the two days it wants and steps forward until December is on screen - no reliance on
-    // React-Day-Picker attributes, no "nth of whatever is enabled today".
-    const decFirst = grid.getByTestId(`etp-dates-day-${year}-12-01`);
+    // Wait for the CAPTION to name the year before touching a day: the picker keeps the adjacent months'
+    // cells mounted, so a day handle alone matches a December a year early. The caption is the authority on
+    // which month is on screen.
+    const caption = grid.getByText(new RegExp(`December\\s+${year}`));
     const nextMonth = page.locator('button[name="next-month"]').first();
-    for (let i = 0; i < 14 && (await decFirst.count()) === 0; i++) await nextMonth.click();
-    await decFirst.click();
+    for (let i = 0; i < 16 && (await caption.count()) === 0; i++) await nextMonth.click();
+    await expect(caption).toBeVisible({ timeout: 10_000 });
+    await grid.getByTestId(`etp-dates-day-${year}-12-01`).click();
     await grid.getByTestId(`etp-dates-day-${year}-12-04`).click();
     const patched = await actAndAwait(
       page,
