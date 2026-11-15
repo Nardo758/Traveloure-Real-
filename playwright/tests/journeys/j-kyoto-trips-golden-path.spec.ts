@@ -394,8 +394,11 @@ test.describe("1 · entry and occasion", () => {
     // It deliberately does not assume which month the calendar opens on, nor any React-Day-Picker DOM
     // attribute: it takes two day cells from the visible grid. What this journey asserts is that an edit
     // writes a PATCH - not which dates the month happened to show.
+    // The grid's BUTTONS are its day cells; the month navigation sits outside it. No React-Day-Picker
+    // attribute is assumed (this calendar emits no `data-day` at all).
     const grid = testid(page, "etp-dates-grid");
-    const dayCells = grid.locator("[data-day]");
+    const dayCells = grid.getByRole("button");
+    await expect(dayCells.first()).toBeVisible({ timeout: 10_000 });
     await dayCells.nth(8).click();
     await dayCells.nth(12).click();
     const patched = await actAndAwait(
