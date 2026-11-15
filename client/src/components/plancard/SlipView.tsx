@@ -1048,7 +1048,13 @@ function SlipDayItem({
               {sheetControls.primaryBook && a.bookingPath === "platform" && a.providerServiceId ? (
                 // Row P-1c: waitlist mode — the platform item's Book is "Save to plan" (it is already on the plan).
                 slipWaitlist ? (
-                  <SaveToPlanButton testId={`item-sheet-save-to-plan-${a.id}`} />
+                  <SaveToPlanButton
+                          testId={`item-sheet-save-to-plan-${a.id}`}
+                          // E6 follow-up (Leon, Nov 15): with no write to run, the press opens the item's OWN
+                          // Details sheet. A press that changes nothing must at least show the thing it is
+                          // about; it no longer claims "Saved to plan".
+                          onNoPlan={() => setSheetOpen(true)}
+                        />
                 ) : (
                 <Button size="sm" asChild data-testid={`item-sheet-book-${a.id}`}>
                   <Link href={serviceDetailHref(a.providerServiceId, tripId)}>Book</Link>
