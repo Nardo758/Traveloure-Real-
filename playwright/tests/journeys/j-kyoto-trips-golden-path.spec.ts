@@ -389,9 +389,23 @@ test.describe("1 · entry and occasion", () => {
     await edit.click();
     expect(await appears(testid(page, "plan-modal"), 10_000)).toBe(true);
     const next = testid(page, "button-planning-next");
-    for (let i = 0; i < 6 && !(await appears(testid(page, "input-etp-start-date"), 600)); i++) await next.click();
-    await testid(page, "input-etp-start-date").fill(`${year}-12-01`);
-    await testid(page, "input-etp-end-date").fill(`${year}-12-04`);
+    for (let i = 0; i < 6 && !(await appears(testid(page, "etp-dates-grid"), 600)); i++) await next.click();
+    // E4: the When step IS the one calendar now, so the golden path PICKS days instead of typing dates.
+    // It deliberately does not assume which month the calendar opens on, nor any React-Day-Picker DOM
+    // attribute: it takes two day cells from the visible grid. What this journey asserts is that an edit
+    // writes a PATCH - not which dates the month happened to show.
+    // The grid's BUTTONS are its day cells; the month navigation sits outside it. No React-Day-Picker
+    // attribute is assumed (this calendar emits no `data-day` at all).
+    const grid = testid(page, "etp-dates-grid");
+    // Wait for the CAPTION to name the year before touching a day: the picker keeps the adjacent months'
+    // cells mounted, so a day handle alone matches a December a year early. The caption is the authority on
+    // which month is on screen.
+    const caption = grid.getByText(new RegExp(`December\\s+${year}`));
+    const nextMonth = page.locator('button[name="next-month"]').first();
+    for (let i = 0; i < 16 && (await caption.count()) === 0; i++) await nextMonth.click();
+    await expect(caption).toBeVisible({ timeout: 10_000 });
+    await grid.getByTestId(`etp-dates-day-${year}-12-01`).click();
+    await grid.getByTestId(`etp-dates-day-${year}-12-04`).click();
     const patched = await actAndAwait(
       page,
       async () => {
