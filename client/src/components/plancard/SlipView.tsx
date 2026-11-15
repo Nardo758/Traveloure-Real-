@@ -124,6 +124,7 @@ import { versionMapAnchor, type VersionsBoardView } from "@/lib/versions-board";
 import { showsHoursNotChecked } from "@/lib/plancard-refetch";
 import type { FactView } from "@shared/content-facts";
 import { useOccasionSwitches } from "@/hooks/use-occasion-switches";
+import type { OccasionSwitchRow } from "@/lib/occasion-switches";
 import { durationShape, showsSchedule } from "@/lib/occasion-switches";
 import {
   buildSlipDaySlots,
@@ -401,8 +402,11 @@ export function SlipHeader({
   daySpan = null,
   sketchLine = null,
   guest = null,
+  occasion = null,
 }: {
   data: SlipData;
+  /** E9: the plan's occasion row, so the Who panel asks the same question as the editor's step. */
+  occasion?: OccasionSwitchRow | null;
   /** PLAN-1 Phase 3: on the guest page, "Set your dates" / "Who's coming?" write through the guest rail. */
   guest?: SlipGuestMode | null;
   /** A one-day Moment's span ("evening" / "day"), for the window line (Moment board). */
@@ -2238,6 +2242,9 @@ export function SlipView({
 }) {
   // Flag-gated tools (Getting there) render only while their `/api/health` switch is on.
   const healthFlags = useHealthFlags();
+  // E9: the party panel asks what the editor's Who step asks. Resolved here, through the SAME hook the view
+  // model uses, so the row is one cache entry and never a second fetch; then handed down to the panel.
+  const { occasion: partyAskOccasion } = useOccasionSwitches(planTripId);
   const {
     days,
     isOwner,
