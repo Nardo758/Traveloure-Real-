@@ -99,7 +99,12 @@ describe("P-1c — waitlist mode", () => {
     assert.match(rail, /if \(waitlist\) return null;/);
     assert.match(read("client/src/components/plan/HandoffChooser.tsx"), /if \(waitlist\) return null;\n\s+return \(\n\s+<div className="space-y-3" data-testid="handoff-hold-form">/);
     assert.match(read("client/src/components/plancard/AskAiDrawer.tsx"), /const visibility = waitlist \? \{ \.\.\.railVisibility, canApply: false \} : railVisibility;/);
-    assert.ok(read("client/src/components/plancard/SlipView.tsx").includes("<SaveToPlanButton testId={`item-sheet-save-to-plan-${a.id}`} />"));
+    // E6 follow-up (#2018): the button now carries `onNoPlan` and is laid out over several lines, so the pin
+    // reads the TESTID it must keep rather than one exact one-line rendering.
+    assert.match(
+      read("client/src/components/plancard/SlipView.tsx"),
+      /<SaveToPlanButton[\s\S]{0,240}?testId=\{`item-sheet-save-to-plan-\$\{a\.id\}`\}/,
+    );
     assert.match(read("client/src/components/UpsellSlot.tsx"), /\{!waitlist && \(\n\s+<button/);
     assert.match(read("client/src/components/plan/UpsellLine.tsx"), /if \(waitlist \|\| !upsellLineVisible\(line\)\) return null;/);
     assert.equal(STAY_HERE_LABEL, "Stay here");
