@@ -3583,6 +3583,8 @@ jobs:
       - name: query-userid-reads-guard · Slip own-your-plan pin
         if: ${{ !cancelled() }}
         run: npx tsx --test client/src/lib/__tests__/slip-own-your-plan.test.ts
+        - name: email do-not-contact (N3: the gate refuses transactional mail for the new reason)
+          run: npx tsx --test server/__tests__/email-do-not-contact.test.ts
       - name: query-userid-reads-guard · Booked-item delete refusal pin
         if: ${{ !cancelled() }}
         run: npx tsx --test server/__tests__/item-delete-booked-guard.test.ts
