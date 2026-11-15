@@ -1038,7 +1038,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   </Button>
                 </div>
               )}
-              {!user && (
+              {/* QA round 4 R4-4 (d): the phone menu claims nothing while the session is unknown (QA F8's rule). */}
+              {!user && !isAuthLoading && (
                 <div className="px-4 pt-3">
                   <Button
                     className="w-full text-white bg-[color:var(--coral-fill)] hover:bg-[color:var(--coral-fill)]/90"
@@ -1147,7 +1148,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       <LogOut className="h-5 w-5" aria-hidden="true" />
                     </Button>
                   </div>
-                ) : (
+                ) : isAuthLoading ? null : (
                   <div className="flex flex-col gap-2">
                     <p className="text-[10.5px] font-medium uppercase tracking-[0.12em] text-[color:var(--earn-muted)] px-1 mb-1" style={{ fontFamily: CHROME_MONO }}>{t("joinAsPartnerMobile")}</p>
                     {[

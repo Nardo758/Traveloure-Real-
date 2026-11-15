@@ -1,4 +1,5 @@
 import { CANCELLATION_TIER_LABELS } from "@shared/cancellation-schedule";
+import { announceTripAdd } from "@/lib/plan-add-runner";
 import { useEffect, useRef, useState } from "react";
 import { BUY_NOW_CART_PATH } from "@/lib/cart-intent";
 import { stopsPlaced } from "@/lib/itinerary-wording";
@@ -778,12 +779,22 @@ export default function ServiceDetailPage() {
           : bookingDate
             ? `Scheduled for ${format(new Date(`${bookingDate}T00:00:00`), "MMM d, yyyy")}${bookingTime ? ` at ${bookingTime}` : ""}`
             : "";
-        toast({
-          title: addedTitle(!!tripId),
-          description: tripId
-            ? `${when ? `${when} · ` : ""}Find it on your plan — check out when you're ready.`
-            : when || "Service has been added to your cart",
-        });
+        // QA round 4 R4-3: an add to a plan says it with the one add toast (8 s, Undo · Change day · View plan); the
+        // cart add, and a plan answer with no item (an advisor's suggestion), keep this page's own sentence.
+        const fallback = () =>
+          toast({
+            title: addedTitle(!!tripId),
+            description: tripId
+              ? `${when ? `${when} · ` : ""}Find it on your plan — check out when you're ready.`
+              : when || "Service has been added to your cart",
+          });
+        const res = _data as Response | undefined;
+        if (tripId && res) {
+          res.clone().json().then(
+            (row: any) => (row?.id ? announceTripAdd(tripId, row) : fallback()),
+            () => fallback(),
+          );
+        } else fallback();
       }
     },
     onError: (_err, vars) => {
@@ -966,12 +977,22 @@ export default function ServiceDetailPage() {
         void completeBuyNow(_data as Response | undefined, tripId);
       } else {
         const nights = `${roomNights} night${roomNights === 1 ? "" : "s"} — ${format(new Date(`${roomCheckIn}T00:00:00`), "MMM d")} to ${format(new Date(`${roomCheckOut}T00:00:00`), "MMM d, yyyy")}`;
-        toast({
-          title: addedTitle(!!tripId),
-          description: tripId
-            ? `${nights} · Find it on your plan — check out when you're ready.`
-            : nights,
-        });
+        // QA round 4 R4-3: an add to a plan says it with the one add toast (8 s, Undo · Change day · View plan); the
+        // cart add, and a plan answer with no item (an advisor's suggestion), keep this page's own sentence.
+        const fallback = () =>
+          toast({
+            title: addedTitle(!!tripId),
+            description: tripId
+              ? `${nights} · Find it on your plan — check out when you're ready.`
+              : nights,
+          });
+        const res = _data as Response | undefined;
+        if (tripId && res) {
+          res.clone().json().then(
+            (row: any) => (row?.id ? announceTripAdd(tripId, row) : fallback()),
+            () => fallback(),
+          );
+        } else fallback();
       }
     },
     onSettled: () => setChosenTripId(null),

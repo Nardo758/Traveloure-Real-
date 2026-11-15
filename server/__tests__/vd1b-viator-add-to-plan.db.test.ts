@@ -63,7 +63,8 @@ test("A2 the create rail refuses a Viator body by name, before the item parse", 
   const routes = fs.readFileSync("server/routes.ts", "utf8");
   const i = routes.indexOf('hasOwnProperty.call(req.body ?? {}, "viatorProductCode")');
   assert.ok(i > 0, "the refusal is on the rail");
-  assert.match(routes.slice(i, i + 200), /status\(400\)\.json\(\{ code: "unknown_kind"/);
+  // QA round 4 R4-9 (sanctioned edit): every 400 on this rail goes through `refuseItemWrite`, which logs the code.
+  assert.match(routes.slice(i, i + 200), /refuseItemWrite\(res, "unknown_kind"/);
   assert.doesNotMatch(routes, /\.\.\.\(viatorProductCode \? \{ viatorProductCode \}/);
 });
 
