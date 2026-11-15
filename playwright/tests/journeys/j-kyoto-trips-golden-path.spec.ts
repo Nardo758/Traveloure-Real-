@@ -391,8 +391,16 @@ test.describe("1 · entry and occasion", () => {
     const next = testid(page, "button-planning-next");
     for (let i = 0; i < 6 && !(await appears(testid(page, "etp-dates-grid"), 600)); i++) await next.click();
     // E4: the When step IS the one calendar now, so the golden path picks days instead of typing dates.
-    await page.locator("[data-day='" + year + "-12-01']").first().click();
-    await page.locator("[data-day='" + year + "-12-04']").first().click();
+    // The calendar opens on the CURRENT month and React-Day-Picker's `data-day` format is version-specific,
+    // so this walks to December and clicks by the day's own text - no third-party attribute contract.
+    const grid = testid(page, "etp-dates-grid");
+    const nextMonth = page.getByRole("button", { name: /next month/i }).first();
+    for (let i = 0; i < 12; i++) {
+      if (await grid.getByText("December", { exact: false }).count()) break;
+      await nextMonth.click();
+    }
+    await grid.locator("button", { hasText: /^1$/ }).first().click();
+    await grid.locator("button", { hasText: /^4$/ }).first().click();
     const patched = await actAndAwait(
       page,
       async () => {
