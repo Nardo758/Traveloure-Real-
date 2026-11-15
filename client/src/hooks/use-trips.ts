@@ -11,7 +11,13 @@ import { syncActiveTripToContext } from "@/lib/trip-selection";
 // === TRIPS ===
 
 export function useTrips() {
-  return useQuery({
+  // QA round 4 R4-11: a signed-out page never asks — the list is the session user's, and the 401 it always got was a
+  // console error on every public page that mounts a reader (the Kyoto page's add picker). Signed out reads exactly
+  // as a 401 did (`data: null`, the "unanswered read" callers already handle); while the session is still unknown it
+  // reads as loading.
+  const { user, isLoading: authLoading } = useAuth();
+  const query = useQuery({
+    enabled: !!user,
     queryKey: [api.trips.list.path],
     // RC-7 (ledger `2026-09-25-rc7-new-plan-visible`): the app default is `staleTime: Infinity`,
     // so an already-loaded list never saw a plan born where no client door invalidated it (a
@@ -25,6 +31,8 @@ export function useTrips() {
       return api.trips.list.responses[200].parse(await res.json());
     },
   });
+  if (user) return query;
+  return { ...query, data: authLoading ? undefined : null, isLoading: authLoading } as typeof query;
 }
 
 export function useTrip(id: string) {

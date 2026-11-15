@@ -16,7 +16,7 @@
  *   · retention — unclaimed guest plans whose last change is older than GUEST_PLAN_RETENTION_DAYS are deleted
  *               (items cascade); unset ⇒ disabled, deletes nothing (ruling 6).
  */
-import { eventOutsideConfirmedDates, eventPlanPlacement } from "@shared/plan-dates";
+import { DAY_PAST_PLAN_END_REASON, dayPastPlanEnd, eventOutsideConfirmedDates, eventPlanPlacement } from "@shared/plan-dates";
 import { occasionLabelForPlan } from "./occasion-label.service";
 import { savedRefKeyOfItem } from "@shared/plan-item-ref";
 import crypto, { createHash } from "node:crypto";
@@ -433,7 +433,7 @@ export async function updateGuestPlan(hash: string, body: z.infer<typeof guestPl
 
 export type GuestSaveOutcome =
   | { ok: true; itemId: string; located: boolean; existing: boolean; item: GuestPlanView["items"][number] | null }
-  | { ok: false; code: "no_plan" | PlanItemRejectReason; eventDate?: string };
+  | { ok: false; code: "no_plan" | PlanItemRejectReason; eventDate?: string; reason?: typeof DAY_PAST_PLAN_END_REASON };
 
 /** R3-1: where a save spends its time, in ms — sent as `Server-Timing` so a slow save names its step. */
 export type GuestSaveTimings = { plan: number; resolve: number; write: number; read: number };
@@ -465,7 +465,11 @@ export async function saveGuestPlanItem(
   const planDays = Math.round((Date.parse(`${String(trip.endDate).slice(0, 10)}T00:00:00Z`) - Date.parse(`${String(trip.startDate).slice(0, 10)}T00:00:00Z`)) / 86_400_000) + 1;
   const resolved = await resolvePlanItemRef(ref, { markets: await planMarkets(trip.id), planDays: Number.isFinite(planDays) ? planDays : null });
   lap("resolve");
-  if (!resolved.ok) return { ok: false, code: resolved.reason };
+  if (!resolved.ok) {
+    // QA round 4 R4-9: a day past the plan's last day stays `unplaceable` and says so, as on the signed-in rail.
+    const dayPastEnd = resolved.reason === "unplaceable" && dayPastPlanEnd(ref.placement?.day_number, Number.isFinite(planDays) ? planDays : null);
+    return { ok: false, code: resolved.reason, ...(dayPastEnd ? { reason: DAY_PAST_PLAN_END_REASON } : {}) };
+  }
   const source = resolved.source;
   // R4b-1: an event outside the plan's CONFIRMED dates is refused; an unconfirmed plan lets the event set its own day.
   // QA round 3 major 1: any overlap is inside; the placement below reads the same days through the same rule file.

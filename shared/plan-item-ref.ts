@@ -21,7 +21,8 @@ export type PlanItemKind = (typeof PLAN_ITEM_KINDS)[number];
 
 /**
  * Why a save was refused. Not user-facing: the client shows "Couldn't save that. Try again." for every one except
- * `event_outside_dates` (R4b-1), which names the event's day (`eventOutsideDatesMessage`, shared/plan-dates.ts).
+ * `event_outside_dates` (R4b-1), which names the event's day (`eventOutsideDatesMessage`, shared/plan-dates.ts), and
+ * an `unplaceable` carrying `reason: "day_past_plan_end"` (R4-9; `DAY_PAST_PLAN_END_MESSAGE`).
  */
 export const PLAN_ITEM_REJECT_REASONS = ["unknown_kind", "unknown_source", "source_withdrawn", "city_mismatch", "unplaceable", "event_outside_dates"] as const;
 export type PlanItemRejectReason = (typeof PLAN_ITEM_REJECT_REASONS)[number];

@@ -240,6 +240,16 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
           CI: 'true'
 
+      # QA round 4 R4-11: the Kyoto page signed out sends no cart or plan-list read (each was a 401 console error).
+      - name: Kyoto page console (QA round 4 R4-11)
+        if: ${{ !cancelled() }}
+        run: npx playwright test playwright/tests/journeys/j-kyoto-console.spec.ts --project=chromium --workers=1 --reporter=list,json
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: playwright-json/kyoto-console.json
+          BASE_URL: http://localhost:5000
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          CI: 'true'
+
       # Step 8d (ledger `2026-10-07-step8d-guest-map`): the SIGNED-OUT round trip — start page → modal →
       # the guest map (no plan) → Add → sign up in the existing modal → exactly one plan, the answers
       # kept, exactly one Day 1 item; a reload creates nothing. It also closes 8b-2's signed-out gate,

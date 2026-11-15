@@ -13580,8 +13580,10 @@ ${bannedCopyPromptLine()}`;
           // R4-9: a day past the plan's last day is refused as `unplaceable` (decision 4: it stays refused); the log
           // says it was the day, and which day against how many, so it is never confused with a malformed envelope.
           const chosenDay = (parsedRef.ref as any).placement?.day_number ?? null;
-          const dayPastEnd = resolved.reason === "unplaceable" && chosenDay != null && planDays != null && chosenDay > planDays;
-          return refuseItemWrite(res, resolved.reason, { message: "Couldn't save that. Try again." }, {
+          const { dayPastPlanEnd, DAY_PAST_PLAN_END_REASON } = await import("@shared/plan-dates");
+          const dayPastEnd = resolved.reason === "unplaceable" && dayPastPlanEnd(chosenDay, planDays);
+          // R4-9 (wording approved — Leon, t2011u): the body names the day refusal so the client can say so.
+          return refuseItemWrite(res, resolved.reason, { message: "Couldn't save that. Try again.", ...(dayPastEnd ? { reason: DAY_PAST_PLAN_END_REASON } : {}) }, {
             tripId,
             userId,
             detail: {
