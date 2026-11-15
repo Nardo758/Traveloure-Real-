@@ -31,11 +31,12 @@ export function __resetToastDebugForTests(): void {
 
 export function toastDebugEnabled(): boolean {
   if (debugOnce !== null) return debugOnce;
+  // NOTHING IS LATCHED BEFORE THE PAGE EXISTS. A call with no `window` - SSR, or any module that reads this
+  // during import - used to memoise `false`, and the memo then survived into the browser, so `?debugToasts=1`
+  // and `localStorage.debugToasts` were dead for the whole session. Answer "off" without latching instead;
+  // the first real answer, from a real window, is the one that sticks.
+  if (typeof window === "undefined") return false;
   try {
-    if (typeof window === "undefined") {
-      debugOnce = false;
-      return debugOnce;
-    }
     const fromUrl = new URLSearchParams(window.location?.search ?? "").get("debugToasts") === "1";
     const fromStorage = window.localStorage?.getItem("debugToasts") === "1";
     debugOnce = Boolean(fromUrl || fromStorage);
