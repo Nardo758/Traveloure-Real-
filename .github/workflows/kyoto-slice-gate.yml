@@ -214,12 +214,19 @@ jobs:
         if: ${{ !cancelled() }}
         # Ruling (a), Nov 15, 2026: on a complete range a tap starts a new range, so a re-date saves the picked window.
         run: npx playwright test playwright/tests/journeys/j-redate-header.spec.ts --project=chromium --workers=1 --reporter=list,json
-      - name: Re-date through the header calendar (QA round 4 R4-8)
-        if: ${{ !cancelled() }}
-        # Ruling (a), Nov 15, 2026: on a complete range a tap starts a new range, so a re-date saves the picked window.
-        run: npx playwright test playwright/tests/journeys/j-plan-entry-event-window.spec.ts --project=chromium --workers=1 --reporter=list,json
         env:
           PLAYWRIGHT_JSON_OUTPUT_NAME: playwright-json/redate-header.json
+          BASE_URL: http://localhost:5000
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          CI: 'true'
+
+      - name: Event window on plan entry (E8)
+        if: ${{ !cancelled() }}
+        # E8 (lane 7, variant A): the two day-offsets and the one calendar are the same range; "before" cannot
+        # pass the market's today. Its own results file, so the spec-arming gate sees a green run for THIS spec.
+        run: npx playwright test playwright/tests/journeys/j-plan-entry-event-window.spec.ts --project=chromium --workers=1 --reporter=list,json
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: playwright-json/plan-entry-event-window.json
           BASE_URL: http://localhost:5000
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
           CI: 'true'
@@ -299,6 +306,15 @@ jobs:
         run: npx playwright test playwright/tests/journeys/j-claim-signin.spec.ts --project=chromium --workers=1 --reporter=list,json
         env:
           PLAYWRIGHT_JSON_OUTPUT_NAME: playwright-json/claim-signin.json
+          BASE_URL: http://localhost:5000
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          CI: 'true'
+      - name: Guest plan survives Continue (QA round 4 R4-1)
+        if: ${{ !cancelled() }}
+        # Same folder as above: the spec-arming gate reads this report too.
+        run: npx playwright test playwright/tests/journeys/j-guest-continue.spec.ts --project=chromium --workers=1 --reporter=list,json
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: playwright-json/guest-continue.json
           BASE_URL: http://localhost:5000
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
           CI: 'true'
