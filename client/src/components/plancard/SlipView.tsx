@@ -273,6 +273,14 @@ export interface SlipGuestMode {
   /** "Set your dates" / "Who's coming?" — the guest rail's update. */
   submitDates: (d: { startDate: string; endDate: string }) => Promise<void>;
   submitParty: (p: { adults: number | null; kids: number | null }) => Promise<void>;
+  /**
+   * E9, option A (Leon, Nov 16 2026): the guest plan's occasion row, resolved by the guest page from the
+   * GuestPlanView it already holds. NARROW ON PURPOSE - only the "Who's coming?" panel reads it, so guest
+   * grouping, moment layout, anchor wording, party nouns elsewhere and hidden-occasion behaviour are all
+   * unchanged. Absent while the catalog loads or when it does not resolve: the panel then asks today's
+   * Adults + Kids, never a wrong label and never a blocked panel.
+   */
+  partyOccasion?: OccasionSwitchRow | null;
 }
 
 export interface SlipData extends PlanCardData {
@@ -647,6 +655,7 @@ export function SlipHeader({
       {anchorPanel === "who" && trip ? (
         <InlineWhoPanel
           tripId={trip.id}
+          occasion={occasion ?? guest?.partyOccasion ?? null}
           current={{
             adults: (trip as any).adults ?? null,
             kids: (trip as any).kids ?? null,
@@ -2248,9 +2257,10 @@ export function SlipView({
 }) {
   // Flag-gated tools (Getting there) render only while their `/api/health` switch is on.
   const healthFlags = useHealthFlags();
-  // E9: the party panel asks what the editor's Who step asks. Resolved here, through the SAME hook the view
-  // model uses, so the row is one cache entry and never a second fetch; then handed down to the panel.
-  const { occasion: partyAskOccasion } = useOccasionSwitches(planTripId);
+  // E9: the party panel asks what the editor's Who step asks. The row comes from the VIEW MODEL above
+  // (`occasion`, one cache entry, no second fetch) and is passed to the panel at both mounts - the header's
+  // and this tray's. A guest plan has no view-model row (it cannot read /api/trips/:id), so the guest page
+  // hands its own resolved row down as `guest.partyOccasion`.
   const {
     days,
     isOwner,
@@ -2540,6 +2550,7 @@ export function SlipView({
           {trayChip === "who" && data.trip ? (
             <InlineWhoPanel
               tripId={data.trip.id}
+              occasion={occasion ?? guest?.partyOccasion ?? null}
               current={{
                 adults: (data.trip as any).adults ?? null,
                 kids: (data.trip as any).kids ?? null,

@@ -57,6 +57,9 @@ import {
   useGuestPlan,
 } from "@/lib/waitlist-guest-plan";
 import { GUEST_PLAN_COPY, guestPlanNotice } from "@shared/guest-plan-copy";
+import { useQuery } from "@tanstack/react-query";
+import type { OccasionSwitchRow } from "@/lib/occasion-switches";
+import { resolveOccasionForPlan } from "@shared/occasions";
 import {
   GUEST_GATE_DISMISS,
   GUEST_GATE_TITLE,
@@ -337,6 +340,19 @@ function WaitlistGuestPlan() {
   }
 
   const { plan } = view;
+  // E9 (option A, narrow): the guest's party-ask, resolved from THIS view against the public catalog under
+  // the same query key useOccasionSwitches and PlanEntry use - no new endpoint, and never /api/trips/:id.
+  // `items` are plan items, not the `PlanEventOccasionRef` shape, so attempts 2 and 3 of the ONE rule apply
+  // (the stored occasion slug, then the coarse event type). Null while it loads or when it does not resolve.
+  const { data: occasionCatalog } = useQuery<Array<{ id: string; slug: string } & OccasionSwitchRow>>({
+    queryKey: ["/api/experience-types"],
+    staleTime: 5 * 60_000,
+  });
+  const partyOccasion = resolveOccasionForPlan({
+    penSlug: plan.occasionSlug ?? null,
+    eventType: plan.eventType,
+    occasions: occasionCatalog ?? null,
+  });
   // E-1: the banner composes from the title (the traveler's choice + city), the dates with their year, the party.
   const answersLine = guestPlanBanner({
     title: plan.title,
@@ -384,6 +400,11 @@ function WaitlistGuestPlan() {
           submitParty: async (party) => {
             await updateGuestPlan(party as any);
           },
+          // E9 (option A): resolved from the guest plan the page already holds, against the PUBLIC catalog
+          // under the same query key useOccasionSwitches and PlanEntry use. No new endpoint, and never
+          // /api/trips/:id for a guest. Null while it loads or when it does not resolve - the panel then
+          // asks today's Adults + Kids.
+          partyOccasion: partyOccasion,
         }}
       />
     </div>
