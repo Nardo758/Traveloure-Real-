@@ -1,0 +1,45 @@
+name: Workflow Structure Gate
+
+# Lane 1 (architect's dispatch, Nov 15 2026) — ADVISORY, not a required context.
+#
+# A workflow that fails to PARSE produces no jobs, so the required contexts its jobs provide are simply
+# ABSENT. GitHub shows a stale-looking check and blocks the PR; re-running and re-pushing both fail,
+# because nothing was wrong with the checks. #2028 hit that three times (runs 43762114570, 43764782929
+# and 43771237933 all reported jobs = 0).
+#
+# This gate runs from its OWN workflow on purpose: a check that lived inside build.yml could not catch a
+# broken build.yml, because its own step would never start.
+#
+# It is dependency-free (node only, no npm ci, no database) so it reports in seconds, beside the rest of
+# CI rather than after it. The script states its five limits and the rule-to-cause map in its header.
+#
+# DRAFTS: this gate reports on READY, not on drafts (`if: github.event.pull_request.draft == false` on the
+# job). A draft is work in progress and must not be blocked by a structural check; the gate appears the
+# moment the PR is marked ready, which is also when the rest of the required suites run.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - ".github/workflows/**"
+      - "scripts/check-workflows-structural.cjs"
+
+concurrency:
+  group: workflow-structure-gate-${{ github.ref }}
+  cancel-in-progress: ${{ github.event.action != 'ready_for_review' }}
+
+permissions:
+  contents: read
+
+jobs:
+  structure:
+    # A draft is work in progress: skipping here is correct, and the non-required-workflow rule
+    # (ci-skip-rules --check-workflows) requires every non-required PR workflow to say so.
+    if: github.event.pull_request.draft == false
+    name: workflow-structure-gate (one command per step; no unquoted colon in a name)
+    runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-26.04' }}
+    steps:
+      - uses: actions/checkout@v5.1.0
+      - name: Guard self-test — the four corruptions must fail, real constructs must pass
+        run: node scripts/check-workflows-structural.cjs --self-test
+      - name: Scan every workflow file
+        run: node scripts/check-workflows-structural.cjs
