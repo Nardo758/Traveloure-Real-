@@ -20,6 +20,9 @@ async function openEntry(page: Page) {
 
 test("E8: the event window fields and the calendar show one range", async ({ page }) => {
   await openEntry(page);
+  // The event list is queried per market, so a city has to be chosen before "An event" has anything to show.
+  await page.getByTestId("plan-entry-around-place").click();
+  await page.getByTestId("plan-entry-city-kyoto").click();
   await page.getByTestId("plan-entry-around-event").click();
 
   const card = page.locator('[data-testid^="plan-entry-event-card-"]').first();
@@ -59,6 +62,9 @@ test("E8: the event window fields and the calendar show one range", async ({ pag
 
 test("E8: a before value that would cross today is clamped, not honoured", async ({ page }) => {
   await openEntry(page);
+  // The event list is queried per market, so a city has to be chosen before "An event" has anything to show.
+  await page.getByTestId("plan-entry-around-place").click();
+  await page.getByTestId("plan-entry-city-kyoto").click();
   await page.getByTestId("plan-entry-around-event").click();
   const card = page.locator('[data-testid^="plan-entry-event-card-"]').first();
   await expect(card).toBeVisible({ timeout: 20_000 });
