@@ -1,6 +1,6 @@
 # Occasion tools — user-journey simulation
 
-> **Status — 2026-11-15.** Written before the work shipped. Since then, on `main`: **E9** one party-asks rule (#2020) — the party fields this simulation walks through are now decided in one place; **E6/E7** as listed in `plan-entry-click-paths.md`. **No occasion tool has shipped**: the checklist, starter-kit and gap-fill Phase 0s belong to Coding Bot, and pets (lane 4, source now, plan later) and the per-event budget (lane 6) are unscheduled.
+> **Status — 2026-11-15.** Written before the work shipped. Since then, on `main`: **E9** one party-asks rule (#2020) — the party fields this simulation walks through are now decided in one place; **E6/E7** as listed in `plan-entry-click-paths.md`. **No occasion tool has shipped**: the checklist, starter-kit and gap-fill Phase 0s belong to Coding Bot; pets (lane 4) are **not started** though sourcing may begin now, and the per-event budget panel (lane 6) is **not started** because it waits on its Phase 0 report.
 
 **Research and design only.** No code, no branches, no PRs, nothing committed. Main read as `b6d73674`.
 
