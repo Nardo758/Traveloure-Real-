@@ -21,16 +21,15 @@ test("E9: a guest plan's Corporate Retreats asks Attendees only, and never calls
     if (/\/api\/trips\/[^/?]+/.test(req.url())) tripReads.push(req.url());
   });
 
-  await page.goto(`${BASE_URL}/?start=1&step=around`, { waitUntil: "domcontentloaded" });
-  await tid(page, "plan-entry-around-place").click({ timeout: 20_000 });
-  await tid(page, "plan-entry-city-kyoto").click();
-
-  // Corporate Retreats, the way a traveler reaches it: More specific -> See all occasions.
-  await tid(page, "plan-entry-more-specific").click();
-  await tid(page, "occasion-see-all").click();
-  await tid(page, "option-occasion-corporate-events").click({ timeout: 20_000 });
-  await tid(page, "button-plan-entry-start").click();
-
+  // The guest plan is made through the same endpoint the entry uses, with the occasion on it: this gate runs
+  // the app in WAITLIST mode, where the entry's Start does not mint a claimable guest plan and the slip below
+  // never appears. The occasion slug is stored on the plan and is exactly what the guest resolver reads
+  // (`plan.occasionSlug` -> resolveOccasionForPlan), so the wiring under test is unchanged.
+  const made = await page.request.post("/api/guest-plans", {
+    data: { destination: "Kyoto, Japan", title: "Kyoto corporate retreat", occasionSlug: "corporate-events" },
+  });
+  expect(made.ok(), `guest plan create answered ${made.status()}`).toBe(true);
+  await page.goto(`${BASE_URL}/plans/new`, { waitUntil: "domcontentloaded" });
   await expect(tid(page, "guest-plan")).toBeVisible({ timeout: 25_000 });
 
   // "Who's coming?" on the guest slip.
