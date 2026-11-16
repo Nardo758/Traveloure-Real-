@@ -29,7 +29,7 @@ export const GUEST_PLAN_PATH = "/plans/new";
  * R4-3 follow-up (Leon, Nov 16 2026): where the add toast's "View plan" goes.
  *
  * A signed-in add names its trip, whose page is `/plans/:tripId`. A GUEST add lands on the guest plan page
- * `GUEST_PLAN_PATH` ? the page exists (App.tsx registers /plans/new -> GuestPlanMapPage, which renders the
+ * `GUEST_PLAN_PATH` — the page exists (App.tsx registers /plans/new -> GuestPlanMapPage, which renders the
  * same SlipView), so there is no guest exception. The old comment claiming "their plan has no page of its own
  * yet" was wrong. Pure, so the mapping is unit-tested rather than grepped.
  */

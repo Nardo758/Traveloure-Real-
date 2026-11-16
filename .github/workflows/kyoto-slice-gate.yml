@@ -220,6 +220,17 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
           CI: 'true'
 
+      - name: Guest party ask (E9 - attendees, no /api/trips read)
+        if: ${{ !cancelled() }}
+        # E9 (option A): a guest plan's Corporate Retreats asks ONE Attendees field, and the guest page
+        # never reaches /api/trips/<id>. Its own results file for the spec-arming gate.
+        run: npx playwright test playwright/tests/journeys/j-guest-party-ask.spec.ts --project=chromium --workers=1 --reporter=list,json
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: playwright-json/guest-party-ask.json
+          BASE_URL: http://localhost:5000
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          CI: 'true'
+
       - name: Event window on plan entry (E8)
         if: ${{ !cancelled() }}
         # E8 (lane 7, variant A): the two day-offsets and the one calendar are the same range; "before" cannot
