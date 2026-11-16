@@ -112,6 +112,7 @@ function scanWorkflow(text, file = "(inline)") {
     if (key[1] === "uses") ctx.lastItem.uses += 1;
     if (key[1] === "run" && ctx.lastItem.run === 2) add(i, "R2", "second `run:` in one step (duplicate key)");
     if (key[1] === "uses" && ctx.lastItem.uses === 2) add(i, "R2", "second `uses:` in one step (duplicate key)");
+    if (ctx.lastItem.run && ctx.lastItem.uses) add(i, "R2", "step carries both `run:` and `uses:` — one command per step");
   }
 
   // R1 — a step item with neither run: nor uses:. Recomputed in a second pass, because the item's block
@@ -151,12 +152,13 @@ function scanWorkflow(text, file = "(inline)") {
 /** Is line index `i` a list item directly inside a `steps:` block? */
 function isInSteps(lines, i) {
   const ind = indentOf(lines[i]);
+  // Walk up PAST same-indent siblings (the earlier steps) to the nearest shallower line; only that ancestor
+  // decides the list's owner. Returning false on a same-indent line was the bug: it made this answer true
+  // for a block's FIRST step only, so every later step escaped R1.
   for (let j = i - 1; j >= 0; j--) {
     const line = lines[j];
     if (inert(line)) continue;
-    const lind = indentOf(line);
-    if (lind < ind) return /^\s*steps:\s*$/.test(line);
-    if (lind === ind) return false;
+    if (indentOf(line) < ind) return /^\s*steps:\s*$/.test(line);
   }
   return false;
 }
@@ -164,34 +166,86 @@ function isInSteps(lines, i) {
 // ---------------------------------------------------------------------------
 // Self-test: the three corruptions verbatim must FAIL; real constructs must PASS.
 // ---------------------------------------------------------------------------
-const BAD = {
-  "corruption 1 — name indented deeper than its siblings": [
-    "jobs:",
-    "  g:",
-    "    steps:",
-    "      - name: slip own-your-plan pin",
-    "        if: ${{ !cancelled() }}",
-    "        run: npx tsx --test a.test.ts",
-    "        - name: email do-not-contact",
-    "        run: npx tsx --test b.test.ts",
-  ].join("\n"),
-  "corruption 2 — unquoted colon in a step name": [
-    "jobs:",
-    "  g:",
-    "    steps:",
-    "      - name: email do-not-contact (N3: the gate refuses transactional mail)",
-    "        run: npx tsx --test a.test.ts",
-  ].join("\n"),
-  "corruption 3 — two run: keys in one step": [
-    "jobs:",
-    "  g:",
-    "    steps:",
-    "      - name: email do-not-contact",
-    "        run: npx tsx --test a.test.ts",
-    "        run: npx tsx --test trend-engine.test.ts",
-  ].join("\n"),
-  "tabs in indentation": ["jobs:", "  g:", "    steps:", "\t- name: x", "\t  run: y"].join("\n"),
-};
+const BAD = [
+  {
+    label: "corruption 1 — name indented deeper than its siblings",
+    expect: ["R5"],
+    text: [
+      "jobs:",
+      "  g:",
+      "    steps:",
+      "      - name: slip own-your-plan pin",
+      "        if: ${{ !cancelled() }}",
+      "        run: npx tsx --test a.test.ts",
+      "        - name: email do-not-contact",
+      "        run: npx tsx --test b.test.ts",
+    ].join("\n"),
+  },
+  {
+    label: "corruption 2 — unquoted colon in a step name",
+    expect: ["R3"],
+    text: [
+      "jobs:",
+      "  g:",
+      "    steps:",
+      "      - name: email do-not-contact (N3: the gate refuses transactional mail)",
+      "        run: npx tsx --test a.test.ts",
+    ].join("\n"),
+  },
+  {
+    label: "corruption 3 — two run: keys in one step",
+    expect: ["R2"],
+    text: ["jobs:", "  g:", "    steps:", "      - name: x", "        run: a", "        run: b"].join("\n"),
+  },
+  {
+    label: "corruption 3 (second shape) — run: and uses: on one step",
+    expect: ["R2"],
+    text: ["jobs:", "  g:", "    steps:", "      - name: x", "        uses: actions/checkout@v5.1.0", "        run: a"].join("\n"),
+  },
+  {
+    label: "tabs in indentation",
+    expect: ["R4"],
+    text: ["jobs:", "  g:", "    steps:", "\t- name: x", "\t  run: y"].join("\n"),
+  },
+  {
+    label: "R1 — command-less step in FIRST position",
+    expect: ["R1"],
+    text: [
+      "jobs:",
+      "  g:",
+      "    steps:",
+      "      - name: Skip rules self-test",
+      "      - name: real",
+      "        run: node x.cjs",
+    ].join("\n"),
+  },
+  {
+    label: "R1 — command-less step in MIDDLE position",
+    expect: ["R1"],
+    text: [
+      "jobs:",
+      "  g:",
+      "    steps:",
+      "      - name: first",
+      "        run: node a.cjs",
+      "      - name: Skip rules self-test",
+      "      - name: last",
+      "        run: node c.cjs",
+    ].join("\n"),
+  },
+  {
+    label: "R1 — command-less step in LAST position",
+    expect: ["R1"],
+    text: [
+      "jobs:",
+      "  g:",
+      "    steps:",
+      "      - name: first",
+      "        run: node a.cjs",
+      "      - name: trailing comment-only step",
+    ].join("\n"),
+  },
+];
 
 const GOOD = {
   "heredoc run block containing the word run:": [
@@ -239,17 +293,30 @@ const GOOD = {
     "      - name: boot-log-gate — no secret values",
     "        run: node scripts/x.cjs",
   ].join("\n"),
+  "several real steps, none command-less": [
+    "jobs:",
+    "  g:",
+    "    steps:",
+    "      - uses: actions/checkout@v5.1.0",
+    "      - name: one",
+    "        run: node a.cjs",
+    "      - name: two",
+    "        run: node b.cjs",
+  ].join("\n"),
 };
 
 function selfTest() {
   let failed = 0;
-  for (const [label, fixture] of Object.entries(BAD)) {
-    const found = scanWorkflow(fixture);
-    if (found.length === 0) {
+  for (const fixture of BAD) {
+    const found = scanWorkflow(fixture.text);
+    const rules = [...new Set(found.map((f) => f.rule))].sort();
+    const want = [...fixture.expect].sort();
+    const same = rules.length === want.length && rules.every((r, k) => r === want[k]);
+    if (!same) {
       failed += 1;
-      console.error(`  SELF-TEST FAIL (should have flagged): ${label}`);
+      console.error(`  SELF-TEST FAIL (expected ${want.join(", ")}, got ${rules.join(", ") || "nothing"}): ${fixture.label}`);
     } else {
-      console.log(`  ok  FAILS as required — ${label} → ${found.map((f) => f.rule).join(", ")}`);
+      console.log(`  ok  FAILS on ${want.join(", ")} and nothing else — ${fixture.label}`);
     }
   }
   for (const [label, fixture] of Object.entries(GOOD)) {
@@ -265,7 +332,7 @@ function selfTest() {
     console.error(`self-test: ${failed} case(s) failed`);
     process.exit(1);
   }
-  console.log(`self-test: ${Object.keys(BAD).length} corruptions rejected, ${Object.keys(GOOD).length} constructs accepted.`);
+  console.log(`self-test: ${BAD.length} corruptions rejected (each on its own rule), ${Object.keys(GOOD).length} constructs accepted.`);
 }
 
 // ---------------------------------------------------------------------------
