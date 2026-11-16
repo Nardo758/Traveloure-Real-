@@ -1,8 +1,8 @@
-# Wording approval — four PENDING strings
+# Wording approval — four strings
 
 **Status: approved — `founder comment: #2034 2026-11-16T03:08:44Z`.**
 
-These are the three rows already marked **PENDING Leon wording** in `docs/specs/unified-plan-entry.md:162-164`, lifted out of that table so each can be approved or changed one at a time, plus the string that unblocks E8.
+These are the three rows marked **PENDING Leon wording** in `docs/specs/unified-plan-entry.md:162-164`, now approved:, lifted out of that table so each can be approved or changed one at a time, plus the string that unblocks E8.
 
 ## The four
 
