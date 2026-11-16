@@ -79,7 +79,8 @@ describe("QA round 3 PR 5", () => {
     assert.match(lib, /enabled: enabled && guestPlanReadAllowed\(auth\),/);
     const callers = [
       ["client/src/components/layout.tsx", /useGuestPlan\(\{ authLoading: isAuthLoading, signedIn: !!user \}, guestPresent\)/],
-      ["client/src/pages/guest-plan-map.tsx", /useGuestPlan\(\{ authLoading: isLoading, signedIn: !!user \}, mode === "waitlist"\)/],
+      // QA round 4 R4-1: the title read also holds while a pending record is about to create the plan.
+      ["client/src/pages/guest-plan-map.tsx", /useGuestPlan\(\{ authLoading: isLoading, signedIn: !!user \}, mode === "waitlist" && !holdForCreate\)/],
       ["client/src/pages/guest-plan-map.tsx", /useGuestPlan\(\{ authLoading: planAuthLoading, signedIn: !!planUser \}, !creating\)/],
     ] as const;
     for (const [file, re] of callers) assert.match(read(file), re, file);

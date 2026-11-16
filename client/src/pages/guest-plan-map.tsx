@@ -79,7 +79,11 @@ export default function GuestPlanMapPage() {
   const { user, isLoading } = useAuth();
   const { mode } = useSignupMode();
   // N-5 (round 2): the tab names the guest's plan once it is read; "Traveloure" until then — never the last page's title.
-  const guestPlanForTitle = useGuestPlan({ authLoading: isLoading, signedIn: !!user }, mode === "waitlist");
+  // QA round 4 R4-1: while a pending sign-in record is about to CREATE this guest's plan (the child below sends the
+  // POST), the title does not read the plan in parallel — that read raced the create. The create caches the plan it made,
+  // so the title still names it.
+  const [holdForCreate] = useState(() => hasPendingPlanRecord());
+  const guestPlanForTitle = useGuestPlan({ authLoading: isLoading, signedIn: !!user }, mode === "waitlist" && !holdForCreate);
   useDocumentTitle(guestPlanForTitle.data?.plan.title ?? null);
   // GATE-1B (ledger `2026-11-04-gate1b-guest-plan`): in waitlist mode a signed-out visitor gets a server-side plan
   // here — no sign-in wall. Open mode keeps the sign-in path below, unchanged.

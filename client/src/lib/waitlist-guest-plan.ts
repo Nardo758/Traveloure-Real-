@@ -109,8 +109,17 @@ export function guestSaveErrorMessage(err: unknown): string {
   return planSaveRefusalMessage(err) ?? GUEST_PLAN_COPY.saveFailed;
 }
 
-/** The session's guest plan, or null when it has none (404). */
+/**
+ * QA round 4 R4-2 (Leon, Nov 13, 2026): guest reads are CLOSED once a signed-in claim starts. The claim runs before the
+ * app's own session read knows the user (the sign-in modal claims, then re-reads `/api/auth/user`), so a guest reader
+ * still enabled at that moment re-fetched `GET /api/guest-plans/current` on the new session and was answered 409
+ * `signed_in`. While closed, the read answers "no plan" without a request. Reopened on sign-out (`clearGuestClaimMemo`).
+ */
+let guestReadsClosed = false;
+
+/** The session's guest plan, or null when it has none (404) — or when guest reads are closed (R4-2: signed in). */
 export async function fetchGuestPlan(): Promise<GuestPlanView | null> {
+  if (guestReadsClosed) return null;
   try {
     return (await (await apiRequest("GET", "/api/guest-plans/current")).json()) as GuestPlanView;
   } catch (err) {
@@ -143,8 +152,17 @@ export function useGuestPlan(auth: { authLoading: boolean; signedIn: boolean }, 
 /** A-5: the server get-or-creates — a second create (or one racing the first) answers the session's plan. */
 export async function createGuestPlan(input: GuestPlanCreateInput): Promise<GuestPlanView> {
   const view = (await (await apiRequest("POST", "/api/guest-plans", input)).json()) as GuestPlanView;
-  queryClient.setQueryData(GUEST_PLAN_QUERY_KEY, view);
+  await cacheGuestPlan(view);
   return view;
+}
+
+/**
+ * QA round 4 R4-1: a read that left before this write landed can answer after it — "no plan yet" (`null`) for a create,
+ * the old plan for an update — and would overwrite what the write just cached. Any such read is cancelled first.
+ */
+async function cacheGuestPlan(view: GuestPlanView | null): Promise<void> {
+  await queryClient.cancelQueries({ queryKey: GUEST_PLAN_QUERY_KEY });
+  queryClient.setQueryData(GUEST_PLAN_QUERY_KEY, view);
 }
 
 export async function updateGuestPlan(patch: {
@@ -154,7 +172,7 @@ export async function updateGuestPlan(patch: {
   kids?: number | null;
 }): Promise<GuestPlanView> {
   const view = (await (await apiRequest("PATCH", "/api/guest-plans/current", patch)).json()) as GuestPlanView;
-  queryClient.setQueryData(GUEST_PLAN_QUERY_KEY, view);
+  await cacheGuestPlan(view);
   return view;
 }
 
@@ -271,6 +289,8 @@ const CLAIMED_FOR_STORAGE_KEY = "traveloure_guest_claimed_for";
  */
 export function claimGuestPlans(userId?: string | null): Promise<string[]> {
   const who = userId ?? null;
+  // R4-2: a claim is asked only by a signed-in page — from here on a guest read would be answered 409 `signed_in`.
+  guestReadsClosed = true;
   if (who && claimedFor?.userId === who) return Promise.resolve(claimedFor.ids);
   if (who && !claimedFor) {
     try {
@@ -308,6 +328,7 @@ export function claimGuestPlans(userId?: string | null): Promise<string[]> {
 export function _resetGuestClaimMemo(): void {
   claimedFor = null;
   claimInFlight = null;
+  guestReadsClosed = false;
 }
 
 /**
@@ -317,6 +338,8 @@ export function _resetGuestClaimMemo(): void {
  */
 export function clearGuestClaimMemo(): void {
   claimedFor = null;
+  // R4-2: signed out again — this browser may be a guest, so its guest reads reopen.
+  guestReadsClosed = false;
   try {
     sessionStorage.removeItem(CLAIMED_FOR_STORAGE_KEY);
     sessionStorage.removeItem(CLAIMED_PLAN_STORAGE_KEY);
@@ -351,7 +374,9 @@ async function claimGuestPlansOnce(): Promise<GuestClaimOutcome> {
   try {
     const res = await apiRequest("POST", "/api/guest-plans/claim", guestSessionId ? { guestSessionId } : {});
     const out = (await res.json()) as { tripIds?: string[] };
-    queryClient.removeQueries({ queryKey: GUEST_PLAN_QUERY_KEY });
+    // R4-2: the guest plan is now the account's. Its cached read is cancelled and emptied in place — never removed,
+    // which made every still-mounted guest reader rebuild the query and fetch again on the new session.
+    await cacheGuestPlan(null);
     const ids = Array.isArray(out.tripIds) ? out.tripIds.filter((id) => typeof id === "string" && id) : [];
     if (ids[0]) {
       try {

@@ -61,8 +61,8 @@ logGuestPlanRetentionBootState();
 
 /**
  * A-10 (ledger `2026-11-05-lane6-guest-cookie`): the guest is named by the httpOnly cookie, else — only when the client
- * says its cookies are off — by the `X-Guest-Session` id. `guestOnly` resolves it once (minting a cookie for a new
- * guest) and every later step reads the same answer.
+ * says its cookies are off — by the `X-Guest-Session` id. `guestOnly` resolves it once (the create alone mints a cookie
+ * for a new guest — R4-1) and every later step reads the same answer.
  */
 function cookiesOff(req: Request): boolean {
   return (req.get(GUEST_COOKIES_OFF_HEADER) ?? "").trim().toLowerCase() === "off";
@@ -107,27 +107,50 @@ const savesPerSession = createRateLimiter({
   handler: rateLimited,
 });
 
-/** Waitlist mode, no session, a well-formed guest header — checked before any limiter counts the request. */
-async function guestOnly(req: Request, res: Response, next: NextFunction) {
-  try {
-    if ((await getTravelerSignupMode()) !== "waitlist") return res.status(404).json({ code: "not_found" });
-    if (getUserId(req)) return res.status(409).json({ code: "signed_in" });
-    const who = resolveGuestSessionId({
-      cookie: readCookie(req.headers.cookie, GUEST_SESSION_COOKIE),
-      header: req.get(GUEST_SESSION_HEADER),
-      cookiesOff: cookiesOff(req),
-    });
-    const hash = who ? hashGuestSession(who.id) : null;
-    if (!who || !hash) return res.status(400).json({ code: "guest_session_required" });
-    (req as any).guestSessionHash = hash;
-    if (who.source !== "header") setGuestCookie(res, who.id);
-    next();
-  } catch {
-    res.status(500).json({ code: "error" });
-  }
+/**
+ * Waitlist mode, no session, a well-formed guest header — checked before any limiter counts the request.
+ *
+ * QA round 4 R4-1 (Leon, Nov 13, 2026): ONLY the create (`POST /api/guest-plans`) mints a guest session. A read or a
+ * write that arrives with no guest names none: it never sets a cookie, so two cookieless requests in flight together
+ * (the create and a page-load read) can no longer mint two guests and let the read's cookie orphan the new plan. A
+ * cookieless read answers "no plan yet" (200 null); a cookieless write answers the same 404 a session with no plan
+ * gets. An existing cookie is still refreshed (its rolling lifetime) — that is not a mint.
+ */
+function guestOnly(opts: { mint: boolean }) {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if ((await getTravelerSignupMode()) !== "waitlist") return res.status(404).json({ code: "not_found" });
+      if (getUserId(req)) return res.status(409).json({ code: "signed_in" });
+      const who = resolveGuestSessionId(
+        {
+          cookie: readCookie(req.headers.cookie, GUEST_SESSION_COOKIE),
+          header: req.get(GUEST_SESSION_HEADER),
+          cookiesOff: cookiesOff(req),
+        },
+        { mintNew: opts.mint },
+      );
+      if (!who && !opts.mint) {
+        // No guest named, and this route does not mint one: nothing to read or write.
+        if (req.method === "GET") {
+          res.set("Cache-Control", "private, no-store");
+          return res.json(null);
+        }
+        return res.status(404).json({ code: "not_found" });
+      }
+      const hash = who ? hashGuestSession(who.id) : null;
+      if (!who || !hash) return res.status(400).json({ code: "guest_session_required" });
+      (req as any).guestSessionHash = hash;
+      if (who.source !== "header") setGuestCookie(res, who.id);
+      next();
+    } catch {
+      res.status(500).json({ code: "error" });
+    }
+  };
 }
+const guestMints = guestOnly({ mint: true });
+const guestNamed = guestOnly({ mint: false });
 
-router.post("/api/guest-plans", guestOnly, createPerSession, createPerIp, async (req, res) => {
+router.post("/api/guest-plans", guestMints, createPerSession, createPerIp, async (req, res) => {
   const parsed = guestPlanCreateBody.safeParse(req.body ?? {});
   if (!parsed.success) return res.status(400).json({ code: "invalid_body" });
   try {
@@ -140,7 +163,7 @@ router.post("/api/guest-plans", guestOnly, createPerSession, createPerIp, async 
   }
 });
 
-router.get("/api/guest-plans/current", guestOnly, async (req, res) => {
+router.get("/api/guest-plans/current", guestNamed, async (req, res) => {
   try {
     const view = await readGuestPlan(sessionHash(req)!);
     res.set("Cache-Control", "private, no-store");
@@ -152,7 +175,7 @@ router.get("/api/guest-plans/current", guestOnly, async (req, res) => {
   }
 });
 
-router.patch("/api/guest-plans/current", guestOnly, async (req, res) => {
+router.patch("/api/guest-plans/current", guestNamed, async (req, res) => {
   const parsed = guestPlanUpdateBody.safeParse(req.body ?? {});
   if (!parsed.success) return res.status(400).json({ code: "invalid_body" });
   try {
@@ -178,7 +201,7 @@ router.patch("/api/guest-plans/current", guestOnly, async (req, res) => {
   }
 });
 
-router.post("/api/guest-plans/current/items", guestOnly, savesPerSession, async (req, res) => {
+router.post("/api/guest-plans/current/items", guestNamed, savesPerSession, async (req, res) => {
   // CAP-2: the body is a PlanItemRef; an unknown kind and a malformed envelope get their own reason codes.
   const ref = parsePlanItemRef(req.body ?? {});
   if (!ref.ok) return res.status(400).json({ code: ref.reason });
@@ -207,7 +230,7 @@ router.post("/api/guest-plans/current/items", guestOnly, savesPerSession, async 
  * another session's item, a claimed plan's item and no item at all are the same 404 (LD 40). Shares the save limiter:
  * an undo/move is a write on the same plan.
  */
-router.delete("/api/guest-plans/current/items/:id", guestOnly, savesPerSession, async (req, res) => {
+router.delete("/api/guest-plans/current/items/:id", guestNamed, savesPerSession, async (req, res) => {
   try {
     const out = await deleteGuestPlanItem(sessionHash(req)!, String(req.params.id));
     if (!out.ok) return res.status(404).json({ code: "not_found" });
@@ -218,7 +241,7 @@ router.delete("/api/guest-plans/current/items/:id", guestOnly, savesPerSession, 
   }
 });
 
-router.patch("/api/guest-plans/current/items/:id", guestOnly, savesPerSession, async (req, res) => {
+router.patch("/api/guest-plans/current/items/:id", guestNamed, savesPerSession, async (req, res) => {
   const parsed = guestPlanItemMoveBody.safeParse(req.body ?? {});
   if (!parsed.success) return res.status(400).json({ code: "invalid_body" });
   try {

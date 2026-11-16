@@ -298,6 +298,15 @@ jobs:
           BASE_URL: http://localhost:5000
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
           CI: 'true'
+      - name: Guest plan survives Continue (QA round 4 R4-1)
+        if: ${{ !cancelled() }}
+        # Same folder as above: the spec-arming gate reads this report too.
+        run: npx playwright test playwright/tests/journeys/j-guest-continue.spec.ts --project=chromium --workers=1 --reporter=list,json
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: playwright-json/guest-continue.json
+          BASE_URL: http://localhost:5000
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          CI: 'true'
 
       - name: Upload the add-actions Playwright JSON (spec-arming evidence)
         if: ${{ !cancelled() }}
