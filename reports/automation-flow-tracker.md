@@ -186,6 +186,83 @@ task's branch, pending review/merge. **C29 remains WAITING; the four-part live
 absence proof and broader release are not complete.** No delivery activation,
 merge, or publish was performed.
 
+## Approved bulk itinerary cancellation logs — provider-free receipts
+
+Founder explicitly approved the separate three-existing-file scope in the
+approval form for this change. This extends decision visibility to existing
+bulk cancellations; it does not change the C29 live absence-proof status above.
+
+### Change and preserved boundaries
+
+- `server/services/itinerary-followup.service.ts`: the existing
+  `cancelItineraryFollowups` UPDATE now returns only the affected outbox IDs and
+  email types. Each returned row emits the existing static
+  `[itinerary-followup] cancelled; not sent` message with exactly `outboxId`,
+  `emailType`, and the caller's existing fixed `reason`. Raw PostgreSQL bigint
+  IDs are converted to match the outbox schema's existing numeric ID contract.
+- The three existing caller reasons remain `Cancelled by a newer ready itinerary`,
+  `Booking or payment started`, and `Traveler unsubscribed`. No recipient,
+  subject, body, metadata, traveler ID, or itinerary ID is passed to this logger.
+- No pre-update lookup, additional cancellation, or send path was introduced.
+  The UPDATE's traveler/version/status filters and optional itinerary exclusion
+  are unchanged. Eligibility, preferences, expiry, locking, retries, and the
+  single send exit are unchanged. Rows initially inserted as cancelled by an
+  older late completion are not UPDATE-affected rows and are not logged here.
+- These are decisions logged after a successful UPDATE inside the caller's
+  transaction, not independent transaction-commit or provider-delivery receipts.
+  Outer-transaction rollback behavior is not certified by this change.
+- No migration, new tracked source file, provider send, activation, manual
+  commit/push, or publish was performed.
+
+### Test receipts
+
+`server/services/__tests__/itinerary-followups.vitest.ts` adds three
+database-backed cases, one per fixed reason. Each uses all three follow-up
+types across pending, failed, and processing source states. Exact logger
+argument equality proves one safe log per affected row and no extra fields.
+Sent, cancelled, and expired controls for every type remain byte-for-byte
+unchanged, as do other-traveler/version controls and itinerary-ready notices.
+The newer-plan case additionally protects the explicitly excluded itinerary;
+booking and unsubscribe exercise the helper without that exclusion.
+
+Repeating the cancellation and invoking stale workers and the dispatcher for
+the newly terminal rows produces no additional logs, sends, or row changes.
+The pre-existing integration cases also continue to exercise real scheduling,
+booking/payment guards, explicit HTTP unsubscribe, and authenticated preference
+saves.
+
+Final command: `vitest run --config vitest.itinerary-followups.config.ts`,
+with explicit development-fixture authorization and a newly initialized private
+local PostgreSQL 16.10 database materialized from the current Drizzle schema
+(including `pg_trgm`). A loopback HTTPS harness mounted the existing auth and
+preference handlers against that same database. Child-process environments
+were allowlisted without provider credentials; delivery callbacks were
+intercepted and the HTTP harness had email sends disabled. Shared development
+and production databases were not used for these fixtures.
+
+| Check | Observed result |
+|---|---|
+| Final full follow-up suite | **31/31 passed**, zero failures/skips, 9.02 s total |
+| Private fixture teardown | **0 users, 0 outbox rows** remaining |
+| Full `tsc --noEmit --pretty false` | 103 diagnostics elsewhere; none in either changed TypeScript file; not a globally clean typecheck |
+| `git diff --check` | Passed |
+| Application restart | Served the landing page; startup applied 0 migrations; outbox sending disabled |
+| Provider events or inbox absence | Not observed or claimed; no provider sends were attempted by verification |
+
+Exploratory checks are not counted as final passes: the first private database
+process did not survive its short-lived shell, so it was relaunched as a managed
+background process. Exact-payload tests then caught raw PostgreSQL bigint IDs
+arriving as strings; the runtime log now matches the existing numeric ID shape.
+A test iterator was changed to support the project's configured TypeScript
+target. A separate in-memory baseline-comparison attempt timed out; the normal
+TypeScript command completed with the result reported above.
+
+Final source SHA-256 pins:
+
+- Runtime:
+  `7fa730357c538c27c056328d67c58d58437cf2351670e4c9b941444b69113068`.
+- Tests:
+  `ff968384ab8c84540edf9bbfee3cc54407c930ac778cffa0c6c3e0f02f80158d`.
 ## Cancellation decision rollback regression — 2026-11-15
 
 Added three provider-free cases in

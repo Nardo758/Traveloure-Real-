@@ -35,13 +35,18 @@ export async function lockFollowupTraveler(tx: Tx, travelerId: string) {
 }
 
 export async function cancelItineraryFollowups(tx: Tx, travelerId: string, reason: string, exceptItinerary?: string) {
-  await tx.execute(sql`
+  const cancelled = await tx.execute(sql`
     UPDATE email_outbox SET status = 'cancelled', retry_after = NULL,
       last_error = ${reason}, updated_at = NOW()
     WHERE metadata->>'travelerFollowupVersion' = '1' AND metadata->>'travelerId' = ${travelerId}
       AND status IN ('pending', 'failed', 'processing')
       AND (${exceptItinerary ?? null}::text IS NULL OR metadata->>'itineraryId' <> ${exceptItinerary ?? null})
+    RETURNING id, email_type AS "emailType"
   `);
+  for (const row of cancelled.rows as { id: string; emailType: string }[]) {
+    // Raw pg bigint values are strings; match emailOutbox's Drizzle number mode.
+    logger.info({ outboxId: Number(row.id), emailType: row.emailType, reason }, "[itinerary-followup] cancelled; not sent");
+  }
 }
 
 /** An older worker finishing late must not cancel the newer itinerary's sequence. */

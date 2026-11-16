@@ -8,7 +8,7 @@ import {
   coordinationStates, coordinationBookings,
 } from "@shared/schema";
 import { persistGenerationOutcome } from "../itinerary-generation-outcome.service";
-import { deliverItineraryFollowup, scheduleItineraryFollowups, type FollowupMetadata } from "../itinerary-followup.service";
+import { cancelItineraryFollowups, lockFollowupTraveler, deliverItineraryFollowup, scheduleItineraryFollowups, type FollowupMetadata } from "../itinerary-followup.service";
 import { deliverQueuedEmail, _outboxTestHooks } from "../email-outbox.service";
 import { ITINERARY_FOLLOWUPS, type ItineraryFollowupKind } from "../itinerary-followup-email";
 import type { SendEmailParams } from "../email.service";
@@ -200,6 +200,90 @@ for (const entry of ITINERARY_FOLLOWUPS) {
       }
     });
   });
+
+for (const reason of [
+  "Cancelled by a newer ready itinerary", "Booking or payment started", "Traveler unsubscribed",
+]) {
+  test(`bulk cancellation: ${reason} logs exactly changed rows once with only safe fields`, async () => {
+    await withFixture(async (fixture) => {
+      const originals = await notices(fixture.userId);
+      const excludedItinerary = reason === "Cancelled by a newer ready itinerary" ? randomUUID() : undefined;
+      const controls: (typeof originals)[number][] = [];
+      const activeStatuses = ["pending", "failed", "processing"];
+      for (let index = 0; index < originals.length; index++) {
+        const row = originals[index];
+        await db.update(emailOutbox).set({ status: activeStatuses[index] }).where(eq(emailOutbox.id, row.id));
+        // Every follow-up type has terminal controls, not just a sent 2h notice.
+        for (const status of ["sent", "cancelled", "expired"]) {
+          const { id: _id, ...copy } = row;
+          const [control] = await db.insert(emailOutbox).values({
+            ...copy, status, lastError: "Existing terminal decision",
+          }).returning();
+          controls.push(control);
+        }
+        const { id: _id, ...copy } = row;
+        const metadata = row.metadata as FollowupMetadata;
+        for (const identity of [
+          ...(excludedItinerary ? [{ ...metadata, itineraryId: excludedItinerary }] : []),
+          { ...metadata, travelerId: fixture.providerId },
+          { ...metadata, travelerFollowupVersion: 2 },
+        ]) {
+          const [control] = await db.insert(emailOutbox).values({
+            ...copy, metadata: identity, status: "pending",
+          }).returning();
+          controls.push(control);
+        }
+      }
+      const readyNotices = await db.select().from(emailOutbox)
+        .where(sql`${emailOutbox.metadata}->>'comparisonId' = ${fixture.itineraryId}`);
+      expect(readyNotices).toHaveLength(1);
+      const before = await notices(fixture.userId);
+      const send = sender();
+      _outboxTestHooks.sendEmailFn = send;
+      const log = vi.spyOn(logger, "info").mockImplementation(() => {});
+      const cancelSequence = () => db.transaction(async (tx) => {
+        await lockFollowupTraveler(tx, fixture.userId);
+        await cancelItineraryFollowups(tx, fixture.userId, reason, excludedItinerary);
+      });
+      try {
+        await cancelSequence();
+        const expected = originals.map((row) => [
+          { outboxId: row.id, emailType: row.emailType, reason },
+          "[itinerary-followup] cancelled; not sent",
+        ]);
+        // Exact arguments disallow additional fields containing identity or content.
+        expect(log.mock.calls).toHaveLength(expected.length);
+        expect(log.mock.calls).toEqual(expect.arrayContaining(expected));
+        for (const row of originals) {
+          const [after] = await db.select().from(emailOutbox).where(eq(emailOutbox.id, row.id));
+          expect(after).toEqual({
+            ...before.find((entry) => entry.id === row.id)!,
+            status: "cancelled", lastError: reason, retryAfter: null, updatedAt: expect.any(Date),
+          });
+        }
+        for (const control of [...controls, ...readyNotices]) {
+          expect((await db.select().from(emailOutbox).where(eq(emailOutbox.id, control.id)))[0]).toEqual(control);
+        }
+        const terminalRows = await notices(fixture.userId);
+        const decisions = [...log.mock.calls];
+        await cancelSequence();
+        for (const row of originals) {
+          expect(await deliverItineraryFollowup(row.id, send)).toBe("skipped");
+          await deliverQueuedEmail(row.id);
+        }
+        expect(await notices(fixture.userId)).toEqual(terminalRows);
+        expect(log.mock.calls).toEqual(decisions);
+        expect(send).not.toHaveBeenCalled();
+      } finally {
+        log.mockRestore();
+        // Includes other-traveler controls which the fixture's usual cleanup cannot see.
+        for (const control of controls) await db.delete(emailOutbox).where(eq(emailOutbox.id, control.id));
+      }
+    });
+  });
+}
+
+for (const planState of ["deleted", "archived"] as const) {
 }
 
 for (const planState of ["deleted", "archived"] as const) {
