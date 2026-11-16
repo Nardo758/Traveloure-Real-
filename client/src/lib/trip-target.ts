@@ -19,7 +19,8 @@
  *
  * §18 rule 1: Discover, the listing page and the city-feed dialog all call
  * `resolveAddPlanTarget` / `preselectAddPlan`. A second copy of the order is
- * how those surfaces drift.
+ * how those surfaces drift. The concierge hire door is the one exception: it opens its own filtered
+ * picker directly (`service-detail.tsx` sets `hirePickOpen`) and always asks, which is correct.
  *
  * Nothing here touches money: the resolved id is a TRIP SCOPE for a plan item,
  * never an amount, a rate or a payer identity (§14/§18/§19). The server still
@@ -141,8 +142,9 @@ export function preselectAddPlan(
  *   1. `?tripId=` on the URL — that plan, even when other open plans exist.
  *   2. The open-plan list is not known yet — pending. The caller waits. It does
  *      not fall through to the tab plan.
- *   3. Exactly one open plan — that plan, whether or not its city and dates fit.
- *   4. None, or two or more — the picker, with `preselectAddPlan`.
+ *   3. Any known list — the picker, with `preselectAddPlan`. R4b-2 (round 4b, Nov 6, 2026) stands:
+ *      the picker NEVER auto-selects, so one open plan still asks and still needs the traveler's click.
+ *      There is deliberately no single-plan branch here (`round4b-fixes.test.tsx` asserts its absence).
  */
 export function resolveAddPlanTarget(
   search: string | null | undefined,

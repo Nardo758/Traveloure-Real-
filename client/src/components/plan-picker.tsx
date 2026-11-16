@@ -34,6 +34,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { usePlanning } from "@/contexts/PlanningContext";
 import { ADDED_TO_PLAN_TITLE, ADD_TO_PLAN_FAILED_TITLE } from "@/lib/plan-vocabulary";
 import { isActivePlan } from "@/lib/add-target";
+import { byMostRecentlyUpdated } from "@/lib/active-plan";
 import { formatShortTripRange } from "@/lib/calendar-date";
 import { preselectAddPlan, statedCity, toOpenPlanRef, type AddItemFit } from "@/lib/trip-target";
 import type { TripIdentitySource } from "@/lib/trip-selection";
@@ -79,9 +80,16 @@ export function PlanPickerList({
   const now = new Date();
   // `useTrips` answers null on a 401 — an unanswered read, not an empty account (§13).
   const unreadable = isError || (!isLoading && data === null);
-  const plans = ((data ?? []) as PickablePlan[])
-    .filter((t) => isActivePlan(t, now))
-    .filter((t) => (mode?.planFilter ? mode.planFilter(t) : true));
+  // The ONE active-plan order (client/src/lib/active-plan.ts), stated HERE rather than inherited from
+  // the server's `ORDER BY updated_at DESC` (storage.getTrips): `preselectAddPlan` takes the first row
+  // that fits, so without this line the choice is an implementation detail of the API's ordering.
+  // Behaviour today is unchanged - the server already sorts this way - but a caller-side reorder, a memo
+  // or a mocked list can no longer move the preselect silently. R4b-2 still stands: the picker always asks.
+  const plans = byMostRecentlyUpdated(
+    ((data ?? []) as PickablePlan[])
+      .filter((t) => isActivePlan(t, now))
+      .filter((t) => (mode?.planFilter ? mode.planFilter(t) : true)),
+  );
   const preselect = preselectAddPlan(plans.map(toOpenPlanRef), item);
   const preselectValue =
     preselect.kind === "plan" ? preselect.tripId : mode?.hideStartNew ? (plans[0]?.id ?? "") : "new";

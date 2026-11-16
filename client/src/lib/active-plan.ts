@@ -5,7 +5,9 @@
  * followed the pen's `tripId`, the header chip took the most recently updated un-finalized trip,
  * and the Add-to-plan picker took the FIRST fitting row of an UNORDERED `/api/trips` list — which
  * is how TB1 saw an older Kyoto plan preselected over the one just claimed. One rule now, read by
- * the strip, the nav slot, the picker, the pending-add flush and the claim:
+ * the strip, the nav slot, the pending-add flush and the claim. The PICKER does not call `pickActivePlan`
+ * (R4b-2 keeps it always-asking); it uses `byMostRecentlyUpdated` from here to order its rows before
+ * `preselectAddPlan` takes the first that fits:
  *
  *   1. an EXPLICIT binding — `?tripId=` on the URL, then the pen's `tripId` — when that plan is in
  *      the list and not finalized;

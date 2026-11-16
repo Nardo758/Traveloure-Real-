@@ -1,10 +1,10 @@
 /**
  * Add-plan target (ledger `2026-10-20-add-plan-open-plans`).
  *
- * `?tripId=` still wins. Otherwise exactly one open plan is a direct add, and
- * two or more always open the picker — the tab's last-opened plan is not an
- * input. In the picker, preselect the plan whose city matches and, for an
- * event, whose dates contain the item's date; otherwise New plan.
+ * `?tripId=` is the ONLY direct add (R4b-2, round 4b, Nov 6, 2026). Otherwise ANY known list opens the
+ * picker — one open plan still asks, and two or more ask — and the tab's last-opened plan is not an
+ * input. In the picker, preselect the plan whose city matches and, for an event, whose dates contain the
+ * item's date; otherwise New plan.
  *
  * H1–H4 and Q1 keep the detail href and the quote-request rail.
  *
