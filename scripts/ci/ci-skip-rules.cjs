@@ -295,12 +295,20 @@ function checkRunsOn(file, text) {
   return errs;
 }
 
+/**
+ * Workflow text with line endings normalised. A Windows working copy has CRLF; `prBlock` (and the push
+ * twin) spell out `\n` after a `.*`, and JS `.` excludes `\r`, so an un-normalised CRLF read captures an
+ * EMPTY `pull_request:` block and the checker reports "types missing" + "no paths" for a file that has
+ * both. Measured on main: LF passes, CRLF produced 84 such false errors (48 types, 35 paths, 1 push).
+ */
+const normalizeWorkflowText = (text) => text.replace(/\r\n/g, "\n");
+
 function runCheck(root = process.cwd()) {
   const dir = path.join(root, ".github/workflows");
   const required = requiredContexts(root);
   const errs = [];
   for (const f of fs.readdirSync(dir).filter((f) => f.endsWith(".yml")).sort()) {
-    const text = fs.readFileSync(path.join(dir, f), "utf8");
+    const text = normalizeWorkflowText(fs.readFileSync(path.join(dir, f), "utf8"));
     errs.push(...checkWorkflow(f, text, required), ...checkMergeGroup(f, text, required), ...checkRunsOn(f, text), ...checkReadyForReviewCancel(f, text), ...checkReadyForReviewEvaluated(f, text), ...checkRequiredDependencySkip(f, text, required));
   }
   if (errs.length) {
@@ -382,6 +390,30 @@ function selfTest() {
   assert.equal(checkRunsOn("a.yml", "jobs:\n  a:\n    runs-on: ubuntu-latest\n").length, 1, "a hard-coded hosted label fails");
   assert.equal(checkRunsOn("a.yml", "jobs:\n  a:\n    runs-on: self-hosted\n").length, 1, "a hard-coded self-hosted label fails");
   assert.equal(checkRunsOn("a.yml", "jobs:\n  a:\n    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}\n").length, 1, "the variable without the private-repository condition fails");
+  // CRLF parity (lane 4b): a Windows working copy must answer exactly as a Linux checkout does.
+  const crlf = (t) => t.replace(/\n/g, "\r\n");
+  assert.deepEqual(
+    checkWorkflow("build.yml", normalizeWorkflowText(crlf(reqOk)), req),
+    checkWorkflow("build.yml", reqOk, req),
+    "LF and CRLF give identical answers for a valid required workflow",
+  );
+  assert.deepEqual(
+    checkWorkflow("home-gate.yml", normalizeWorkflowText(crlf(nonOk)), req),
+    checkWorkflow("home-gate.yml", nonOk, req),
+    "LF and CRLF give identical answers for a valid non-required workflow",
+  );
+  // The block must PARSE on CRLF, not merely not-crash: if it parsed empty, dropping one key would report
+  // BOTH the types error and the paths error. Exactly one proves the block was read.
+  const crlfNoTypes = normalizeWorkflowText(crlf(reqOk.replace(types, "")));
+  assert.equal(checkWorkflow("build.yml", crlfNoTypes, req).length, 1, "a CRLF pull_request block parses: dropping types gives one error, not two");
+  assert.equal(
+    checkWorkflow("build.yml", crlfNoTypes.replace("    types:", ""), req).length,
+    1,
+    "and it is the types error that remains",
+  );
+  const crlfNoPaths = normalizeWorkflowText(crlf(nonOk.replace(/    paths:\n(      - '[^']*'\n)+/, "")));
+  assert.equal(checkWorkflow("home-gate.yml", crlfNoPaths, req).length, 1, "a CRLF pull_request block parses: dropping paths gives the paths error alone");
+
   console.log("ci-skip-rules self-test: all fixtures pass ✅");
 }
 
