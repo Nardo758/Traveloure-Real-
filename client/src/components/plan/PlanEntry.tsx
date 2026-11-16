@@ -27,6 +27,14 @@ import { useQuery } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { OccasionPicker } from "@/components/plan/OccasionPicker";
 import { PlanDatesCalendar } from "@/components/plan/PlanDatesCalendar";
+import { dayNumber } from "@/lib/plan-dates-range";
+import {
+  EVENT_WINDOW_MAX_DAYS,
+  EVENT_WINDOW_STRINGS,
+  clampEventWindowDays,
+  eventAnchorFor,
+  eventWindowRange,
+} from "@/lib/event-window";
 import { OPERATING_MARKETS } from "@shared/operating-markets";
 import { Link, useLocation } from "wouter";
 import { MARKET_STATUS_COPY, marketIsOpen, marketPickerOrder, marketStatusLabel } from "@shared/ticker";
@@ -53,40 +61,7 @@ import { PLAN_DATES_SET_CTA, PLAN_PARTY_ASK } from "@shared/plan-dates";
 import { partyFields } from "@/lib/plan-steps";
 import { partyFieldShown } from "@/lib/party-default";
 import { travelersForSave } from "@/lib/plan-vocabulary";
-import {
-  EVENT_OCCASION_SLUG,
-  canStartPlan,
-  startOfferedOnAround,
-  stepAfterAround,
-  choosePlanEntryGroup,
-  chosenOccasionSlug,
-  doorChoseGroup,
-  groupChipActive,
-  eventPickerGroups,
-  eventsOverlapping,
-  planEntryChoiceLabel,
-  initialPlanEntry,
-  nextMonthScope,
-  nightPickerOptions,
-  eventAllOfIt,
-  withSeriesShows,
-  planEntryDestination,
-  planEntryMintDates,
-  planEntryEventRow,
-  planEntryView,
-  startsStraightAway,
-  thisWeekend,
-  typedCity,
-  withEvent,
-  withMarqueeCity,
-  withNight,
-  type ExperiencesPick,
-  type PlanAround,
-  type PlanEntrySource,
-  type PlanEntryState,
-  type PlanEntryStep,
-  shownOccasionGroups,
-} from "@/lib/plan-entry";
+import { EVENT_OCCASION_SLUG, canStartPlan, startOfferedOnAround, stepAfterAround, choosePlanEntryGroup, chosenOccasionSlug, doorChoseGroup, groupChipActive, eventPickerGroups, eventsOverlapping, planEntryChoiceLabel, initialPlanEntry, nextMonthScope, nightPickerOptions, eventAllOfIt, withSeriesShows, planEntryDestination, planEntryMintDates, planEntryEventRow, planEntryView, startsStraightAway, thisWeekend, typedCity, withEvent, withMarqueeCity, withNight, type ExperiencesPick, type PlanAround, type PlanEntrySource, type PlanEntryState, type PlanEntryStep, shownOccasionGroups, eventRemainingRun, eventDefaultSpan } from "@/lib/plan-entry";
 
 const MONO = "'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
 const SERIF = "'Fraunces', Georgia, serif";
@@ -351,6 +326,30 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
   // E-1/E-5/E-8: the traveler's own choice in words. An event's carried "show" slug and a group's default are never
   // shown — only a door-named or "More specific" occasion is (`state.occasionSlug` without an event).
   const specificRow = state.occasionSlug && !state.event ? occasionRows.find((o) => o.slug === state.occasionSlug) ?? null : null;
+  // E8 (lane 7, variant A): the event window. The anchor is the picked night when one is picked, else the
+  // event's remaining run, else its default span. Both views below read the SAME state.startDate/endDate:
+  // the number fields write it and PlanDatesCalendar renders it, so there is no field-local state to drift.
+  const windowToday = dateScope?.min ?? new Date().toISOString().slice(0, 10);
+  const eventAnchor = state.event
+    ? eventAnchorFor({
+        night: state.night,
+        run: eventRemainingRun(state.event, windowToday),
+        span: eventDefaultSpan(state.event, windowToday),
+      })
+    : null;
+  const windowBefore =
+    eventAnchor && state.startDate
+      ? clampEventWindowDays((dayNumber(eventAnchor.startDate) ?? 0) - (dayNumber(state.startDate) ?? 0))
+      : 0;
+  const windowAfter =
+    eventAnchor && state.endDate
+      ? clampEventWindowDays((dayNumber(state.endDate) ?? 0) - (dayNumber(eventAnchor.endDate) ?? 0))
+      : 0;
+  const applyEventWindow = (before: number, after: number) => {
+    const next = eventWindowRange({ anchor: eventAnchor, before, after, min: dateScope?.min ?? null });
+    if (next) setState((s) => ({ ...s, startDate: next.start, endDate: next.end }));
+  };
+
   const choiceLabel = planEntryChoiceLabel({
     eventTitle: state.event?.title ?? null,
     specificOccasionName: specificRow?.name ?? null,
@@ -661,6 +660,44 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
                           </div>
                         ))
                       )}
+                    </div>
+                  )}
+                  {state.event && eventAnchor && (
+                    <div className="space-y-2" data-testid="plan-entry-event-window">
+                      <p
+                        className="text-[13px] font-semibold"
+                        style={{ color: "var(--earn-navy, #1A1A18)" }}
+                        data-testid="plan-entry-event-anchor"
+                      >
+                        {EVENT_WINDOW_STRINGS.anchor.replace("{name}", state.event?.title ?? "")}
+                      </p>
+                      <p className="text-[12px]" style={{ color: "#7A7A72" }}>
+                        {EVENT_WINDOW_STRINGS.helper}
+                      </p>
+                      <label className="flex items-center justify-between gap-3 text-[13px]">
+                        <span>{EVENT_WINDOW_STRINGS.before}</span>
+                        <input
+                          type="number"
+                          min={0}
+                          max={EVENT_WINDOW_MAX_DAYS}
+                          value={windowBefore}
+                          onChange={(e) => applyEventWindow(Number(e.target.value), windowAfter)}
+                          data-testid="plan-entry-days-before"
+                          className="w-16 rounded border px-2 py-1 text-right"
+                        />
+                      </label>
+                      <label className="flex items-center justify-between gap-3 text-[13px]">
+                        <span>{EVENT_WINDOW_STRINGS.after}</span>
+                        <input
+                          type="number"
+                          min={0}
+                          max={EVENT_WINDOW_MAX_DAYS}
+                          value={windowAfter}
+                          onChange={(e) => applyEventWindow(windowBefore, Number(e.target.value))}
+                          data-testid="plan-entry-days-after"
+                          className="w-16 rounded border px-2 py-1 text-right"
+                        />
+                      </label>
                     </div>
                   )}
                   {pickDates && (
