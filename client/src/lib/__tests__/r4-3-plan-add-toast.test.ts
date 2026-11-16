@@ -4,9 +4,10 @@
  * The 8 s ruling (Leon, QA round 3) is `PLAN_ADD_TOAST_MS` in `client/src/config/toast.config.ts`,
  * and all three plan-add calls must pass it — never a literal, so the number lives in one place.
  *
- * "View plan" is the EXISTING approved string (`ADD_COPY.viewPlan`). It is offered only where a plan
- * page exists (`/plans/:tripId`, App.tsx); a guest rail's plan has no page yet, so its toast keeps
- * Undo and Change day rather than carrying a dead link.
+ * "View plan" is the EXISTING approved string (`ADD_COPY.viewPlan`) and it is offered on EVERY add toast
+ * (Leon, Nov 16 2026: no guest exception). A signed-in add opens `/plans/:tripId`; a guest add opens
+ * `/plans/new` ? the guest plan's own page (`GUEST_PLAN_PATH`, App.tsx -> GuestPlanMapPage). An earlier
+ * version of this file pinned the opposite on the false premise that a guest plan had no page.
  *
  * NOTE (honest scope): this test pins the WIRING, not the observed 6.3 s. The measured close is not
  * reproduced by anything this file can see — see the PR body for what was ruled out and what is next.
@@ -16,6 +17,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import { PLAN_ADD_TOAST_MS } from "../../config/toast.config";
 import { ADD_COPY } from "../add-to-plan";
+import { addToastViewPlanHref, GUEST_PLAN_PATH } from "../plan-landing";
 
 const HOST = fs.readFileSync("client/src/components/plan/PlanAddFeedbackHost.tsx", "utf8");
 
@@ -37,7 +39,14 @@ test("R4-3: the added toast carries Undo, Change day and View plan (the existing
   assert.match(actions[0], /\{ADD_COPY\.viewPlan\}/, "the action's label is the approved string");
   assert.equal(ADD_COPY.viewPlan, "View plan", "the string is the one Leon approved");
 
-  // The destination is the plan page, and a guest rail gets none (no dead link).
-  assert.match(HOST, /`\/plans\/\$\{encodeURIComponent\(rail\.tripId\)\}`/, "signed-in plan page");
-  assert.match(HOST, /rail\.kind === "guest" \? null/, "a guest rail has no plan page to open");
+  // Every toast carries it: the guest href is a constant, the signed-in href is the plan page.
+  assert.match(HOST, /addToastViewPlanHref/, "the mapping is the pure helper, not an inline ternary");
+  assert.doesNotMatch(HOST, /rail\.kind === "guest" \? null/, "no guest exception remains");
+});
+
+test("R4-3: a guest rail opens the guest plan page and a signed-in rail its plan", () => {
+  assert.equal(addToastViewPlanHref({ kind: "guest", tripId: "t-guest" }), GUEST_PLAN_PATH);
+  assert.equal(GUEST_PLAN_PATH, "/plans/new");
+  assert.equal(addToastViewPlanHref({ kind: "signed_in", tripId: "t1" }), "/plans/t1");
+  assert.equal(addToastViewPlanHref({ kind: "signed_in", tripId: "a b/c" }), "/plans/a%20b%2Fc", "the id is encoded");
 });

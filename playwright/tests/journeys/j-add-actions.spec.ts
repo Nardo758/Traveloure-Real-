@@ -147,6 +147,9 @@ test("slice C — guest add: spinner, first-add calendar with Skip, Added to Day
   await expect(toastEl).toContainText("Added to Day 1.", { timeout: 10_000 });
   await expect(testid(page, "toast-added-undo")).toHaveText("Undo");
   await expect(testid(page, "toast-added-change-day")).toHaveText("Change day");
+  // R4-3 (Leon, Nov 16 2026): "View plan" is on the guest toast too - its plan lives at /plans/new.
+  await expect(testid(page, "toast-added-view-plan")).toHaveText("View plan");
+  await expect(testid(page, "toast-added-view-plan")).toBeVisible();
   await expect(add).toContainText("Added ✓", { timeout: 10_000 });
   await expect(add).toBeDisabled();
   const items = await guestItems(planId);
@@ -154,7 +157,7 @@ test("slice C — guest add: spinner, first-add calendar with Skip, Added to Day
   expect(items[0].day_number).toBe(1);
 
   // A6: 375px — the button, the toast and its actions are inside the viewport; nothing scrolls sideways.
-  for (const el of [add, toastEl, testid(page, "toast-added-undo"), testid(page, "toast-added-change-day")]) {
+  for (const el of [add, toastEl, testid(page, "toast-added-undo"), testid(page, "toast-added-change-day"), testid(page, "toast-added-view-plan")]) {
     const box = await el.boundingBox();
     expect(box, "rendered").not.toBeNull();
     expect(box!.x).toBeGreaterThanOrEqual(0);
@@ -282,4 +285,48 @@ test("slice C — /experiences event card: Add to plan → first-add calendar �
     expect(box!.x + box!.width).toBeLessThanOrEqual(375);
   }
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+});
+
+test("R4-3 ? guest add: View plan lands on /plans/new with the stop on it, all three actions inside 375px", async ({ page }) => {
+  test.setTimeout(120_000);
+  const listing = await fixtureListing();
+
+  const made = await page.request.post("/api/guest-plans", { data: { destination: "Kyoto, Japan", title: "Kyoto view plan fixture" } });
+  expect(made.ok(), `guest plan create answered ${made.status()}`).toBe(true);
+  const planId: string = (await made.json()).plan.id;
+
+  await page.goto("/plans/new?view=map");
+  await openBrowseRow(page, listing);
+  await testid(page, "map-browse-add").click();
+
+  // The first add on an undated plan asks the calendar; Skip is the one-tap exit (unchanged by this lane).
+  const dates = testid(page, "first-add-dates-sheet");
+  await expect(dates).toBeVisible({ timeout: 10_000 });
+  await testid(page, "first-add-dates-panel-calendar-skip").click();
+  await expect(dates).toHaveCount(0);
+
+  const toastEl = testid(page, "toast-added");
+  await expect(toastEl).toContainText("Added to Day 1.", { timeout: 15_000 });
+
+  // All three actions are visible, inside 375px, and none is clipped.
+  const actions = [
+    testid(page, "toast-added-undo"),
+    testid(page, "toast-added-change-day"),
+    testid(page, "toast-added-view-plan"),
+  ];
+  for (const el of actions) {
+    await expect(el).toBeVisible();
+    const box = await el.boundingBox();
+    expect(box, "rendered").not.toBeNull();
+    expect(box!.x).toBeGreaterThanOrEqual(0);
+    expect(box!.x + box!.width).toBeLessThanOrEqual(375);
+    expect(box!.height).toBeGreaterThanOrEqual(24);
+  }
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+
+  // The press lands on the guest plan's own page with the stop on it.
+  await testid(page, "toast-added-view-plan").click();
+  await expect(page).toHaveURL(/\/plans\/new/, { timeout: 15_000 });
+  await expect(page.locator(`text=${listing.name}`).first()).toBeVisible({ timeout: 20_000 });
+  await expect.poll(async () => (await guestItems(planId)).length, { timeout: 15_000 }).toBe(1);
 });

@@ -28,6 +28,7 @@ import { browseSavePath } from "@/lib/browse-save";
 import { useSignupMode } from "@/lib/signup-mode";
 import { PLAN_ADD_TOAST_MS } from "@/config/toast.config";
 import { GUEST_PLAN_QUERY_KEY, guestSaveErrorMessage, type GuestPlanView } from "@/lib/waitlist-guest-plan";
+import { addToastViewPlanHref } from "@/lib/plan-landing";
 import { ADD_COPY, PENDING_ADD_MAX_AGE_MS, addedMessage, changeDayOptions, pendingAddIsStale, planDayCount, planItemPath, type PlanAddRail } from "@/lib/add-to-plan";
 import {
   emitPlanAddFeedback,
@@ -46,12 +47,13 @@ import {
 } from "@/lib/plan-add-runner";
 
 /**
- * R4-3: where "View plan" goes. A signed-in add names its trip, whose page is `/plans/:tripId`
- * (App.tsx). A GUEST rail deliberately gets no View plan action: their plan has no page of its own
- * yet, and inventing one would be a dead link — the toast keeps Undo and Change day for them.
+ * R4-3, amended by Leon's Nov 16 2026 ruling: "View plan" stays on the add toast with NO guest exception.
+ * A guest's plan DOES have a page - `/plans/new` (App.tsx registers it to GuestPlanMapPage, which renders the
+ * same SlipView the rail uses) - so the toast no longer withholds the action from a guest rail. The mapping
+ * itself is pure and lives beside the constant (`addToastViewPlanHref`), so it is unit-tested.
  */
-function viewPlanHref(rail: PlanAddRail): string | null {
-  return rail.kind === "guest" ? null : `/plans/${encodeURIComponent(rail.tripId)}`;
+function viewPlanHref(rail: PlanAddRail): string {
+  return addToastViewPlanHref(rail);
 }
 
 function addedActions(e: AddedEvent): ToastActionElement {
@@ -73,13 +75,15 @@ function addedActions(e: AddedEvent): ToastActionElement {
       <ToastAction altText={ADD_COPY.changeDay} data-testid="toast-added-change-day" onClick={() => emitPlanAddFeedback({ kind: "change_day", event: e })}>
         {ADD_COPY.changeDay}
       </ToastAction>
-      {planHref ? (
-        // R4-3: "View plan" beside Undo and Change day — the EXISTING approved string (ADD_COPY.viewPlan),
-        // and the plan the add just landed on. No new copy.
-        <ToastAction altText={ADD_COPY.viewPlan} data-testid="toast-added-view-plan" onClick={() => window.location.assign(planHref)}>
-          {ADD_COPY.viewPlan}
-        </ToastAction>
-      ) : null}
+      {/* R4-3: "View plan" beside Undo and Change day - the EXISTING approved string (ADD_COPY.viewPlan).
+          Shown for a guest rail too: its plan lives at /plans/new (Leon, Nov 16 2026). */}
+      <ToastAction
+        altText={ADD_COPY.viewPlan}
+        data-testid="toast-added-view-plan"
+        onClick={() => window.location.assign(planHref)}
+      >
+        {ADD_COPY.viewPlan}
+      </ToastAction>
     </span>
   ) as unknown as ToastActionElement;
 }
