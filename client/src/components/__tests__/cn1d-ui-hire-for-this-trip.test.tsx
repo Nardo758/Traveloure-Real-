@@ -76,6 +76,9 @@ const tasks = [
 function renderPicker(plans: unknown[], mode: Parameters<typeof PlanPickerList>[0]["mode"]) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
   qc.setQueryData([api.trips.list.path], plans);
+  // QA round 4 R4-11 (sanctioned edit): `useTrips` reads the list only for a signed-in session — the picker is a
+  // signed-in surface, so the render states the session it runs under.
+  qc.setQueryData(["/api/auth/user"], { id: "cn1d-u", email: "cn1d@example.test" });
   return renderToString(
     <QueryClientProvider client={qc}>
       <PlanPickerList onPick={() => {}} onStartNew={() => {}} mode={mode} />

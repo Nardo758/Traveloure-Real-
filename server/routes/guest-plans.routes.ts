@@ -191,7 +191,7 @@ router.post("/api/guest-plans/current/items", guestOnly, savesPerSession, async 
     res.set("Server-Timing", Object.entries(timings).map(([k, v]) => `${k};dur=${v}`).join(", "));
     // A-1 / CAP-2: a save the server cannot place is a 400 carrying its reason — never a saved title with nothing
     // behind it. No plan yet is a 404.
-    if (!out.ok) return out.code === "no_plan" ? res.status(404).json({ code: "not_found" }) : res.status(400).json({ code: out.code, ...(out.eventDate ? { eventDate: out.eventDate } : {}) });
+    if (!out.ok) return out.code === "no_plan" ? res.status(404).json({ code: "not_found" }) : res.status(400).json({ code: out.code, ...(out.eventDate ? { eventDate: out.eventDate } : {}), ...(out.reason ? { reason: out.reason } : {}) });
     // R3-1 (round 3 ruling): a committed write answers 200 with its item — a new one and one the plan already held
     // (A-11) alike; `existing` says which.
     res.status(200).json({ id: out.itemId, located: out.located, existing: out.existing, item: out.item });

@@ -207,6 +207,8 @@ jobs:
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/round4-events.db.test.ts
       - name: Round 4b — an event outside a plan's confirmed dates is refused; an undated plan takes the event's own day at its time; Saved to plan reads the plan's items (node:test)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/round4b.db.test.ts
+      - name: QA round 4 R4-9 — a stop's day past the plan's end is refused unplaceable and named day_past_plan_end on both rails (node:test)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/r4-day-past-end.db.test.ts
       - name: PLAN-1 Phase 1 — the guest view carries the occasion label, end time and listing / partner ids (one DTO) (node:test)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/plan1-phase1.db.test.ts
       - name: PLAN-1 Phase 2 — a map-created plan carries the server-owned opensOn key; a client cannot set or erase it (node:test)
