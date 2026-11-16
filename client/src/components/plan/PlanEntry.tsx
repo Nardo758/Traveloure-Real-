@@ -361,9 +361,11 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
   // E-1/E-5/E-8: the traveler's own choice in words. An event's carried "show" slug and a group's default are never
   // shown — only a door-named or "More specific" occasion is (`state.occasionSlug` without an event).
   const specificRow = state.occasionSlug && !state.event ? occasionRows.find((o) => o.slug === state.occasionSlug) ?? null : null;
-  // E8 (lane 7, variant A): the event window. The anchor is the picked night when one is picked, else the
-  // event's remaining run, else its default span. Both views below read the SAME state.startDate/endDate:
-  // the number fields write it and PlanDatesCalendar renders it, so there is no field-local state to drift.
+  // E8 (lane 7, variant A): the event window. The anchor is the picked night when one is picked; otherwise
+  // the event's remaining run ONLY when the plan's own dates already equal that run ("All of it"); otherwise
+  // the default span - so a 3-day plan inside a 10-day festival widens from those 3 days. Both views below
+  // read the SAME state.startDate/endDate: the fields write it and PlanDatesCalendar renders it, so there is no
+  // field-local offset state to drift.
   // 2. the market's TODAY, as withEvent/withNight use it - not the Next-month preset bound.
   const marketTodayIso = marketToday(state.market?.marketKey);
   const eventAnchor = state.event
