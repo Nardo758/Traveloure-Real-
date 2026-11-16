@@ -58,7 +58,9 @@ function render(
 
 const guestChip: HeaderPlanState = { kind: "chip", planId: "gp-1", city: "Kyoto", stops: 3, dates: null, guest: true };
 const memberChip: HeaderPlanState = { kind: "chip", planId: "t1", city: "Kyoto", stops: 2, dates: "Nov 12–15", guest: false };
-const target: HeaderDatesTarget = { guest: false, planId: "t1", startDate: "2026-11-12", endDate: "2026-11-15", datesConfirmed: true };
+// The member's CURRENT plan: its end must stay in the future, or the strip (ruling 2, date-derived) links the Trip Card.
+// It was 2026-11-12..15 and expired on Nov 16, 2026, turning this file red on main; a far-future year cannot expire.
+const target: HeaderDatesTarget = { guest: false, planId: "t1", startDate: "2099-11-12", endDate: "2099-11-15", datesConfirmed: true };
 
 const planLink = (out: string) => out.match(/<a\b[^>]*data-testid="trip-strip-plan-link"[^>]*>([\s\S]*?)<\/a>/);
 const label = (out: string) => (out.match(/data-testid="trip-strip-plan-label"[^>]*>([^<]*)<\/span>/) ?? [])[1];
