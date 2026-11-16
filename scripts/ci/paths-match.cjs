@@ -132,5 +132,47 @@ function main() {
   console.log(files.every((f) => matchesAny(ignore, f)) ? "nomatch" : "match");
 }
 
-if (require.main === module) main();
+/**
+ * Self-test — run before the guard (`.github/workflows/required-suites-ran.yml`). It pins the one thing the
+ * guard depends on and that was broken: `nomatch` must be REACHABLE. The guard used to pipe the changed-files
+ * file's path instead of its contents, so every answer was "match" and the nomatch branch could never run.
+ */
+function selfTest() {
+  const guard = "required-suites-ran.yml";
+  const { paths } = readPaths(path.resolve(__dirname, "..", ".."), guard);
+  const cases = [
+    // [label, file list, expected answer]
+    ["docs-only list", ["docs/planning/notes.md", "docs/qa/report.md"], "nomatch"],
+    ["code change", ["client/src/components/Slip.tsx"], "match"],
+    ["workflow-only list", [".github/workflows/build.yml"], "nomatch"],
+    ["the guard's own file", [".github/workflows/required-suites-ran.yml"], "match"],
+    ["CLAUDE.md", ["CLAUDE.md"], "match"],
+  ];
+  let failed = 0;
+  if (paths.length === 0) {
+    console.error("  SELF-TEST FAIL: the guard's own paths list did not parse");
+    failed += 1;
+  }
+  for (const [label, files, want] of cases) {
+    const got = files.some((f) => matchesAny(paths, f)) ? "match" : "nomatch";
+    if (got !== want) {
+      failed += 1;
+      console.error(`  SELF-TEST FAIL: ${label} -> ${got}, expected ${want}`);
+    } else if (want === "nomatch") {
+      console.log(`  ok  nomatch REACHED — ${label}`);
+    } else {
+      console.log(`  ok  match as expected — ${label}`);
+    }
+  }
+  if (failed) {
+    console.error(`self-test: ${failed} case(s) failed`);
+    process.exit(1);
+  }
+  console.log(`self-test: ${cases.length} cases, nomatch reachable for a docs-only list.`);
+}
+
+if (require.main === module) {
+  if (process.argv.slice(2).includes("--self-test")) selfTest();
+  else main();
+}
 module.exports = { globToRegExp, matchesAny, readPaths };
