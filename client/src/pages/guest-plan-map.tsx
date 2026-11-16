@@ -254,6 +254,13 @@ function WaitlistGuestPlan() {
   const [createFailed, setCreateFailed] = useState(false);
   const { user: planUser, isLoading: planAuthLoading } = useAuth();
   const planQ = useGuestPlan({ authLoading: planAuthLoading, signedIn: !!planUser }, !creating);
+  // E9 (option A): the PUBLIC occasion catalog, under the same query key useOccasionSwitches and PlanEntry
+  // use. A HOOK, so it sits above every early return in this component - it was below one in the first
+  // draft, which made the guest page crash the moment the plan arrived (React: fewer hooks than expected).
+  const { data: occasionCatalog } = useQuery<Array<{ id: string; slug: string } & OccasionSwitchRow>>({
+    queryKey: ["/api/experience-types"],
+    staleTime: 5 * 60_000,
+  });
 
   useEffect(() => {
     const record = recordRef.current;
@@ -344,10 +351,6 @@ function WaitlistGuestPlan() {
   // the same query key useOccasionSwitches and PlanEntry use - no new endpoint, and never /api/trips/:id.
   // `items` are plan items, not the `PlanEventOccasionRef` shape, so attempts 2 and 3 of the ONE rule apply
   // (the stored occasion slug, then the coarse event type). Null while it loads or when it does not resolve.
-  const { data: occasionCatalog } = useQuery<Array<{ id: string; slug: string } & OccasionSwitchRow>>({
-    queryKey: ["/api/experience-types"],
-    staleTime: 5 * 60_000,
-  });
   const partyOccasion = resolveOccasionForPlan({
     penSlug: plan.occasionSlug ?? null,
     eventType: plan.eventType,
