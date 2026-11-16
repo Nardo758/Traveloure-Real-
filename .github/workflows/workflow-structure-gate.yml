@@ -12,6 +12,10 @@ name: Workflow Structure Gate
 #
 # It is dependency-free (node only, no npm ci, no database) so it reports in seconds, beside the rest of
 # CI rather than after it. The script states its five limits and the rule-to-cause map in its header.
+#
+# DRAFTS: this gate reports on READY, not on drafts (`if: github.event.pull_request.draft == false` on the
+# job). A draft is work in progress and must not be blocked by a structural check; the gate appears the
+# moment the PR is marked ready, which is also when the rest of the required suites run.
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
@@ -28,6 +32,9 @@ permissions:
 
 jobs:
   structure:
+    # A draft is work in progress: skipping here is correct, and the non-required-workflow rule
+    # (ci-skip-rules --check-workflows) requires every non-required PR workflow to say so.
+    if: github.event.pull_request.draft == false
     name: workflow-structure-gate (one command per step; no unquoted colon in a name)
     runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-26.04' }}
     steps:
