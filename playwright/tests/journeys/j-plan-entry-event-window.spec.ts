@@ -5,12 +5,21 @@
  * range. Pick an event, type 1 before / 2 after, and the calendar's selected days must span exactly that;
  * then the "today" clamp: a before value large enough to cross today must not put the start in the past.
  */
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 
 const dayOf = (testId: string) => testId.replace("plan-entry-dates-day-", "");
 
+/** The entry opens from the landing hero's planning CTA (as the planning-entry spec does). */
+async function openEntry(page: Page) {
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  const cta = page.getByTestId("button-plan-trip").first();
+  await cta.waitFor({ state: "visible", timeout: 20_000 });
+  await cta.click();
+  await expect(page.getByTestId("plan-entry")).toBeVisible({ timeout: 10_000 });
+}
+
 test("E8: the event window fields and the calendar show one range", async ({ page }) => {
-  await page.goto("/plans/new");
+  await openEntry(page);
   await page.getByTestId("plan-entry-around-event").click();
 
   const card = page.locator('[data-testid^="plan-entry-event-card-"]').first();
@@ -49,7 +58,7 @@ test("E8: the event window fields and the calendar show one range", async ({ pag
 });
 
 test("E8: a before value that would cross today is clamped, not honoured", async ({ page }) => {
-  await page.goto("/plans/new");
+  await openEntry(page);
   await page.getByTestId("plan-entry-around-event").click();
   const card = page.locator('[data-testid^="plan-entry-event-card-"]').first();
   await expect(card).toBeVisible({ timeout: 20_000 });
