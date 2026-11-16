@@ -62,6 +62,31 @@ export function eventAnchorFor(input: {
 }
 
 /**
+ * WHICH anchor a plan's dates are relative to. Three cases, and the reason each exists:
+ *
+ *   1. a picked NIGHT wins — the plan is that one day, and the offsets orbit it;
+ *   2. otherwise the RUN, but only when the plan's dates ARE that run — "All of it" is a statement that no
+ *      extra days are wanted, so the window must be exactly the run, not run + the offsets;
+ *   3. otherwise the DEFAULT SPAN — the plan is a short window inside a long event, so widening from the
+ *      whole run would jump past EVENT_ALL_OF_IT_MAX_DAYS on the first `after` (a 10-day festival showing a
+ *      3-day plan must widen from those 3 days, not from 10).
+ */
+export function resolveEventWindowAnchor(input: {
+  night?: string | null;
+  planStart?: string | null;
+  planEnd?: string | null;
+  run?: EventWindowAnchor | null;
+  span?: EventWindowAnchor | null;
+}): EventWindowAnchor | null {
+  if (input.night) return { startDate: input.night, endDate: input.night };
+  const run = input.run ?? null;
+  const planIsTheRun =
+    !!run && input.planStart === run.startDate && input.planEnd === run.endDate;
+  if (run && planIsTheRun) return run;
+  return input.span ?? run ?? null;
+}
+
+/**
  * The plan's dates around an event.
  *
  *   allOfIt        → exactly the anchor's own days (both offsets cleared)

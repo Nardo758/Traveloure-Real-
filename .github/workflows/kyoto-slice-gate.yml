@@ -214,6 +214,10 @@ jobs:
         if: ${{ !cancelled() }}
         # Ruling (a), Nov 15, 2026: on a complete range a tap starts a new range, so a re-date saves the picked window.
         run: npx playwright test playwright/tests/journeys/j-redate-header.spec.ts --project=chromium --workers=1 --reporter=list,json
+      - name: Re-date through the header calendar (QA round 4 R4-8)
+        if: ${{ !cancelled() }}
+        # Ruling (a), Nov 15, 2026: on a complete range a tap starts a new range, so a re-date saves the picked window.
+        run: npx playwright test playwright/tests/journeys/j-plan-entry-event-window.spec.ts --project=chromium --workers=1 --reporter=list,json
         env:
           PLAYWRIGHT_JSON_OUTPUT_NAME: playwright-json/redate-header.json
           BASE_URL: http://localhost:5000

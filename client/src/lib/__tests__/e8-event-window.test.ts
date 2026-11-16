@@ -13,6 +13,7 @@ import {
   clampEventWindowDays,
   eventAnchorFor,
   eventWindowRange,
+  resolveEventWindowAnchor,
 } from "../event-window";
 import { validateRange } from "../plan-dates-range";
 
@@ -77,6 +78,22 @@ test("both offsets clamp to 0..14", () => {
   assert.equal(clampEventWindowDays(2.9), 2);
   const anchor = { startDate: "2026-11-16", endDate: "2026-11-16" };
   assert.deepEqual(eventWindowRange({ anchor, before: 99, after: 99 }), { start: "2026-11-02", end: "2026-11-30" });
+});
+
+test("which anchor: the night wins, the run only when the plan IS the run, else the span", () => {
+  const span = { startDate: "2026-11-20", endDate: "2026-11-22" };
+  const run = { startDate: "2026-11-20", endDate: "2026-11-29" };
+  // 1. a picked night
+  assert.deepEqual(resolveEventWindowAnchor({ night: NIGHT, planStart: NIGHT, planEnd: NIGHT, run, span }), {
+    startDate: NIGHT,
+    endDate: NIGHT,
+  });
+  // 2. plan dates equal the run -> the run is the anchor ("All of it")
+  assert.deepEqual(resolveEventWindowAnchor({ night: null, planStart: run.startDate, planEnd: run.endDate, run, span }), run);
+  // 3. a 10-day festival whose plan is the 3-day default span -> the SPAN, so after=1 cannot jump to 11 days
+  const anchor = resolveEventWindowAnchor({ night: null, planStart: span.startDate, planEnd: span.endDate, run, span });
+  assert.deepEqual(anchor, span);
+  assert.deepEqual(eventWindowRange({ anchor, before: 0, after: 1 }), { start: "2026-11-20", end: "2026-11-23" });
 });
 
 test("every produced range passes validateRange, and a backwards range throws rather than shipping", () => {
