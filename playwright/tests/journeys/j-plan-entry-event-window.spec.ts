@@ -1,83 +1,106 @@
 /**
- * E8 (lane 7, variant A) — the event window on the DETAILS step.
+ * E8 (lane 7, variant A) — the event window on the DETAILS step, driven the way the passing /experiences
+ * spec does it: `page.goto("/experiences")` -> `plan-entry-around-event` -> `plan-entry-events` ->
+ * `plan-entry-event-<id>`. No hero, no place/city dance.
  *
- * What this covers that the unit table cannot: the two number fields and the one calendar are the same
- * range. Pick an event, type 1 before / 2 after, and the calendar's selected days must span exactly that;
- * then the "today" clamp: a before value large enough to cross today must not put the start in the past.
+ * The event list is ROUTE-MOCKED (`/api/city-events/upcoming`), as the discover-tabs calendar spec does, so
+ * nothing depends on seeded data: one Kyoto event, today+10 .. today+12, a known id and title.
+ *
+ * "Today" is the MARKET's: computed in Asia/Tokyo, not `toISOString()` — a UTC date would flake for nine
+ * hours a day.
  */
 import { test, expect, type Page } from "@playwright/test";
 
-const dayOf = (testId: string) => testId.replace("plan-entry-dates-day-", "");
+const tid = (p: Page, id: string) => p.locator(`[data-testid="${id}"]`);
 
-/** The entry opens from the landing hero's planning CTA (as the planning-entry spec does). */
-async function openEntry(page: Page) {
-  await page.goto("/", { waitUntil: "domcontentloaded" });
-  const cta = page.getByTestId("button-plan-trip").first();
-  await cta.waitFor({ state: "visible", timeout: 20_000 });
-  await cta.click();
-  await expect(page.getByTestId("plan-entry")).toBeVisible({ timeout: 10_000 });
+/** The market's today (Asia/Tokyo), YYYY-MM-DD. */
+const marketToday = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Tokyo",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+}).format(new Date());
+
+const plusDays = (iso: string, n: number) => {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+};
+
+const FIRST = plusDays(marketToday, 10);
+const LAST = plusDays(marketToday, 12);
+const TITLE = "Fixture Kyoto Festival";
+const ID = "fixture-e8";
+
+const fixtureEvent = {
+  id: ID,
+  series: null,
+  title: TITLE,
+  city: "Kyoto",
+  marketKey: "kyoto",
+  neighbourhood: null,
+  venue: "Fixture Hall",
+  startsAt: `${FIRST}T10:00:00.000Z`,
+  endsAt: null,
+  nights: 3,
+  daysUntil: 10,
+  firstDate: FIRST,
+  lastDate: LAST,
+  startTime: null,
+  ticketUrl: null,
+  blurb: null,
+  imagePath: null,
+};
+
+/** The selected day cell for one ISO date — the day's own testid lives inside the picker's button. */
+const selectedDay = (page: Page, iso: string) =>
+  page.locator(`button[name="day"][aria-selected="true"]:has([data-testid="plan-entry-dates-day-${iso}"])`);
+
+async function openEventDetails(page: Page) {
+  await page.route("**/api/city-events/upcoming**", (route) =>
+    route.fulfill({ json: { windowDays: 60, total: 1, events: [fixtureEvent] } }),
+  );
+  await page.goto("/experiences");
+  await tid(page, "plan-entry-around-event").click({ timeout: 20_000 });
+  const events = tid(page, "plan-entry-events");
+  await expect(events).toBeVisible();
+  await tid(page, `plan-entry-event-${ID}`).click({ timeout: 20_000 });
+  await expect(tid(page, "plan-entry-event-window")).toBeVisible({ timeout: 20_000 });
 }
 
-test("E8: the event window fields and the calendar show one range", async ({ page }) => {
-  await openEntry(page);
-  // The event list is queried per market, so a city has to be chosen before "An event" has anything to show.
-  await page.getByTestId("plan-entry-around-place").click();
-  await page.getByTestId("plan-entry-city-kyoto").click();
-  await page.getByTestId("plan-entry-around-event").click();
+test("E8: the default window is the event's own days, with both numbers 0", async ({ page }) => {
+  test.setTimeout(120_000);
+  await openEventDetails(page);
 
-  const card = page.locator('[data-testid^="plan-entry-event-card-"]').first();
-  await expect(card).toBeVisible({ timeout: 20_000 });
-  const id = (await card.getAttribute("data-testid"))!.replace("plan-entry-event-card-", "");
-  await page.getByTestId(`plan-entry-event-${id}`).click();
-
-  const win = page.getByTestId("plan-entry-event-window");
-  await expect(win).toBeVisible({ timeout: 20_000 });
-  await expect(page.getByTestId("plan-entry-event-anchor")).toContainText("Built around");
-
-  const grid = page.getByTestId("plan-entry-dates-grid");
-  await expect(grid).toBeVisible();
-
-  // 1 before, 2 after
-  await page.getByTestId("plan-entry-days-before").fill("1");
-  await page.getByTestId("plan-entry-days-after").fill("2");
-  await expect(page.getByTestId("plan-entry-days-before")).toHaveValue("1");
-  await expect(page.getByTestId("plan-entry-days-after")).toHaveValue("2");
-
-  // The calendar's selected days are the plan's dates: their span must equal before + anchor days + after.
-  const selected = page.locator('[data-testid^="plan-entry-dates-day-"][aria-selected="true"]');
-  await expect(selected.first()).toBeVisible({ timeout: 10_000 });
-  const days = (await selected.evaluateAll((els) =>
-    els.map((el) => el.getAttribute("data-testid") || "").filter(Boolean).map((t) => t.replace("plan-entry-dates-day-", "")),
-  )).sort();
-  expect(days.length).toBeGreaterThanOrEqual(3);
-  const first = new Date(days[0] + "T00:00:00Z");
-  const last = new Date(days[days.length - 1] + "T00:00:00Z");
-  const span = Math.round((last.getTime() - first.getTime()) / 86_400_000) + 1;
-  const todayIso = new Date().toISOString().slice(0, 10);
-
-  // 1 + anchor + 2 == the selected span, and the start is never before today.
-  expect(span).toBeGreaterThanOrEqual(3);
-  expect(days[0] >= todayIso).toBe(true);
+  await expect(tid(page, "plan-entry-days-before")).toHaveValue("0");
+  await expect(tid(page, "plan-entry-days-after")).toHaveValue("0");
+  await expect(tid(page, "plan-entry-event-anchor")).toContainText(TITLE);
+  await expect(selectedDay(page, FIRST)).toBeVisible();
+  await expect(selectedDay(page, LAST)).toBeVisible();
+  await expect(selectedDay(page, plusDays(FIRST, -1))).toHaveCount(0);
+  await expect(selectedDay(page, plusDays(LAST, 1))).toHaveCount(0);
 });
 
-test("E8: a before value that would cross today is clamped, not honoured", async ({ page }) => {
-  await openEntry(page);
-  // The event list is queried per market, so a city has to be chosen before "An event" has anything to show.
-  await page.getByTestId("plan-entry-around-place").click();
-  await page.getByTestId("plan-entry-city-kyoto").click();
-  await page.getByTestId("plan-entry-around-event").click();
-  const card = page.locator('[data-testid^="plan-entry-event-card-"]').first();
-  await expect(card).toBeVisible({ timeout: 20_000 });
-  const id = (await card.getAttribute("data-testid"))!.replace("plan-entry-event-card-", "");
-  await page.getByTestId(`plan-entry-event-${id}`).click();
-  await expect(page.getByTestId("plan-entry-event-window")).toBeVisible({ timeout: 20_000 });
+test("E8: before 1 / after 2 widens the same range the calendar shows", async ({ page }) => {
+  test.setTimeout(120_000);
+  await openEventDetails(page);
 
-  await page.getByTestId("plan-entry-days-before").fill("14");
-  const selected = page.locator('[data-testid^="plan-entry-dates-day-"][aria-selected="true"]');
-  await expect(selected.first()).toBeVisible({ timeout: 10_000 });
-  const days = (await selected.evaluateAll((els) =>
-    els.map((el) => el.getAttribute("data-testid") || "").filter(Boolean).map((t) => t.replace("plan-entry-dates-day-", "")),
-  )).sort();
-  const todayIso = new Date().toISOString().slice(0, 10);
-  expect(days[0] >= todayIso).toBe(true);
+  await tid(page, "plan-entry-days-before").fill("1");
+  await tid(page, "plan-entry-days-after").fill("2");
+
+  await expect(tid(page, "plan-entry-days-before")).toHaveValue("1");
+  await expect(tid(page, "plan-entry-days-after")).toHaveValue("2");
+  await expect(tid(page, "plan-entry-event-anchor")).toContainText(`Built around ${TITLE}`);
+  await expect(selectedDay(page, plusDays(FIRST, -1))).toBeVisible();
+  await expect(selectedDay(page, plusDays(LAST, 2))).toBeVisible();
+});
+
+test("E8: a before value past today is clamped to today, not honoured", async ({ page }) => {
+  test.setTimeout(120_000);
+  await openEventDetails(page);
+
+  await tid(page, "plan-entry-days-before").fill("14");
+  // The market's today is exactly where the clamp stops: the start cannot precede it.
+  await expect(selectedDay(page, marketToday)).toBeVisible();
+  await expect(selectedDay(page, plusDays(marketToday, -1))).toHaveCount(0);
 });
