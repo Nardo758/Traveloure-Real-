@@ -28,6 +28,9 @@
  *   4. It cannot see SKIPPED work: `if:`/`paths:` can make a workflow green with nothing run. That is
  *      #2007's guard, not this one.
  *   5. It cannot see required-context drift: a job renamed while the ruleset still requires the old name.
+ *   6. It cannot see a CLONED step that swallowed its neighbour: copying a step block without its `env:` can
+ *      leave the neighbour's env, name and comment attached to the copy and the neighbour with none - every
+ *      step still has exactly one `run:`, so the structure is legal and only the CI log shows it.
  *
  * It is ADVISORY (not a required context). Workflows only — the two `.github/actions/<dir>/action.yml`
  * composite actions are reported, not checked.
