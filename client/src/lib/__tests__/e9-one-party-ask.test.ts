@@ -10,30 +10,12 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import fs from "node:fs";
 import { asksKidsCount, partyFields } from "../plan-steps";
 
-const PANEL = fs.readFileSync("client/src/components/plan/SlipAnchorPanels.tsx", "utf8");
-const MODAL = fs.readFileSync("client/src/components/trip/plan-modal.tsx", "utf8");
-
-test("both surfaces read the one rule", () => {
-  assert.match(MODAL, /partyFields\(selectedOccasion\)/, "the editor step reads partyFields");
-  assert.match(MODAL, /asksKidsCount\(selectedOccasion\)/, "and asksKidsCount");
-  assert.match(PANEL, /partyFields\(occasion\)/, "the slip panel reads the same rule");
-  assert.match(PANEL, /asksKidsCount\(occasion\)/, "and the same kids question");
-});
-
-test("the panel's labels come from the rule, not literals", () => {
-  assert.match(PANEL, /adultsLabel/, "the adults label is derived");
-  assert.match(PANEL, /\{adultsLabel\}/, "and rendered");
-  assert.doesNotMatch(PANEL, />Adults</, "no hardcoded Adults label left in the panel");
-  assert.doesNotMatch(PANEL, />Children</, "no hardcoded Children label left in the panel");
-});
-
-test("the kids field is drawn only when the occasion asks for one", () => {
-  assert.match(PANEL, /\{wantsKids \? \(/, "the field is conditional");
-  assert.match(PANEL, /data-testid="input-slip-who-kids"/, "and keeps its testid when drawn");
-});
+// NO SOURCE MATCHES HERE ANY MORE. `assert.match(PANEL, /partyFields\(occasion\)/)` proved the panel
+// WOULD use a row and never that one was passed, which is how #2020 shipped green with `occasion` null.
+// The panel's behaviour is rendered in
+// client/src/components/plancard/__tests__/e9-party-ask-wired.test.ts; this file keeps the pure rule.
 
 test("the rule itself: attendees is one field, a plain trip is Adults + Kids", () => {
   const attendees = partyFields({ vocabulary: "attendees" } as any);
