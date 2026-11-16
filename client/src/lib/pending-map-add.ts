@@ -34,7 +34,8 @@ export interface PendingMapAddRetry {
 }
 
 export type PendingMapAddOutcome =
-  | { status: "added"; title: string }
+  /** QA round 4 R4-3: the created item, so the caller can raise the one add toast (Undo · Change day · View plan). */
+  | { status: "added"; title: string; item?: { id: string; dayNumber: number | null } }
   | { status: "already"; title: string }
   | { status: "withdrawn"; title: string }
   | { status: "failed"; title: string; message: string };
@@ -141,7 +142,11 @@ export async function attachPendingMapAdd(
       }
       return { status: "failed", title, message: message || "The add did not go through." };
     }
-    return done({ status: "added", title: place.name });
+    const created = (await postRes.json().catch(() => null)) as { id?: unknown; dayNumber?: unknown } | null;
+    const item = typeof created?.id === "string" && created.id
+      ? { id: created.id, dayNumber: typeof created.dayNumber === "number" ? created.dayNumber : null }
+      : undefined;
+    return done({ status: "added", title: place.name, ...(item ? { item } : {}) });
   } catch (e) {
     return { status: "failed", title, message: e instanceof Error ? e.message : "The add did not go through." };
   }

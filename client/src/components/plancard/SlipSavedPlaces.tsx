@@ -7,6 +7,7 @@
  * through the same `POST /api/trips/:tripId/itinerary-items` body the Add-to-plan dialog sends, so
  * there is no second add rail (LD 39). Renders nothing when no saved place matches (§13).
  */
+import { announceTripAdd } from "@/lib/plan-add-runner";
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Heart, Loader2, Plus, Check } from "lucide-react";
@@ -81,6 +82,8 @@ export function SlipSavedPlaces({
       // notice, A-18's approved line does.
       if (out?.id && out?.addChecks) setChecked({ itemId: out.id, checks: out.addChecks });
       else if (out?.id && !createdItemIsLocated(out)) toast({ title: GUEST_PLAN_COPY.savedNotOnMap });
+      // QA round 4 R4-3: a landed add says it with the one add toast (8 s, Undo · Change day · View plan).
+      else if (out?.id) announceTripAdd(tripId, out);
       else toast({ title: ADDED_TO_PLAN_TITLE, description: `"${place.contentName}" is on day 1 of this plan.` });
     },
     onError: (e: any) => toast({ title: planSaveRefusalMessage(e) ?? "Couldn't add it", variant: "destructive" }),

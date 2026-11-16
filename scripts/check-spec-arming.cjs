@@ -37,9 +37,14 @@
  *   • A workflow that arms several specs is verified as ONE run; which job ran which spec is not mapped.
  *   • A workflow that never runs on the PR head (schedule / dispatch only) has no automatic run: the pointer
  *     form must name a run dispatched on that head SHA.
+ *   • Several green runs of the arming workflow on one head (a draft push, then ready-for-review): the newest one
+ *     WITH a report decides; a green run with NO report decides nothing while another run is still in progress
+ *     (`pollDecision`, ledger `2026-11-15-spec-arming-draft-race`). The wait is still bounded by
+ *     SPEC_ARMING_WAIT_MINUTES.
  *
  * INPUT. The pure parts are `analyze({ diffText })` (which specs are armed, by which workflow),
- * `verifyRun(run, ctx)` / `evaluatePointers` (does a run count) and `verdictFromReport` (did the spec's tests run). The CLI reads the workflow diff from --diff <file> (or
+ * `verifyRun(run, ctx)` / `evaluatePointers` (does a run count), `verdictFromReport` (did the spec's tests run) and
+ * `greenRunsNewestFirst` / `pollDecision` (which green run decides, or wait). The CLI reads the workflow diff from --diff <file> (or
  * stdin; empty ⇒ nothing armed), the PR body from $PR_BODY, and GITHUB_TOKEN / GITHUB_REPOSITORY / HEAD_SHA
  * from the environment. --self-test (§18d) proves the pure parts before any verdict is trusted.
  */
@@ -258,12 +263,33 @@ function selfTest() {
   results.V_unexpected_refused = /did not pass/.test(verdictFromReport(rep([{ status: "unexpected" }]), SPEC).why || "");
   results.W_one_skip_among_passes_refused = verdictFromReport(rep([{ status: "expected" }, { status: "skipped" }]), SPEC).ok === false;
 
+  // The draft-run race (#2024, #2027, #2029): an older green run with no report must not decide while a newer run of
+  // the same commit is still going; a report always decides; with nothing pending, "no report" still fails.
+  const draftRun = { ...good, id: 100 };
+  const realRun = { ...good, id: 200 };
+  results.X_newest_green_first =
+    greenRunsNewestFirst([[draftRun, "ok"], [realRun, "ok"], [{ ...good, id: 300 }, "pending"], [{ ...good, id: 50 }, "conclusion_failure"]])
+      .map((r) => r.id)
+      .join() === "200,100";
+  const noRep = { ok: false, noReport: true, why: "run 100 concluded success, but it uploaded no `playwright-json*` artifact" };
+  results.Y_no_report_waits_while_pending = (() => {
+    const d = pollDecision({ greenChecks: [{ id: 100, verdict: noRep }], pending: true });
+    return !d.done && /waiting for the run still in progress/.test(d.waitReason || "");
+  })();
+  results.Z_no_report_fails_when_nothing_pending = pollDecision({ greenChecks: [{ id: 100, verdict: noRep }], pending: false }).done === noRep;
+  const pass = { ok: true, how: "run 200 concluded success; its report shows 3 test(s) run, none skipped" };
+  results.AA_report_decides_even_while_pending = pollDecision({ greenChecks: [{ id: 200, verdict: pass }], pending: true }).done === pass;
+  results.AB_older_report_decides_after_newer_has_none = pollDecision({ greenChecks: [{ id: 300, verdict: noRep }, { id: 200, verdict: pass }], pending: false }).done === pass;
+  const skippedReport = { ok: false, why: "ARMED BUT SKIPPED" };
+  results.AC_skipped_report_still_fails = pollDecision({ greenChecks: [{ id: 200, verdict: skippedReport }], pending: true }).done === skippedReport;
+  results.AD_no_green_no_decision = Object.keys(pollDecision({ greenChecks: [], pending: true })).length === 0;
+
   const failed = Object.entries(results).filter(([, v]) => !v);
   if (failed.length) {
     console.error("SELF-TEST FAILED", failed.map(([k]) => k));
     process.exit(1);
   }
-  console.log(`spec-arming self-test OK (${Object.keys(results).length} cases: arming detection; runs verified by repo, workflow, head SHA and conclusion — a typed link, or a green link on another commit, is not evidence; and the run's Playwright report refuses a skipped spec, naming its reason)`);
+  console.log(`spec-arming self-test OK (${Object.keys(results).length} cases: arming detection; runs verified by repo, workflow, head SHA and conclusion — a typed link, or a green link on another commit, is not evidence; the run's Playwright report refuses a skipped spec, naming its reason; and a green run with no report — a draft's — waits for the newer run instead of deciding)`);
   process.exit(0);
 }
 
@@ -306,6 +332,7 @@ async function reportVerdict(runId, spec, env, how) {
   if (!arts.length)
     return {
       ok: false,
+      noReport: true,
       why: `${how}, but it uploaded no \`playwright-json*\` artifact — the gate cannot tell pass from skip. Upload playwright-json/ (the JSON reporter's output) from the job that runs ${spec}.`,
     };
   const suites = [];
@@ -328,6 +355,33 @@ async function reportVerdict(runId, spec, env, how) {
   return v.ok ? { ok: true, how: `${how}; its report shows ${v.counts} test(s) of ${spec} run, none skipped` } : { ok: false, why: `${how}, but ${v.why}` };
 }
 
+/** Pure: the green runs among the verdicts, newest (highest id) first. */
+function greenRunsNewestFirst(verdicts) {
+  return verdicts
+    .filter(([, v]) => v === "ok")
+    .map(([r]) => r)
+    .sort((a, b) => Number(b.id) - Number(a.id));
+}
+
+/**
+ * Pure: after checking the green runs newest first, does this poll decide or wait?
+ *
+ * THE DRAFT-RUN RACE (#2024, #2027, #2029, Nov 15, 2026). A push while a PR is a draft starts a run of the arming
+ * workflow whose jobs are all skipped: it concludes `success` and uploads no report. Marking the PR ready starts the
+ * real run on the SAME head SHA, and this gate at the same moment — so the gate found the finished draft run, could
+ * not read a report from it, and failed while the real run was still going. The rule now:
+ *   • a green run WITH a report decides (pass, or the report's own refusal — a skipped spec still fails);
+ *   • only green runs with NO report: wait while another run of the workflow is in progress; otherwise the newest
+ *     one's "no report" is the verdict, exactly as before.
+ */
+function pollDecision({ greenChecks, pending }) {
+  const decided = greenChecks.find((c) => !c.verdict.noReport);
+  if (decided) return { done: decided.verdict };
+  if (!greenChecks.length) return {};
+  if (pending) return { waitReason: `${greenChecks[0].verdict.why} — waiting for the run still in progress` };
+  return { done: greenChecks[0].verdict };
+}
+
 async function verifyArmed({ spec, workflow }, env) {
   const ctx = { repo: env.repo, workflow, headSha: env.headSha };
   const waitMs = env.waitMinutes * 60_000;
@@ -347,11 +401,19 @@ async function verifyArmed({ spec, workflow }, env) {
     const list = await gh(`/repos/${env.repo}/actions/runs?head_sha=${env.headSha}&per_page=100`, env.token);
     const runs = (list.workflow_runs || []).filter((r) => r.path === workflow);
     const verdicts = runs.map((r) => [r, verifyRun(r, ctx)]);
-    const green = verdicts.find(([, v]) => v === "ok");
-    if (green) return reportVerdict(green[0].id, spec, env, `run ${green[0].id} on ${env.headSha.slice(0, 9)} concluded success`);
     const pending = verdicts.some(([, v]) => v === "pending");
+    // Green runs NEWEST FIRST. A green run with no report — the run from while the PR was a draft, whose jobs were all
+    // skipped — is passed over, and while another run of the workflow is still in progress the gate waits for it.
+    const greenChecks = [];
+    for (const r of greenRunsNewestFirst(verdicts)) {
+      const verdict = await reportVerdict(r.id, spec, env, `run ${r.id} on ${env.headSha.slice(0, 9)} concluded success`);
+      greenChecks.push({ id: r.id, verdict });
+      if (!verdict.noReport) break;
+    }
+    const step = pollDecision({ greenChecks, pending });
+    if (step.done) return step.done;
     if (runs.length && !pending) return { ok: false, why: `every run of ${workflow} on the head commit finished without success: ${verdicts.map(([r, v]) => `${r.id} ${v}`).join(", ")}` };
-    if (runs.length) last = `run(s) of ${workflow} still in progress`;
+    if (runs.length) last = step.waitReason || `run(s) of ${workflow} still in progress`;
     if (Date.now() - started > waitMs) return { ok: false, why: `${last} after ${env.waitMinutes} min` };
     await new Promise((r) => setTimeout(r, 30_000));
   }

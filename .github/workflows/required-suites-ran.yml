@@ -75,6 +75,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5.1.0
 
+      - name: paths-match self-test (nomatch must be reachable)
+        run: node scripts/ci/paths-match.cjs --self-test
+
       - name: Require a run per suite at the head, then judge the ones with none
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -124,7 +127,13 @@ jobs:
               echo "$suite — run exists ($state); counts as ran"
               # A skipped CHECK under that run is judged by the one skip rule, so a skip that the change set
               # cannot explain is still caught.
-              check_state=$(awk -F'\t' -v want="$suite" '$1 == want' "$checks" | sort -t$'\t' -k3 | tail -1 | cut -f2)
+              # Ordering by started_at was wrong: a QUEUED check has started_at null (the API sets it when a
+              # runner picks the job up), so `sort -k3 | tail -1` surfaced the draft-era SKIPPED row instead of
+              # the check that is about to run - the guard would fail the very PR a ready flip is meant to start.
+              # The question here is only "was it SKIPPED?", so any non-skipped state answers it.
+              suite_states=$(awk -F'\t' -v want="$suite" '$1 == want {print $2}' "$checks")
+              check_state=$(printf '%s\n' "$suite_states" | grep -vx 'skipped' | head -1)
+              if [ -z "$check_state" ] && [ -n "$suite_states" ]; then check_state=skipped; fi
               if [ "$check_state" = "skipped" ]; then
                 event_file="$RUNNER_TEMP/event.json"
                 printf '{"pull_request":{"draft":false,"number":%s}}' "$PR" > "$event_file"
@@ -142,7 +151,9 @@ jobs:
             fi
 
             # (3) No run after the grace period: judge the workflow's own paths filter.
-            verdict=$(printf '%s' "$changed_files" | node scripts/ci/paths-match.cjs --stdin "$workflow" 2>&1 || echo nopaths)
+            # `printf '%s' "$changed_files"` sent the temp file's PATH, not its contents, so every suite
+            # answered "match" and the nomatch branch below was dead. Feed the list itself.
+            verdict=$(cat "$changed_files" | node scripts/ci/paths-match.cjs --stdin "$workflow" 2>&1 || echo nopaths)
             case "$verdict" in
               nomatch)
                 echo "$suite — no run, and no changed file matches its on.pull_request.paths: purposeful, passing with a note."

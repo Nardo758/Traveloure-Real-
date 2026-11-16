@@ -19,6 +19,7 @@
  * Auth: PlanEntry is open to guests. A guest's Start a plan writes the v2 sign-in record and lands on
  * the guest map; the record is replayed through the same start after sign-in.
  */
+import { announceTripAdd } from "@/lib/plan-add-runner";
 import { trackEvent } from "@/lib/ga4";
 import {
   createContext,
@@ -638,8 +639,12 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
         const add = from.pendingMapAdd;
         writePendingMapAddRetry(outcome.tripId, add);
         const added = await attachPendingMapAdd(outcome.tripId, add);
-        const said = pendingMapAddMessage(added);
-        toast({ title: said.title, description: said.description, ...(said.destructive ? { variant: "destructive" as const } : {}) });
+        // QA round 4 R4-3: a landed add says it with the one add toast (8 s, Undo · Change day · View plan).
+        if (added.status === "added" && added.item) announceTripAdd(outcome.tripId, added.item);
+        else {
+          const said = pendingMapAddMessage(added);
+          toast({ title: said.title, description: said.description, ...(said.destructive ? { variant: "destructive" as const } : {}) });
+        }
       }
       if (from?.pendingItem) {
         const pendingItem = from.pendingItem;
@@ -709,8 +714,12 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
       const retry = readPendingMapAddRetry();
       if (retry) {
         void attachPendingMapAdd(retry.tripId, retry.add).then((added) => {
-          const said = pendingMapAddMessage(added);
-          toast({ title: said.title, description: said.description, ...(said.destructive ? { variant: "destructive" as const } : {}) });
+          // QA round 4 R4-3: the same one add toast for a landed retry.
+          if (added.status === "added" && added.item) announceTripAdd(retry.tripId, added.item);
+          else {
+            const said = pendingMapAddMessage(added);
+            toast({ title: said.title, description: said.description, ...(said.destructive ? { variant: "destructive" as const } : {}) });
+          }
           if (added.status !== "failed") {
             void queryClient.invalidateQueries({ queryKey: [`/api/trips/${retry.tripId}/plancard`] });
           }

@@ -309,6 +309,20 @@ export function eventPlanPlacement(
   return { scheduledDate: day, dayNumber: n };
 }
 
+/**
+ * QA round 4 R4-9: a stop's chosen day is past the plan's last day. Both add rails still refuse it as `unplaceable`
+ * (decision 4) and name it with this `reason`, so the client can say which day was wrong.
+ */
+export const DAY_PAST_PLAN_END_REASON = "day_past_plan_end" as const;
+
+/** R4-9: the refusal's toast. Wording approved — Leon (t2011u). */
+export const DAY_PAST_PLAN_END_MESSAGE = "That day is past your plan's last day.";
+
+/** Pure: is this chosen day past the plan's last day? Both rails ask it the same way. */
+export function dayPastPlanEnd(dayNumber: unknown, planDays: number | null | undefined): boolean {
+  return typeof dayNumber === "number" && planDays != null && Number.isFinite(planDays) && dayNumber > planDays;
+}
+
 /** R4b-1: the refusal's toast. Wording approved — Leon (Nov 6, 2026). `day` is `YYYY-MM-DD`. */
 export function eventOutsideDatesMessage(day: string): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(day);

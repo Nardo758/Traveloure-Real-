@@ -90,6 +90,9 @@ export function TripStrip({
   const { data: cart } = useQuery<{ itemCount: number; total: string; amountDue?: string }>({
     queryKey: ["/api/cart"],
     staleTime: 30_000,
+    // QA round 4 R4-11: the cart is the session user's. Signed out it always answered 401 — a console error on every
+    // public page — and the chip read nothing from it.
+    enabled: signedIn,
   });
 
   /**

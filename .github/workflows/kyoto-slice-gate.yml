@@ -210,12 +210,52 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
           CI: 'true'
 
+      - name: Re-date through the header calendar (QA round 4 R4-8)
+        if: ${{ !cancelled() }}
+        # Ruling (a), Nov 15, 2026: on a complete range a tap starts a new range, so a re-date saves the picked window.
+        run: npx playwright test playwright/tests/journeys/j-redate-header.spec.ts --project=chromium --workers=1 --reporter=list,json
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: playwright-json/redate-header.json
+          BASE_URL: http://localhost:5000
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          CI: 'true'
+
       # B3 (ledger `2026-10-09-b3-expert-routability`): a seed account with a pending application,
       # written straight onto the plan's advisor rows, is never named on /plans/:id (list or map).
       - name: No seed expert on the plan (B3)
         if: ${{ !cancelled() }}
         run: npx playwright test playwright/tests/journeys/j-no-seed-expert.spec.ts --project=chromium --workers=1
         env:
+          BASE_URL: http://localhost:5000
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          CI: 'true'
+
+      # QA round 4 R4-3: every signed-in add raises the one add toast — View plan, PLAN_ADD_TOAST_MS (8 s).
+      - name: Signed-in add toast (QA round 4 R4-3)
+        if: ${{ !cancelled() }}
+        run: npx playwright test playwright/tests/journeys/j-signed-in-add-toast.spec.ts --project=chromium --workers=1 --reporter=list,json
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: playwright-json/signed-in-add-toast.json
+          BASE_URL: http://localhost:5000
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          CI: 'true'
+
+      # QA round 4 R4-4: signed in — the Trip Strip on the browse page, the phone menu button's name, no signed-out flash.
+      - name: Signed-in chrome (QA round 4 R4-4)
+        if: ${{ !cancelled() }}
+        run: npx playwright test playwright/tests/journeys/j-signed-in-chrome.spec.ts --project=chromium --workers=1 --reporter=list,json
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: playwright-json/signed-in-chrome.json
+          BASE_URL: http://localhost:5000
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          CI: 'true'
+
+      # QA round 4 R4-11: the Kyoto page signed out sends no cart or plan-list read (each was a 401 console error).
+      - name: Kyoto page console (QA round 4 R4-11)
+        if: ${{ !cancelled() }}
+        run: npx playwright test playwright/tests/journeys/j-kyoto-console.spec.ts --project=chromium --workers=1 --reporter=list,json
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: playwright-json/kyoto-console.json
           BASE_URL: http://localhost:5000
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
           CI: 'true'

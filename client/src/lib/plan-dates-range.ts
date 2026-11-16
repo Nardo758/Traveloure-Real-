@@ -59,22 +59,29 @@ export function validateRange(start: string | null | undefined, end: string | nu
 }
 
 /**
- * One tap on `day` (QA round 3, Leon, Nov 11, 2026 — option A; supersedes slice B's "earlier tap moves the trip"):
+ * One tap on `day`.
  *   nothing picked              → arrive = day
- *   arrive picked (leave or not) → leave = day, on, after OR BEFORE the arrive day. An earlier day makes the pair
- *                                  refused (`leave_before_arrive`): the approved sentence shows and Save is disabled —
- *                                  a tap never silently rewrites the arrive day.
+ *   arrive only                  → leave = day, on, after OR BEFORE the arrive day. An earlier day makes the pair refused
+ *                                  (`leave_before_arrive`): the approved sentence shows and Save is disabled.
  *   while the refusal is showing → a tap BEFORE the arrive day starts a new range there (arrive = day, no leave);
  *                                  a tap on/after the arrive day sets the leave day and clears the refusal.
- * A prefilled calendar (a plan's confirmed dates) follows the same rule. Moving Dec 1–4 to Nov 28–Dec 1 is three
- * taps: Nov 28 (refused, the sentence shows), Nov 28 again (a new range starts there), Dec 1 (the leave day).
+ *   both days set (a valid range, including a calendar that opens on the plan's own dates) → a NEW range starts at
+ *                                  the tapped day (arrive = day, no leave); the next tap is its leave day.
+ *
+ * QA round 4 (the architect's ruling (a), Nov 15, 2026; amends QA round 3's option A, Leon, Nov 11): under option A a
+ * tap after the arrive day only ever moved the leave day, so a prefilled calendar could never move a trip LATER — a
+ * Dec 25 trip could not become next year's Dec 1–4 (#2019's B8). A complete range now restarts on a tap, as range
+ * pickers do. The refusal is unchanged while picking: arrive, then an earlier day, is still refused, never a silent
+ * restart. Moving Dec 1–4 to Nov 28–Dec 1, or to any later window, is two taps: the new arrive day, then the leave day.
  */
 export function nextRange(prev: DayRange, day: string): DayRange {
   const d = dayNumber(day);
   if (d == null) return prev;
   const a = dayNumber(prev.start);
   if (a == null) return { start: day, end: null };
-  if (validateRange(prev.start, prev.end) === "leave_before_arrive" && d < a) return { start: day, end: null };
+  const validity = validateRange(prev.start, prev.end);
+  if (validity === "ok") return { start: day, end: null };
+  if (validity === "leave_before_arrive" && d < a) return { start: day, end: null };
   return { start: prev.start, end: day };
 }
 

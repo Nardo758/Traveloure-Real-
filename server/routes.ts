@@ -1,4 +1,5 @@
 import type { Express, RequestHandler } from "express";
+import { refuseItemWrite, issuePaths } from "./services/item-write-refusal";
 import { tripGetsRoutedLegs } from "./services/routing/plan-routed-legs.service";
 import { enqueuePlanLegRecompute } from "./services/routing/plan-legs-queue";
 import { decorateComparison, openSetSlotsForRun } from "./services/version-options.service";
@@ -13433,7 +13434,7 @@ ${bannedCopyPromptLine()}`;
           pendingGemId.trim() === "" ||
           pendingGemId.length > 255
         ) {
-          return res.status(400).json({ message: "Invalid pending gem source id" });
+          return refuseItemWrite(res, "invalid_pending_gem", { message: "Invalid pending gem source id" }, { tripId, userId, detail: { type: typeof pendingGemId, length: typeof pendingGemId === "string" ? pendingGemId.length : null } });
         }
         // The retry/idempotency key is reserved for the traveler who owns this plan.
         if (!owned) return res.status(403).json({ message: "Only the plan owner can add a pending gem." });
@@ -13457,7 +13458,7 @@ ${bannedCopyPromptLine()}`;
       // advisor's write on a traveler's plan never reaches storage at all; it becomes a suggestion
       // at the point of write below, before AND after approval.
       const parsed = insertItineraryItemSchema.safeParse({ ...req.body, tripId });
-      if (!parsed.success) return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
+      if (!parsed.success) return refuseItemWrite(res, "invalid_body", { message: "Invalid data", errors: parsed.error.errors }, { tripId, userId, detail: { fields: issuePaths(parsed.error.errors) } });
       const itemData = parsed.data as any;
       // CC-1 / §14 server-derivation: expert-attribution provenance is never client-trusted.
       // Strip whatever the client sent for suggestedBy and re-derive it from the SESSION user
@@ -13500,7 +13501,7 @@ ${bannedCopyPromptLine()}`;
       // a visible 400, never a silently dropped date.
       const bookingInputs = itineraryItemBookingInputsSchema.safeParse(req.body);
       if (!bookingInputs.success) {
-        return res.status(400).json({ message: "Invalid booking inputs", errors: bookingInputs.error.errors });
+        return refuseItemWrite(res, "invalid_booking_inputs", { message: "Invalid booking inputs", errors: bookingInputs.error.errors }, { tripId, userId, detail: { fields: issuePaths(bookingInputs.error.errors) } });
       }
       for (const [key, value] of Object.entries(bookingInputs.data)) {
         if (value !== undefined) itemData[key] = value;
@@ -13515,14 +13516,14 @@ ${bannedCopyPromptLine()}`;
       // never a silently dropped link.
       const eventLink = itineraryItemEventLinkSchema.safeParse(req.body);
       if (!eventLink.success) {
-        return res.status(400).json({ message: "Invalid event link", errors: eventLink.error.errors });
+        return refuseItemWrite(res, "invalid_event_link", { message: "Invalid event link", errors: eventLink.error.errors }, { tripId, userId, detail: { fields: issuePaths(eventLink.error.errors) } });
       }
       const resolvedEvent = await resolveItemEventLink(
         tripId,
         Object.prototype.hasOwnProperty.call(req.body ?? {}, "userExperienceId"),
         eventLink.data.userExperienceId,
       );
-      if (!resolvedEvent.ok) return res.status(400).json({ message: resolvedEvent.message });
+      if (!resolvedEvent.ok) return refuseItemWrite(res, "event_link_refused", { message: resolvedEvent.message }, { tripId, userId, detail: { userExperienceId: eventLink.data.userExperienceId ?? null } });
       if (resolvedEvent.action === "set") itemData.userExperienceId = resolvedEvent.value;
       // Ledger 2026-09-18-add-to-plan-lossless (migration 256) — the item→AFFILIATE PRODUCT link,
       // admitted through its OWN pick-based allowlist for the same §19 reason as the event link
@@ -13533,21 +13534,21 @@ ${bannedCopyPromptLine()}`;
       // silently dropped link; absent leaves the column NULL exactly as before this lane.
       const affiliateLink = itineraryItemAffiliateLinkSchema.safeParse(req.body);
       if (!affiliateLink.success) {
-        return res.status(400).json({ message: "Invalid affiliate link", errors: affiliateLink.error.errors });
+        return refuseItemWrite(res, "invalid_affiliate_link", { message: "Invalid affiliate link", errors: affiliateLink.error.errors }, { tripId, userId, detail: { fields: issuePaths(affiliateLink.error.errors) } });
       }
       const resolvedAffiliate = await resolveItemAffiliateLink(
         Object.prototype.hasOwnProperty.call(req.body ?? {}, "affiliateProductId"),
         affiliateLink.data.affiliateProductId,
       );
       if (!resolvedAffiliate.ok) {
-        return res.status(400).json({ message: "That partner item could not be found or is no longer available.", reason: resolvedAffiliate.reason });
+        return refuseItemWrite(res, "affiliate_refused", { message: "That partner item could not be found or is no longer available.", reason: resolvedAffiliate.reason }, { tripId, userId, detail: { affiliateProductId: affiliateLink.data.affiliateProductId ?? null, reason: resolvedAffiliate.reason } });
       }
       if (resolvedAffiliate.action === "set") itemData.affiliateProductId = resolvedAffiliate.value;
       // CAP-2 Phase 3 (FU-CAP2-2; ruling, Nov 5, 2026): the Viator add path is retired. Viator is not a PlanItemRef kind
       // (it has no row of ours to re-read), so a body naming a Viator product is refused, never stored. Items saved
       // before are ordinary rows and are untouched.
       if (Object.prototype.hasOwnProperty.call(req.body ?? {}, "viatorProductCode")) {
-        return res.status(400).json({ code: "unknown_kind", message: "Couldn't save that. Try again." });
+        return refuseItemWrite(res, "unknown_kind", { message: "Couldn't save that. Try again." }, { tripId, userId, detail: { field: "viatorProductCode" } });
       }
       // ── CAP-2 (ledger `2026-11-05-cap2-plan-item-ref`; rulings 3, 4, 8) ─────────────────────────────────────────
       // A content save names a PlanItemRef (`ref`). The ONE resolver the guest rail uses re-reads the row for the item's
@@ -13570,12 +13571,33 @@ ${bannedCopyPromptLine()}`;
         const { planMarkets, resolvePlanItemRef } = await import("./services/guest-item-source.service");
         const tripRow = await storage.getTrip(tripId);
         const parsedRef = hasRef ? parsePlanItemRef(req.body.ref) : { ok: true as const, ref: { ...legacyLink!, city: String(tripRow?.destination ?? "") } };
-        if (!parsedRef.ok) return res.status(400).json({ code: parsedRef.reason, message: "Couldn't save that. Try again." });
+        if (!parsedRef.ok) return refuseItemWrite(res, parsedRef.reason, { message: "Couldn't save that. Try again." }, { tripId, userId, detail: { step: "parse_ref" } });
         const planDays = tripRow
           ? Math.round((Date.parse(`${String(tripRow.endDate).slice(0, 10)}T00:00:00Z`) - Date.parse(`${String(tripRow.startDate).slice(0, 10)}T00:00:00Z`)) / 86_400_000) + 1
           : null;
         const resolved = await resolvePlanItemRef(parsedRef.ref as any, { markets: await planMarkets(tripId), planDays: Number.isFinite(planDays as number) ? planDays : null });
-        if (!resolved.ok) return res.status(400).json({ code: resolved.reason, message: "Couldn't save that. Try again." });
+        if (!resolved.ok) {
+          // R4-9: a day past the plan's last day is refused as `unplaceable` (decision 4: it stays refused); the log
+          // says it was the day, and which day against how many, so it is never confused with a malformed envelope.
+          const chosenDay = (parsedRef.ref as any).placement?.day_number ?? null;
+          const { dayPastPlanEnd, DAY_PAST_PLAN_END_REASON } = await import("@shared/plan-dates");
+          const dayPastEnd = resolved.reason === "unplaceable" && dayPastPlanEnd(chosenDay, planDays);
+          // R4-9 (wording approved — Leon, t2011u): the body names the day refusal so the client can say so.
+          return refuseItemWrite(res, resolved.reason, { message: "Couldn't save that. Try again.", ...(dayPastEnd ? { reason: DAY_PAST_PLAN_END_REASON } : {}) }, {
+            tripId,
+            userId,
+            detail: {
+              step: dayPastEnd ? "day_past_plan_end" : "resolve_ref",
+              kind: (parsedRef.ref as any).kind ?? null,
+              sourceId: (parsedRef.ref as any).source_id ?? null,
+              dayNumber: chosenDay,
+              planDays,
+              planStart: tripRow ? String(tripRow.startDate).slice(0, 10) : null,
+              planEnd: tripRow ? String(tripRow.endDate).slice(0, 10) : null,
+              datesConfirmed: tripRow ? (tripRow as any).datesConfirmedAt != null : null,
+            },
+          });
+        }
         const src = resolved.source;
         // R4b-1: the guest rail's rule — an event outside the plan's CONFIRMED dates is refused, naming its day.
         const { eventOutsideConfirmedDates, eventOutsideDatesMessage } = await import("@shared/plan-dates");
@@ -13584,7 +13606,7 @@ ${bannedCopyPromptLine()}`;
         const planWindow = tripRow ? { startDate: tripRow.startDate, endDate: tripRow.endDate, datesConfirmed: (tripRow as any).datesConfirmedAt != null } : null;
         if (planWindow && eventOutsideConfirmedDates(eventDays, planWindow)) {
           const day = String(src.eventDate).slice(0, 10);
-          return res.status(400).json({ code: "event_outside_dates", eventDate: day, message: eventOutsideDatesMessage(day) });
+          return refuseItemWrite(res, "event_outside_dates", { eventDate: day, message: eventOutsideDatesMessage(day) }, { tripId, userId, detail: { eventDate: day, eventEndDate: src.eventEndDate ? String(src.eventEndDate).slice(0, 10) : null, planStart: String(planWindow.startDate).slice(0, 10), planEnd: String(planWindow.endDate).slice(0, 10) } });
         }
         resolvedRef = true;
         // Ruling 4: the point is the row's, never the body's.
@@ -13634,7 +13656,7 @@ ${bannedCopyPromptLine()}`;
       // posture); a legacy priced free-text item simply renders as `recommended`, its price hidden
       // by the reader rather than deleted from the row.
       const authoringRefusal = authored ? authoredItemPriceRefusal(itemData) : null;
-      if (authoringRefusal) return res.status(400).json({ message: authoringRefusal });
+      if (authoringRefusal) return refuseItemWrite(res, "authoring_price_refused", { message: authoringRefusal }, { tripId, userId });
       // Step 7b (R323; surface spec §12 step 3, R-n): "nothing is written to the plan without the
       // traveler's accept". On a traveler's plan an advisor's add is FILED as a suggestion carrying
       // the final, validated write object; the owner's accept replays this same storage write. The
