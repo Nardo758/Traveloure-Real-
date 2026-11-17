@@ -16,6 +16,7 @@
     "test:stripe-leak": "tsx --test server/__tests__/stripe-refs-earner-leak.http.test.ts",
     "test:user-suspension": "tsx --test server/__tests__/user-suspension.db.test.ts",
     "test:advisor-accept-basis": "tsx --test server/__tests__/advisor-accept-basis.db.test.ts",
+    "test:advisor-accept-behaviour": "tsx --test server/__tests__/advisor-accept-behaviour.db.test.ts",
     "test:instagram-frame": "tsx --test server/routes/__tests__/instagram-frame-passthrough.http.test.ts",
     "dev": "node scripts/dev.mjs",
     "build": "tsx script/build.ts && node scripts/write-build-info.cjs",

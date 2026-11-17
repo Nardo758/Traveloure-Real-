@@ -1,15 +1,15 @@
 /**
- * LANE A (brief 0) ? THE SEEDED PROOFS of the paid-basis guard.
+ * LANE A (brief 0) - THE SEEDED PROOFS of the paid-basis guard.
  *
  * These run against a real disposable database with real rows, because the rule is a SQL lookup and the pure
  * tests cannot see it. Each case seeds the exact row shape and asks the SAME function the route asks
  * (`loadAdvisorAcceptBasis`) and the same mapper (`advisorAcceptRefusal`).
  *
  * The shapes, and which statuses count:
- *   handoff   captured_at NOT NULL and status accepted|delivered ? a BASIS. proposed / authorized are not
+ *   handoff   captured_at NOT NULL and status accepted|delivered - a BASIS. proposed / authorized are not
  *             (a hold is not money); approved / withdrawn / released are FINISHED.
  *   request   handoff_kind NULL, status assigned|in_progress, not refunded, a PaymentIntent AND its
- *             `platform_revenue` ledger row ? a BASIS. No ledger row ? FORGED, so unpaid. status completed ?
+ *             `platform_revenue` ledger row - a BASIS. No ledger row - FORGED, so unpaid. status completed ?
  *             FINISHED (completeExpertRequest sets it on delivery, before any approval).
  */
 import { test, before, after } from "node:test";
@@ -82,18 +82,18 @@ after(async () => {
   await db.execute(sql`DELETE FROM users WHERE id IN (${ids.owner}, ${ids.expert})`);
 });
 
-test("P1: no paid row at all ? refused as unpaid", async () => {
+test("P1: no paid row at all - refused as unpaid", async () => {
   const f = await loadAdvisorAcceptBasis(ids.trip, ids.expert);
   assert.equal(f, null);
   assert.equal(advisorAcceptRefusal(f), "advisor_unpaid");
 });
 
-test("P2: a proposed handoff (no capture) is not a basis ? an invite cannot be accepted on a hold", async () => {
+test("P2: a proposed handoff (no capture) is not a basis - an invite cannot be accepted on a hold", async () => {
   await seedRequest({ id: uid(), handoffKind: "polish", status: "proposed" });
   assert.equal(await loadAdvisorAcceptBasis(ids.trip, ids.expert), null);
 });
 
-test("P3: a captured, ACCEPTED handoff is a basis ? the normal paid accept still succeeds", async () => {
+test("P3: a captured, ACCEPTED handoff is a basis - the normal paid accept still succeeds", async () => {
   await db.execute(sql`DELETE FROM expert_requests WHERE trip_id = ${ids.trip}`);
   await seedRequest({ id: uid(), handoffKind: "polish", status: "accepted", captured: true });
   const f = await loadAdvisorAcceptBasis(ids.trip, ids.expert);
@@ -101,7 +101,7 @@ test("P3: a captured, ACCEPTED handoff is a basis ? the normal paid accept still
   assert.equal(advisorAcceptRefusal(f), null);
 });
 
-test("P4: after approval (status approved) the row is FINISHED, not unpaid ? re-accept refused", async () => {
+test("P4: after approval (status approved) the row is FINISHED, not unpaid - re-accept refused", async () => {
   await db.execute(sql`DELETE FROM expert_requests WHERE trip_id = ${ids.trip}`);
   await seedRequest({ id: uid(), handoffKind: "polish", status: "approved", captured: true });
   const f = await loadAdvisorAcceptBasis(ids.trip, ids.expert);
@@ -134,7 +134,7 @@ test("P7: a REFUNDED paid request is not a basis", async () => {
   assert.equal(await loadAdvisorAcceptBasis(ids.trip, ids.expert), null);
 });
 
-test("P8: a COMPLETED paid request is FINISHED ? delivery closed it before any approval", async () => {
+test("P8: a COMPLETED paid request is FINISHED - delivery closed it before any approval", async () => {
   await db.execute(sql`DELETE FROM expert_requests WHERE trip_id = ${ids.trip}`);
   const pi = `pi_aa_${RUN}_p8`;
   await seedRequest({ id: uid(), status: "completed", pi, ledger: true });
