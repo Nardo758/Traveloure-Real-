@@ -220,6 +220,17 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
           CI: 'true'
 
+      - name: Guest party ask (E9 - attendees, no /api/trips read)
+        if: ${{ !cancelled() }}
+        # E9 (option A): the spec sets waitlist mode for its own run (guest plans exist only there),
+        # so it runs in its own step. It asserts ONE Attendees field and no /api/trips/<id> read.
+        run: npx playwright test playwright/tests/journeys/j-guest-party-ask.spec.ts --project=chromium --workers=1 --reporter=list,json
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: playwright-json/guest-party-ask.json
+          BASE_URL: http://localhost:5000
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          CI: 'true'
+
       - name: Event window on plan entry (E8)
         if: ${{ !cancelled() }}
         # E8 (lane 7, variant A): the two day-offsets and the one calendar are the same range; "before" cannot
