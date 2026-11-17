@@ -692,7 +692,7 @@ export async function approveHandoff(requestId: string, by: "traveler" | "auto",
 export async function returnPenFor(tripId: string, expertId: string): Promise<void> {
   if (!tripId || !expertId) return;
   await supersedeOpenSuggestions(tripId, expertId);
-  // On-trip support keeps the expert able to READ the plan (`pending` is ?12 read-only either way).
+  // On-trip support keeps the expert able to READ the plan (`pending` is §12 read-only either way).
   await db.execute(sql`
     UPDATE trip_expert_advisors SET status = 'pending'
     WHERE trip_id = ${tripId} AND local_expert_id = ${expertId} AND status IN ('accepted', 'assigned')

@@ -8,12 +8,14 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import {
+  ADVISOR_FINISHED_REFUSAL,
   ADVISOR_UNPAID_REFUSAL,
   HANDOFF_WRITE_STATUSES,
   PAID_REQUEST_OPEN_STATUSES,
   advisorAcceptRefusal,
   handoffBasisFromStatus,
   paidRequestIsOpen,
+  stripClientPaymentIntent,
 } from "../../services/advisor-accept-basis.pure";
 
 describe("which handoff statuses are a paid basis", () => {
@@ -73,5 +75,33 @@ describe("a paid request must be OPEN, not merely paid (addendum 5)", () => {
       assert.equal(paidRequestIsOpen(status as any), false, `status ${status} must not be open`);
     }
     assert.deepEqual([...PAID_REQUEST_OPEN_STATUSES], ["assigned", "in_progress"]);
+  });
+});
+
+describe("addendum 2 — a forged PaymentIntent cannot be a basis", () => {
+  it("F1: the client's key is stripped before the request is written", () => {
+    const stripped = stripClientPaymentIntent({
+      paymentIntentId: "pi_forged_by_the_client",
+      planSnapshot: { travelers: 2 },
+    }) as any;
+    assert.equal("paymentIntentId" in stripped, false, "the unverified key must not survive");
+    assert.deepEqual(stripped.planSnapshot, { travelers: 2 }, "the ask fields are untouched");
+  });
+
+  it("F2: a context without the key is returned as it was, and null passes through", () => {
+    const ctx = { planSnapshot: { travelers: 4 } };
+    assert.equal(stripClientPaymentIntent(ctx), ctx);
+    assert.equal(stripClientPaymentIntent(null), null);
+    assert.equal(stripClientPaymentIntent(undefined), undefined);
+  });
+});
+
+describe("addendum 4 — finished work is not unpaid work", () => {
+  it("N1: a finished finding names advisor_finished, not advisor_unpaid", () => {
+    assert.equal(advisorAcceptRefusal({ kind: "finished", requestId: "r1" }), "advisor_finished");
+    assert.equal(advisorAcceptRefusal(null), "advisor_unpaid");
+    assert.equal(ADVISOR_FINISHED_REFUSAL.status, 409);
+    assert.equal(ADVISOR_FINISHED_REFUSAL.code, "advisor_finished");
+    assert.notEqual(ADVISOR_FINISHED_REFUSAL.message, ADVISOR_UNPAID_REFUSAL.message);
   });
 });

@@ -17,6 +17,7 @@ import { isTripAuthor } from '../utils/trip-authorship';
 import { isTripAdvisor, isTripAdvisorWithWriteAccess, TRIP_ADVISOR_ACCESS_STATUSES, tripAdvisorStatusGrantsAccess } from '../utils/trip-advisor';
 import { logItemTransition } from '../services/item-transition-log.service';
 import { reFinalizeIfCurrentlyFinal } from '../services/trip-finalize.service';
+import { stripClientPaymentIntent } from "../services/advisor-accept-basis.pure";
 import { getUserId } from '../utils/auth';
 import { sanitizeInput } from '../utils/sanitize';
 import { storage } from '../storage';
@@ -307,7 +308,10 @@ router.post('/expert-requests', isAuthenticated, async (req, res) => {
     // LIVE). Enforced at THIS boundary regardless of client version: strip the item-content
     // fields a legacy client may still send. The ask fields (destination/dates/travelers/
     // interests) are correspondence — frozen is correct for those.
-    let sanitizedContext = optimizationContext;
+    // Addendum 2: a client may not stamp its own PaymentIntent. The rail only ADDS a verified one below
+    // (`:362-365`); it never removed one the body carried, so `optimization_context.paymentIntentId` could be
+    // forged. The basis lookup now also requires the LEDGER row, and this removes the unverified key.
+    let sanitizedContext = stripClientPaymentIntent(optimizationContext);
     if (sanitizedContext?.planSnapshot) {
       const { cartItems: _cartItems, cartTotal: _cartTotal, ...askOnly } = sanitizedContext.planSnapshot;
       sanitizedContext = { ...sanitizedContext, planSnapshot: askOnly };
@@ -1368,15 +1372,15 @@ router.post("/expert/assignments/:assignmentId/accept", isAuthenticated, async (
     // conditional below is untouched and nothing is written. Amendment 3: once approval returns the pen the
     // handoff is `approved`, which is not a basis, so a re-accept is refused here too.
     {
-      const { loadAdvisorAcceptBasis, advisorAcceptRefusal, ADVISOR_UNPAID_REFUSAL } = await import(
+      const { loadAdvisorAcceptBasis, advisorAcceptRefusal, ADVISOR_UNPAID_REFUSAL, ADVISOR_FINISHED_REFUSAL } = await import(
         "../services/advisor-accept-basis.service"
       );
-      const basis = await loadAdvisorAcceptBasis(assignment.tripId, userId);
-      if (advisorAcceptRefusal(basis)) {
-        return res.status(ADVISOR_UNPAID_REFUSAL.status).json({
-          code: ADVISOR_UNPAID_REFUSAL.code,
-          message: ADVISOR_UNPAID_REFUSAL.message,
-        });
+      const finding = await loadAdvisorAcceptBasis(assignment.tripId, userId);
+      const refusal = advisorAcceptRefusal(finding);
+      if (refusal) {
+        // Two facts, two codes (addendum 4): `finished` says the work is over, `unpaid` says nobody paid.
+        const named = finding?.kind === "finished" ? ADVISOR_FINISHED_REFUSAL : ADVISOR_UNPAID_REFUSAL;
+        return res.status(named.status).json({ code: named.code, message: named.message });
       }
     }
     const updated = await storage.acceptTripAssignment(assignmentId, userId);
@@ -1616,9 +1620,10 @@ router.post('/trips/:id/plan-review', isAuthenticated, async (req, res) => {
     // status after approval, which is how suggestions could still be filed post-approval.
     if (decision === 'approve' && !handoffAnswered && updated.localExpertId) {
       const { returnPenFor } = await import('../services/handoff.service');
-      await returnPenFor(id, updated.localExpertId).catch((err: unknown) =>
-        console.error('[PlanReview] pen return failed (non-fatal):', err),
-      );
+      // NOT caught (addendum 3). `approveHandoff` awaits its own `returnPen` with no catch
+      // (`handoff.service.ts:680`), so a failed pen return fails that approval; this path does the same.
+      // An approval must never be reported as done while the expert still holds a write status.
+      await returnPenFor(id, updated.localExpertId);
     }
 
     // Reverse notification (item 14b): the expert learns the customer's decision without polling

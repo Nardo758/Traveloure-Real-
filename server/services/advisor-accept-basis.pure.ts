@@ -1,5 +1,5 @@
 /**
- * LANE A (brief 0) ? the PURE half of "what may a plain assignment accept grant".
+ * LANE A (brief 0) — the PURE half of "what may a plain assignment accept grant".
  *
  * Split from `advisor-accept-basis.service.ts` for the reason `conversation-public-id.pure.ts` exists: the
  * service imports `../db`, which refuses to load without `DATABASE_URL`, and the rule itself is pure. A unit
@@ -7,14 +7,14 @@
  *
  * THE RULE. The plain accept reaches a write status only with a PAID BASIS for that (trip, expert) pair:
  *
- *   handoff        a handoff whose fee is CAPTURED and whose work is OPEN ? status `accepted` or `delivered`.
+ *   handoff        a handoff whose fee is CAPTURED and whose work is OPEN — status `accepted` or `delivered`.
  *                  Not `proposed`, not `authorized` (a hold is not money), not `approved` (the work is over and
  *                  the pen has been returned), not withdrawn or released.
  *   paid_request   a NON-handoff expert request assigned to that expert that carries the verified PaymentIntent
  *                  the request rail stamps (`server/routes/booking-actions.ts:360-365`), not refunded.
  *
  * NOT BASES (Leon, Nov 17 amendment 1): an admin assignment, a concierge accept and a plan-work purchase each
- * write a write status DIRECTLY and never reach this accept ? `admin.routes.ts:9290`, `:1363`,
+ * write a write status DIRECTLY and never reach this accept — `admin.routes.ts:9290`, `:1363`,
  * `admin-query.service.ts:1023` (status `assigned`), `concierge-engagement.service.ts:32` (`accepted`),
  * `plan-work-access.service.ts:315` with `PLAN_WORK_GRANT_STATUS` `accepted` (`:113`).
  */
@@ -39,12 +39,28 @@ export function paidRequestIsOpen(status: string | null | undefined): boolean {
 export const HANDOFF_WRITE_STATUSES = ["accepted", "delivered"] as const;
 export type HandoffWriteStatus = (typeof HANDOFF_WRITE_STATUSES)[number];
 
+/** The second refusal: a paid basis EXISTED and the work is closed. A different fact, a different code. */
+export const ADVISOR_FINISHED_REFUSAL = {
+  code: "advisor_finished",
+  status: 409,
+  message:
+    "This work is already finished, so there is nothing left to accept. If the traveler wants more help, they can send a new plan request.",
+} as const;
+
+export type AdvisorFinishedRefusalCode = typeof ADVISOR_FINISHED_REFUSAL.code;
+
 /** What stands behind a row that is about to be accepted. */
 export type AdvisorAcceptBasis =
   | { kind: "handoff"; requestId: string; handoffStatus: HandoffWriteStatus }
   | { kind: "paid_request"; requestId: string };
 
-/** The named refusal. NEW USER-FACING STRING ? Leon's wording approval is required on the PR before it ships. */
+/**
+ * What the lookup found. `finished` is NOT a basis: it says a paid basis existed and the work is closed,
+ * so the refusal can name the right fact (`advisor_finished`) instead of calling finished work unpaid.
+ */
+export type AdvisorAcceptFinding = AdvisorAcceptBasis | { kind: "finished"; requestId: string };
+
+/** The named refusal. NEW USER-FACING STRING — Leon's wording approval is required on the PR before it ships. */
 export const ADVISOR_UNPAID_REFUSAL = {
   code: "advisor_unpaid",
   status: 409,
@@ -54,9 +70,25 @@ export const ADVISOR_UNPAID_REFUSAL = {
 
 export type AdvisorAcceptRefusalCode = typeof ADVISOR_UNPAID_REFUSAL.code;
 
-/** Pure. `null` ? the accept may proceed; otherwise the named refusal. */
-export function advisorAcceptRefusal(basis: AdvisorAcceptBasis | null | undefined): AdvisorAcceptRefusalCode | null {
-  return basis ? null : ADVISOR_UNPAID_REFUSAL.code;
+/** Pure. `null` — the accept may proceed; otherwise the named refusal. */
+export function advisorAcceptRefusal(
+  finding: AdvisorAcceptFinding | null | undefined,
+): AdvisorAcceptRefusalCode | AdvisorFinishedRefusalCode | null {
+  if (!finding) return ADVISOR_UNPAID_REFUSAL.code;
+  if (finding.kind === "finished") return ADVISOR_FINISHED_REFUSAL.code;
+  return null;
+}
+
+/**
+ * Pure (addendum 2). A client may not stamp its own PaymentIntent into the request context. The rail already
+ * refuses to persist a `paymentIntentId` it did not verify (`server/routes/booking-actions.ts:362-365`), but it
+ * does NOT strip one the client sent, so a forged key rode the jsonb. This removes it before the write.
+ */
+export function stripClientPaymentIntent<T extends Record<string, any>>(context: T | null | undefined): T | null | undefined {
+  if (!context || typeof context !== "object") return context;
+  if (!("paymentIntentId" in context)) return context;
+  const { paymentIntentId: _unverified, ...rest } = context as any;
+  return rest as T;
 }
 
 /**
