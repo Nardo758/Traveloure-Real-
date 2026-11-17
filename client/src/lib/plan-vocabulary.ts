@@ -308,9 +308,11 @@ export function planHeaderCountLabel(
   vocabulary: string | null | undefined,
   hasGuestList: boolean | null | undefined,
   occasionResolved: boolean,
-  composition?: { adults?: number | null; kids?: number | null },
-  /** The resolved row, so the stated composition reads the panel's own inputs (R1). */
-  occasionRow?: OccasionSwitchRow | null,
+  /**
+   * The stated party. `occasion` rides HERE rather than as another argument: the composition and the row
+   * that decides its words are one input, and the shipped pin on this call site admits exactly this shape.
+   */
+  composition?: { adults?: number | null; kids?: number | null; occasion?: OccasionSwitchRow | null },
 ): string {
   const invited =
     typeof invitedCount === "number" && Number.isFinite(invitedCount) && invitedCount > 0
@@ -325,7 +327,7 @@ export function planHeaderCountLabel(
     return party ? `${party} traveling · ${invitedPart}` : invitedPart;
   }
 
-  const stated = partyCompositionLabel(composition?.adults, composition?.kids, occasionRow ?? null);
+  const stated = partyCompositionLabel(composition?.adults, composition?.kids, composition?.occasion ?? null);
   if (stated) return stated;
   return partyLabelForOccasion(partyCount, vocabulary, hasGuestList, occasionResolved);
 }

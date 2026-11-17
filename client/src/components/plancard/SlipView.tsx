@@ -2121,8 +2121,7 @@ export function useSlipViewModel({
     occasion?.vocabulary ?? null,
     occasion?.defaultGuests ?? null,
     occasionResolved,
-    { adults: (data.trip as any)?.adults ?? null, kids: (data.trip as any)?.kids ?? null },
-    partyRow,
+    { adults: (data.trip as any)?.adults ?? null, kids: (data.trip as any)?.kids ?? null, occasion: partyRow },
   );
 
   /**
