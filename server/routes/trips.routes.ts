@@ -106,7 +106,7 @@ import { travelerNoteForShareViewer } from "../utils/share-traveler-note";
 import { api } from "@shared/routes";
 // ONE derivation of the plan's party total, shared with the client (ledger
 // `2026-09-05-slip-events-first-render`; CLAUDE.md Locked Decision 33 / §18 rule 1).
-import { partyTotal } from "@shared/plan-vocabulary";
+import { partyTotal, MAX_PARTY_COUNT } from "@shared/plan-vocabulary";
 import { z } from "zod";
 import { createInsertSchema } from "drizzle-zod";
 import { isAuthenticated } from "../replit_integrations/auth";
@@ -3592,7 +3592,7 @@ const tripOccasionBody = createInsertSchema(trips)
   })
   .extend({
     eventType: z.enum(eventTypeEnum).optional(),
-    adults: z.coerce.number().int().min(1).max(500).nullable().optional(),
+    adults: z.coerce.number().int().min(1).max(MAX_PARTY_COUNT).nullable().optional(),
     kids: z.coerce.number().int().min(0).max(500).nullable().optional(),
     budgetApproverName: tripBudgetApproverNameSchema,
     budgetApproverEmail: tripBudgetApproverEmailSchema,

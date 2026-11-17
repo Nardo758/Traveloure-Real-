@@ -1,3 +1,4 @@
+import { MAX_PARTY_COUNT } from "./plan-vocabulary";
 import { pgTable, text, varchar, timestamp, boolean, integer, jsonb, decimal, date, pgEnum, unique, uniqueIndex, index, doublePrecision, uuid, serial, bigserial, bigint, time, primaryKey, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -3020,9 +3021,9 @@ export const insertTripSchema = createInsertSchema(trips).omit({
   // still validates (min bounds); when absent it stays undefined ⇒ NULL, an honest "not captured"
   // the demand rollup can distinguish from a real count (§13). The route no longer synthesizes
   // numberOfTravelers from adults+kids when nothing was provided.
-  numberOfTravelers: z.coerce.number().int().min(1).optional(),
-  adults: z.coerce.number().int().min(1).optional(),
-  kids: z.coerce.number().int().min(0).optional(),
+  numberOfTravelers: z.coerce.number().int().min(1).max(MAX_PARTY_COUNT).optional(),
+  adults: z.coerce.number().int().min(1).max(MAX_PARTY_COUNT).optional(),
+  kids: z.coerce.number().int().min(0).max(MAX_PARTY_COUNT).optional(),
 });
 
 /**

@@ -287,8 +287,19 @@ export function partyLabelForOccasion(
 export function partyCompositionLabel(
   adults: number | null | undefined,
   kids: number | null | undefined,
+  vocabulary?: string | null,
 ): string {
   if (typeof adults !== "number" || !Number.isFinite(adults) || adults <= 0) return "";
+  // R1 (Leon, Nov 16 2026): the summary follows the PANEL, not a vocabulary table of its own. The panel's
+  // fields come from `partyFields(occasion)`; when it asks ONE field, the summary uses that field's own word
+  // ("Attendees" -> "20 attendees" / "1 attendee"). A guest-list occasion keeps the Adults + Kids panel, so
+  // Wedding and Girls Trip still read "30 adults".
+  const fields = partyFields({ vocabulary: vocabulary ?? null } as any);
+  if (fields.length === 1 && fields[0]?.key === "adults") {
+    const label = fields[0].label ?? "Adults";
+    const one = label.replace(/s$/, "").toLowerCase();
+    return `${adults} ${adults === 1 ? one : label.toLowerCase()}`;
+  }
   const a = `${adults} ${adults === 1 ? "adult" : "adults"}`;
   if (typeof kids !== "number" || !Number.isFinite(kids) || kids <= 0) return a;
   return `${a}, ${kids} ${kids === 1 ? "child" : "children"}`;
@@ -315,7 +326,7 @@ export function planHeaderCountLabel(
     return party ? `${party} traveling · ${invitedPart}` : invitedPart;
   }
 
-  const stated = partyCompositionLabel(composition?.adults, composition?.kids);
+  const stated = partyCompositionLabel(composition?.adults, composition?.kids, vocabulary);
   if (stated) return stated;
   return partyLabelForOccasion(partyCount, vocabulary, hasGuestList, occasionResolved);
 }
@@ -343,7 +354,14 @@ export function planHeaderCountLabel(
  *    as a literal `500`; it is stated here once and imported there, so the two controls cannot
  *    drift into two different maxima.
  */
-export const MAX_PARTY_COUNT = 500;
+import { MAX_PARTY_COUNT } from "@shared/plan-vocabulary";
+import { partyFields } from "./plan-steps";
+
+/**
+ * The client's name for the ONE ceiling, re-exported from `@shared/plan-vocabulary` so the server reads the
+ * same number. The old local `500` is gone.
+ */
+export { MAX_PARTY_COUNT };
 
 /**
  * Normalise a typed party-count field to the string shape the steppers store.

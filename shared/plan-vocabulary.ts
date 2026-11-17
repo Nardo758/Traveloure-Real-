@@ -132,3 +132,12 @@ export function plancardPartyCount(
   // anywhere is `null`: an unanswered question, not a party of one (§13).
   return travelersForSave(numberOfTravelers) ?? null;
 }
+
+/**
+ * THE ONE PARTY-SIZE CEILING (Leon, Nov 16 2026): 100,000, every occasion.
+ *
+ * It lives HERE because both halves of the app enforce it: the client's typed input and stepper, and the
+ * server's schemas (`trips`, trip-context, EA, the infer-party route, and the plan-create schema). It was
+ * `500` as a client constant plus five server literals; one number now, one name.
+ */
+export const MAX_PARTY_COUNT = 100_000;

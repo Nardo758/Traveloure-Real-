@@ -1,3 +1,4 @@
+import { MAX_PARTY_COUNT } from "@shared/plan-vocabulary";
 import { Router } from "express";
 import { getUserId } from "../utils/auth";
 import { sanitizeStringFields, sanitizeText } from "../utils/text-sanitizer";
@@ -226,7 +227,7 @@ router.post("/api/ea/clients/:id/push", isAuthenticated, async (req, res) => {
       startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "startDate must be YYYY-MM-DD"),
       endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "endDate must be YYYY-MM-DD"),
       title: z.string().trim().min(1).max(255).optional(),
-      numberOfTravelers: z.coerce.number().int().min(1).max(500).optional(),
+      numberOfTravelers: z.coerce.number().int().min(1).max(MAX_PARTY_COUNT).optional(),
       specialRequests: z.string().max(2000).optional(),
     })
     .strict()
