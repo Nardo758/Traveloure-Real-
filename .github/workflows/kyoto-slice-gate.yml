@@ -222,8 +222,8 @@ jobs:
 
       - name: Guest party ask (E9 - attendees, no /api/trips read)
         if: ${{ !cancelled() }}
-        # E9 (option A): a guest plan's Corporate Retreats asks ONE Attendees field, and the guest page
-        # never reaches /api/trips/<id>. Its own results file for the spec-arming gate.
+        # E9 (option A): the spec sets waitlist mode for its own run (guest plans exist only there),
+        # so it runs in its own step. It asserts ONE Attendees field and no /api/trips/<id> read.
         run: npx playwright test playwright/tests/journeys/j-guest-party-ask.spec.ts --project=chromium --workers=1 --reporter=list,json
         env:
           PLAYWRIGHT_JSON_OUTPUT_NAME: playwright-json/guest-party-ask.json
