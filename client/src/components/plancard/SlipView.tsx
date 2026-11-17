@@ -655,7 +655,7 @@ export function SlipHeader({
       {anchorPanel === "who" && trip ? (
         <InlineWhoPanel
           tripId={trip.id}
-          occasion={occasion ?? guest?.partyOccasion ?? null}
+          occasion={occasion}
           current={{
             adults: (trip as any).adults ?? null,
             kids: (trip as any).kids ?? null,
@@ -2110,13 +2110,18 @@ export function useSlipViewModel({
    * `planHeaderCountLabel` DELEGATES straight back to `partyLabelForOccasion` for every plan
    * without a guest list, so nothing about the settled render above changes (§18 rule 1).
    */
+  // R1: the party ROW, defined ONCE. A guest plan's view model cannot resolve an occasion (it may not
+  // read /api/trips/:id), so the guest page hands its own row down; every consumer of the party ask - both
+  // panel mounts and this header's summary - reads this one expression, so they cannot disagree.
+  const partyRow = occasion ?? guest?.partyOccasion ?? null;
+
   const partyLabel = planHeaderCountLabel(
     data.trip?.travelers ?? null,
     invitedCount,
     occasion?.vocabulary ?? null,
     occasion?.defaultGuests ?? null,
     occasionResolved,
-    { adults: (data.trip as any)?.adults ?? null, kids: (data.trip as any)?.kids ?? null },
+    { adults: (data.trip as any)?.adults ?? null, kids: (data.trip as any)?.kids ?? null, occasion: partyRow },
   );
 
   /**
@@ -2341,6 +2346,9 @@ export function SlipView({
     occasionIsHidden,
     occasionResolved,
   } = useSlipViewModel({ tripId: planTripId, data, highlightItemId, initialView, guest });
+  // R1: the ONE party row this surface hands to the header, the tray and the header's summary (via the view
+  // model above). The two mounts and the header chip cannot disagree because they all read this.
+  const partyRow = occasion ?? guest?.partyOccasion ?? null;
   // A guest's plan reads no member rail: every per-plan read and control below takes this, empty for a guest.
   const tripId = guest ? "" : planTripId;
   // Step 8b-2 (ruling 4): the map band reads the ONE AI action the rail reads.
@@ -2462,6 +2470,7 @@ export function SlipView({
       />
       <SlipHeader
         guest={guest}
+        occasion={partyRow}
         expertControl={
           expertDoorLive && expertDoorState === "dismissed" ? (
             <AddLocalExpertButton onOpen={() => setExpertDoorState("open")} />
@@ -2550,7 +2559,7 @@ export function SlipView({
           {trayChip === "who" && data.trip ? (
             <InlineWhoPanel
               tripId={data.trip.id}
-              occasion={occasion ?? guest?.partyOccasion ?? null}
+              occasion={partyRow}
               current={{
                 adults: (data.trip as any).adults ?? null,
                 kids: (data.trip as any).kids ?? null,

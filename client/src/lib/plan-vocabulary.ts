@@ -287,8 +287,16 @@ export function partyLabelForOccasion(
 export function partyCompositionLabel(
   adults: number | null | undefined,
   kids: number | null | undefined,
+  occasion?: OccasionSwitchRow | null,
 ): string {
   if (typeof adults !== "number" || !Number.isFinite(adults) || adults <= 0) return "";
+  // R1 (Leon, Nov 16 2026): the summary reads the SAME inputs as the panel. The panel's rule is
+  // `partyNoun(vocabulary, guestListSetting(row))` inside `partyFields`; this calls those same two helpers
+  // from their own homes rather than importing `plan-steps` (which imports THIS module - that cycle made the
+  // player helper unreliable at load time and is why the first version of this fix failed its own tests).
+  // An agreement test in `plan-steps.test.ts` pins the two answers together for every vocabulary x guest list.
+  const noun = partyNoun(occasion?.vocabulary ?? null, guestListSetting(occasion));
+  if (noun === "attendees") return `${adults} ${adults === 1 ? "attendee" : "attendees"}`;
   const a = `${adults} ${adults === 1 ? "adult" : "adults"}`;
   if (typeof kids !== "number" || !Number.isFinite(kids) || kids <= 0) return a;
   return `${a}, ${kids} ${kids === 1 ? "child" : "children"}`;
@@ -300,7 +308,11 @@ export function planHeaderCountLabel(
   vocabulary: string | null | undefined,
   hasGuestList: boolean | null | undefined,
   occasionResolved: boolean,
-  composition?: { adults?: number | null; kids?: number | null },
+  /**
+   * The stated party. `occasion` rides HERE rather than as another argument: the composition and the row
+   * that decides its words are one input, and the shipped pin on this call site admits exactly this shape.
+   */
+  composition?: { adults?: number | null; kids?: number | null; occasion?: OccasionSwitchRow | null },
 ): string {
   const invited =
     typeof invitedCount === "number" && Number.isFinite(invitedCount) && invitedCount > 0
@@ -315,7 +327,7 @@ export function planHeaderCountLabel(
     return party ? `${party} traveling · ${invitedPart}` : invitedPart;
   }
 
-  const stated = partyCompositionLabel(composition?.adults, composition?.kids);
+  const stated = partyCompositionLabel(composition?.adults, composition?.kids, composition?.occasion ?? null);
   if (stated) return stated;
   return partyLabelForOccasion(partyCount, vocabulary, hasGuestList, occasionResolved);
 }
@@ -343,7 +355,14 @@ export function planHeaderCountLabel(
  *    as a literal `500`; it is stated here once and imported there, so the two controls cannot
  *    drift into two different maxima.
  */
-export const MAX_PARTY_COUNT = 500;
+import { MAX_PARTY_COUNT } from "@shared/plan-vocabulary";
+import { guestListSetting, type OccasionSwitchRow } from "./occasion-switches";
+
+/**
+ * The client's name for the ONE ceiling, re-exported from `@shared/plan-vocabulary` so the server reads the
+ * same number. The old local `500` is gone.
+ */
+export { MAX_PARTY_COUNT };
 
 /**
  * Normalise a typed party-count field to the string shape the steppers store.

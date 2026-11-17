@@ -11,6 +11,7 @@
  *   · the copy is the board's, word for word.
  */
 import { partyCompositionLabel } from "./plan-vocabulary";
+import type { OccasionSwitchRow } from "./occasion-switches";
 import type { DraftAnswers } from "@/lib/plan-resume";
 import { exactOperatingMarket } from "@/lib/experiences-entry";
 
@@ -122,6 +123,8 @@ export function guestGateDescription(answersLine: string | null, gate: GuestGate
  * creation, `planTitle`), the full date range with its year once dates are confirmed, and the party when stated.
  */
 export function guestPlanBanner(input: {
+  /** R1: the plan's occasion ROW, so the summary reads the same inputs as the panel. */
+  occasion?: OccasionSwitchRow | null;
   title: string | null | undefined;
   startDate: string | null | undefined;
   endDate: string | null | undefined;
@@ -133,7 +136,7 @@ export function guestPlanBanner(input: {
   const dates = input.datesConfirmed ? guestDateRange(input.startDate, input.endDate) : null;
   const head = [title, dates].filter(Boolean).join(", ");
   // R4-4: the party as stated, from the ONE helper (adults null until Save ⇒ no party text, LD 33).
-  const partyText = partyCompositionLabel(input.adults, input.kids) || null;
+  const partyText = partyCompositionLabel(input.adults, input.kids, input.occasion ?? null) || null;
   const line = head && partyText ? `${head} and ${partyText}` : head || partyText;
   return line || null;
 }

@@ -94,7 +94,7 @@ import { dispatchBookingEvent } from "./automations/bookings/runtime";
 import { api } from "@shared/routes";
 // ONE derivation of the plan's party total, shared with the client (ledger
 // `2026-09-05-slip-events-first-render`; CLAUDE.md Locked Decision 33 / §18 rule 1).
-import { partyTotal } from "@shared/plan-vocabulary";
+import { partyTotal, MAX_PARTY_COUNT } from "@shared/plan-vocabulary";
 import { pendingPlanItemMarker } from "@shared/pending-plan-items";
 // Ledger 90 (FP-5, X1): the ONE booking-visibility predicate shared by every console surface —
 // see shared/booking-visibility.ts for why three tabs disagreed about one row.
@@ -9776,7 +9776,7 @@ ${bannedCopyPromptLine()}`;
 
       // 5. Party size: the client's trip context wins (validated), then the
       // user_experience guestCount resolved via slug, then contentMeta, then 2.
-      const bodyTravelers = Number.isInteger(req.body.travelers) && req.body.travelers >= 1 && req.body.travelers <= 500
+      const bodyTravelers = Number.isInteger(req.body.travelers) && req.body.travelers >= 1 && req.body.travelers <= MAX_PARTY_COUNT
         ? (req.body.travelers as number)
         : null;
       let resolvedUserExperienceId: string | null = userExperienceId || null;

@@ -1,3 +1,4 @@
+import { MAX_PARTY_COUNT } from "@shared/plan-vocabulary";
 import { Router } from "express";
 import { getUserId } from "../utils/auth";
 import { z } from "zod";
@@ -109,7 +110,7 @@ const tripContextSchema = z
     city: str(120).optional(),
     startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-    travelers: z.number().int().min(1).max(500).optional(),
+    travelers: z.number().int().min(1).max(MAX_PARTY_COUNT).optional(),
     // Ledger `2026-09-04-one-modal-many-doors` — the plan modal's step-4 pair, mirroring
     // `trips.adults` / `trips.kids`. `travelers` above stays the DERIVED total. Ordinary planning
     // content authored by the session user about their own draft: no amount, no identity, no rate,
@@ -117,7 +118,7 @@ const tripContextSchema = z
     // `.strip()` below drops anything unlisted, so an unnamed field does not persist at all.
     // `0` is the CLEARED marker in this blob (the client merges and cannot delete a key); every
     // reader turns it back into "not set" via `travelersForSave`, and the TRIP ROW is written NULL.
-    adults: z.number().int().min(0).max(500).optional(),
+    adults: z.number().int().min(0).max(MAX_PARTY_COUNT).optional(),
     kids: z.number().int().min(0).max(500).optional(),
     /**
      * Ledger `2026-09-04-step4-variants-fields` (CLAUDE.md Locked Decision 38, migration 284) —
