@@ -12,7 +12,7 @@ import {
   HANDOFF_WRITE_STATUSES,
   advisorAcceptRefusal,
   handoffBasisFromStatus,
-} from "../../services/advisor-accept-basis.service";
+} from "../../services/advisor-accept-basis.pure";
 
 describe("which handoff statuses are a paid basis", () => {
   it("B1: captured + accepted, or captured + delivered", () => {
