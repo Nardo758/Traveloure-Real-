@@ -364,6 +364,8 @@ function WaitlistGuestPlan() {
     datesConfirmed: plan.datesConfirmed,
     adults: plan.adults,
     kids: plan.kids,
+    // R1: the SAME row the guest party panel reads, so the banner and the panel cannot disagree.
+    occasion: partyOccasion,
   });
   // The day chip the map showed when Save was pressed (the slip's own map passes it).
   const onSave = (place: BrowsePlace, dayNumber: number) => {

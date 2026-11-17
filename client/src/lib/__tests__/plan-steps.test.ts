@@ -43,7 +43,8 @@
  * Pure unit: no DOM, no DB, no fetch.
  * Run: npx tsx --test client/src/lib/__tests__/plan-steps.test.ts
  */
-import { describe, it } from "node:test";
+import { partyCompositionLabel } from "../plan-vocabulary";
+import { describe, it, test } from "node:test";
 import assert from "node:assert/strict";
 import {
   PLAN_STEP_LABELS,
@@ -578,4 +579,22 @@ describe("Q1 — step 2's destination precedence: stated > home city > empty", (
       }
     }
   });
+});
+
+
+test("R1: the summary says attendees exactly when the panel asks ONE field", () => {
+  // The matrix is what stops the two drifting: the summary repeats the panel's RULE (partyNoun +
+  // guestListSetting) instead of calling partyFields, so a change to either must move both answers together.
+  for (const vocabulary of ["attendees", "guests", "travelers", null]) {
+    for (const defaultGuests of [true, false, null]) {
+      const occasion = { slug: "x", vocabulary, defaultGuests } as any;
+      const oneField = partyFields(occasion).length === 1;
+      const summary = partyCompositionLabel(20, null, occasion);
+      assert.equal(
+        summary.endsWith("attendees"),
+        oneField,
+        `vocabulary=${vocabulary} guests=${defaultGuests}: panel oneField=${oneField}, summary="${summary}"`,
+      );
+    }
+  }
 });

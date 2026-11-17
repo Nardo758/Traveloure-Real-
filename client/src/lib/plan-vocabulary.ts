@@ -287,19 +287,16 @@ export function partyLabelForOccasion(
 export function partyCompositionLabel(
   adults: number | null | undefined,
   kids: number | null | undefined,
-  vocabulary?: string | null,
+  occasion?: OccasionSwitchRow | null,
 ): string {
   if (typeof adults !== "number" || !Number.isFinite(adults) || adults <= 0) return "";
-  // R1 (Leon, Nov 16 2026): the summary follows the PANEL, not a vocabulary table of its own. The panel's
-  // fields come from `partyFields(occasion)`; when it asks ONE field, the summary uses that field's own word
-  // ("Attendees" -> "20 attendees" / "1 attendee"). A guest-list occasion keeps the Adults + Kids panel, so
-  // Wedding and Girls Trip still read "30 adults".
-  const fields = partyFields({ vocabulary: vocabulary ?? null } as any);
-  if (fields.length === 1 && fields[0]?.key === "adults") {
-    const label = fields[0].label ?? "Adults";
-    const one = label.replace(/s$/, "").toLowerCase();
-    return `${adults} ${adults === 1 ? one : label.toLowerCase()}`;
-  }
+  // R1 (Leon, Nov 16 2026): the summary reads the SAME inputs as the panel. The panel's rule is
+  // `partyNoun(vocabulary, guestListSetting(row))` inside `partyFields`; this calls those same two helpers
+  // from their own homes rather than importing `plan-steps` (which imports THIS module - that cycle made the
+  // player helper unreliable at load time and is why the first version of this fix failed its own tests).
+  // An agreement test in `plan-steps.test.ts` pins the two answers together for every vocabulary x guest list.
+  const noun = partyNoun(occasion?.vocabulary ?? null, guestListSetting(occasion));
+  if (noun === "attendees") return `${adults} ${adults === 1 ? "attendee" : "attendees"}`;
   const a = `${adults} ${adults === 1 ? "adult" : "adults"}`;
   if (typeof kids !== "number" || !Number.isFinite(kids) || kids <= 0) return a;
   return `${a}, ${kids} ${kids === 1 ? "child" : "children"}`;
@@ -312,6 +309,8 @@ export function planHeaderCountLabel(
   hasGuestList: boolean | null | undefined,
   occasionResolved: boolean,
   composition?: { adults?: number | null; kids?: number | null },
+  /** The resolved row, so the stated composition reads the panel's own inputs (R1). */
+  occasionRow?: OccasionSwitchRow | null,
 ): string {
   const invited =
     typeof invitedCount === "number" && Number.isFinite(invitedCount) && invitedCount > 0
@@ -326,7 +325,7 @@ export function planHeaderCountLabel(
     return party ? `${party} traveling · ${invitedPart}` : invitedPart;
   }
 
-  const stated = partyCompositionLabel(composition?.adults, composition?.kids, vocabulary);
+  const stated = partyCompositionLabel(composition?.adults, composition?.kids, occasionRow ?? null);
   if (stated) return stated;
   return partyLabelForOccasion(partyCount, vocabulary, hasGuestList, occasionResolved);
 }
@@ -355,7 +354,7 @@ export function planHeaderCountLabel(
  *    drift into two different maxima.
  */
 import { MAX_PARTY_COUNT } from "@shared/plan-vocabulary";
-import { partyFields } from "./plan-steps";
+import { guestListSetting, type OccasionSwitchRow } from "./occasion-switches";
 
 /**
  * The client's name for the ONE ceiling, re-exported from `@shared/plan-vocabulary` so the server reads the

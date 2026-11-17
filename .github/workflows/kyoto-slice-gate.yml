@@ -231,6 +231,17 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
           CI: 'true'
 
+      - name: Guest party summary (R1 - attendees at 1280 and 375)
+        if: ${{ !cancelled() }}
+        # R1: the spec sets waitlist mode for its own run (guest plans exist only there), so it runs in
+        # its own step. A Corporate Retreats plan saved with 20 reads "20 attendees" at both widths.
+        run: npx playwright test playwright/tests/journeys/j-guest-party-summary.spec.ts --project=chromium --workers=1 --reporter=list,json
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_NAME: playwright-json/guest-party-summary.json
+          BASE_URL: http://localhost:5000
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          CI: 'true'
+
       - name: Event window on plan entry (E8)
         if: ${{ !cancelled() }}
         # E8 (lane 7, variant A): the two day-offsets and the one calendar are the same range; "before" cannot
