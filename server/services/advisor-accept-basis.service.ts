@@ -8,13 +8,15 @@
  */
 import { sql } from "drizzle-orm";
 import { db } from "../db";
-import { handoffBasisFromStatus, type AdvisorAcceptBasis } from "./advisor-accept-basis.pure";
+import { PAID_REQUEST_OPEN_STATUSES, handoffBasisFromStatus, type AdvisorAcceptBasis } from "./advisor-accept-basis.pure";
 
 export {
   ADVISOR_UNPAID_REFUSAL,
   HANDOFF_WRITE_STATUSES,
+  PAID_REQUEST_OPEN_STATUSES,
   advisorAcceptRefusal,
   handoffBasisFromStatus,
+  paidRequestIsOpen,
 } from "./advisor-accept-basis.pure";
 export type { AdvisorAcceptBasis, AdvisorAcceptRefusalCode, HandoffWriteStatus } from "./advisor-accept-basis.pure";
 
@@ -45,7 +47,7 @@ export async function loadAdvisorAcceptBasis(
     WHERE trip_id = ${tripId}
       AND assigned_expert_id = ${expertId}
       AND handoff_kind IS NULL
-      AND status IN ('assigned', 'in_progress')
+      AND status IN (${sql.join(PAID_REQUEST_OPEN_STATUSES.map((v) => sql`${v}`), sql`, `)})
       AND refund_id IS NULL
       AND NULLIF(optimization_context->>'paymentIntentId', '') IS NOT NULL
     LIMIT 1

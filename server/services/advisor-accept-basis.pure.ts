@@ -19,6 +19,22 @@
  * `plan-work-access.service.ts:315` with `PLAN_WORK_GRANT_STATUS` `accepted` (`:113`).
  */
 
+/**
+ * THE FINISH MARKER ON A PAID REQUEST (addendum 5). A non-handoff request is CLOSED by `status='completed'`
+ * (+ `completed_at`), written by `completeExpertRequest` (`server/services/booking-actions.service.ts:65-70`,
+ * its atomic `WHERE status <> 'completed'` claim) and triggered by the expert's DELIVERED workspace transition
+ * (`server/routes/booking-actions.ts:1495-1500`, R7). Delivery happens BEFORE the traveler can approve, so by
+ * the time a no-handoff approval returns the advisor row to `pending`, the request is already `completed` ?
+ * which is why the paid basis must be OPEN and not merely paid. No column is added: this marker exists.
+ */
+export const PAID_REQUEST_OPEN_STATUSES = ["assigned", "in_progress"] as const;
+export type PaidRequestOpenStatus = (typeof PAID_REQUEST_OPEN_STATUSES)[number];
+
+/** Pure. Is this request still open work? `completed` (and anything else) is not. */
+export function paidRequestIsOpen(status: string | null | undefined): boolean {
+  return (PAID_REQUEST_OPEN_STATUSES as readonly string[]).includes(status ?? "");
+}
+
 /** The two statuses in which a handoff's fee is captured AND the work is still open. */
 export const HANDOFF_WRITE_STATUSES = ["accepted", "delivered"] as const;
 export type HandoffWriteStatus = (typeof HANDOFF_WRITE_STATUSES)[number];

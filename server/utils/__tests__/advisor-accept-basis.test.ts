@@ -10,8 +10,10 @@ import assert from "node:assert/strict";
 import {
   ADVISOR_UNPAID_REFUSAL,
   HANDOFF_WRITE_STATUSES,
+  PAID_REQUEST_OPEN_STATUSES,
   advisorAcceptRefusal,
   handoffBasisFromStatus,
+  paidRequestIsOpen,
 } from "../../services/advisor-accept-basis.pure";
 
 describe("which handoff statuses are a paid basis", () => {
@@ -54,5 +56,22 @@ describe("the refusal the route returns", () => {
   it("R3: re-accept after approval is refused at the predicate ? approved is not a basis", () => {
     // The handoff that was accepted, delivered and approved reads `approved`, so the lookup finds no basis.
     assert.equal(advisorAcceptRefusal(handoffBasisFromStatus("approved", true)), "advisor_unpaid");
+  });
+});
+
+describe("a paid request must be OPEN, not merely paid (addendum 5)", () => {
+  it("O1: the finish marker is `completed`, and it is not an open status", () => {
+    // completeExpertRequest sets status='completed' on delivery (booking-actions.service.ts:65-70), before the
+    // traveler can approve. A no-handoff approval therefore cannot revive a completed request.
+    assert.equal(paidRequestIsOpen("completed"), false);
+    assert.equal(paidRequestIsOpen("assigned"), true);
+    assert.equal(paidRequestIsOpen("in_progress"), true);
+  });
+
+  it("O2: nothing else counts as open either", () => {
+    for (const status of ["approved", "cancelled", "delivered", "unassigned", "refunded", "", null]) {
+      assert.equal(paidRequestIsOpen(status as any), false, `status ${status} must not be open`);
+    }
+    assert.deepEqual([...PAID_REQUEST_OPEN_STATUSES], ["assigned", "in_progress"]);
   });
 });
