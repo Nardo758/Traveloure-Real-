@@ -1,5 +1,5 @@
 /**
- * LANE A (brief 0) ? the plain accept needs a PAID BASIS, keyed on the (trip, expert) pair.
+ * LANE A (brief 0) — the plain accept needs a PAID BASIS, keyed on the (trip, expert) pair.
  *
  * These are the pure halves of the rule: which handoff statuses count, and what the refusal is. The SQL that
  * loads the basis is exercised by the DB lane; the predicate here is what the route calls, so a status that
@@ -42,7 +42,7 @@ describe("which handoff statuses are a paid basis", () => {
 });
 
 describe("the refusal the route returns", () => {
-  it("R1: no basis ? the named 409", () => {
+  it("R1: no basis — the named 409", () => {
     assert.equal(advisorAcceptRefusal(null), "advisor_unpaid");
     assert.equal(advisorAcceptRefusal(undefined), "advisor_unpaid");
     assert.equal(ADVISOR_UNPAID_REFUSAL.status, 409);
@@ -103,5 +103,22 @@ describe("addendum 4 — finished work is not unpaid work", () => {
     assert.equal(ADVISOR_FINISHED_REFUSAL.status, 409);
     assert.equal(ADVISOR_FINISHED_REFUSAL.code, "advisor_finished");
     assert.notEqual(ADVISOR_FINISHED_REFUSAL.message, ADVISOR_UNPAID_REFUSAL.message);
+  });
+});
+
+describe("the two refusals, character for character", () => {
+  // These are the exact sentences Leon must approve. A test on the literal is the only way a reword in code
+  // cannot drift from the wording he was shown; changing either means changing this test in the same commit.
+  it("W1: the unpaid sentence", () => {
+    assert.equal(
+      ADVISOR_UNPAID_REFUSAL.message,
+      "This plan isn't paid for yet, so you can't accept it. The traveler needs to send a plan request first.",
+    );
+  });
+  it("W2: the finished sentence", () => {
+    assert.equal(
+      ADVISOR_FINISHED_REFUSAL.message,
+      "This work is already finished, so there's nothing to accept. If the traveler wants more help, they can send a new plan request.",
+    );
   });
 });

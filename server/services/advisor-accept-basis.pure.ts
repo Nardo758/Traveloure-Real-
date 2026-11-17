@@ -44,7 +44,7 @@ export const ADVISOR_FINISHED_REFUSAL = {
   code: "advisor_finished",
   status: 409,
   message:
-    "This work is already finished, so there is nothing left to accept. If the traveler wants more help, they can send a new plan request.",
+    "This work is already finished, so there's nothing to accept. If the traveler wants more help, they can send a new plan request.",
 } as const;
 
 export type AdvisorFinishedRefusalCode = typeof ADVISOR_FINISHED_REFUSAL.code;
@@ -65,7 +65,7 @@ export const ADVISOR_UNPAID_REFUSAL = {
   code: "advisor_unpaid",
   status: 409,
   message:
-    "This expert's work on this plan isn't paid for yet, so it can't be accepted. Ask them to send a plan request instead.",
+    "This plan isn't paid for yet, so you can't accept it. The traveler needs to send a plan request first.",
 } as const;
 
 export type AdvisorAcceptRefusalCode = typeof ADVISOR_UNPAID_REFUSAL.code;

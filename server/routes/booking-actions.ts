@@ -1367,7 +1367,7 @@ router.post("/expert/assignments/:assignmentId/accept", isAuthenticated, async (
       }
     }
     // LANE A (brief 0): a plain accept reaches a WRITE status only with a PAID BASIS for this (trip, expert)
-    // pair ? a handoff whose fee is captured and whose work is open, or a non-handoff request carrying the
+    // pair — a handoff whose fee is captured and whose work is open, or a non-handoff request carrying the
     // verified PaymentIntent. Anything else is refused BY NAME before the transition, so the atomic
     // conditional below is untouched and nothing is written. Amendment 3: once approval returns the pen the
     // handoff is `approved`, which is not a basis, so a re-accept is refused here too.
