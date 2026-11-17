@@ -10,6 +10,8 @@
  *
  * ASCII only: the previous file picked up a mangled character in transit and the reviewer asked for ASCII in
  * new files until that is fixed.
+ *
+ * NOTE (round 3): this file is ASCII by review request until the editor's dash mangling is fixed.
  */
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
