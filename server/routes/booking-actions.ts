@@ -1362,6 +1362,23 @@ router.post("/expert/assignments/:assignmentId/accept", isAuthenticated, async (
         return res.json(refreshed);
       }
     }
+    // LANE A (brief 0): a plain accept reaches a WRITE status only with a PAID BASIS for this (trip, expert)
+    // pair ? a handoff whose fee is captured and whose work is open, or a non-handoff request carrying the
+    // verified PaymentIntent. Anything else is refused BY NAME before the transition, so the atomic
+    // conditional below is untouched and nothing is written. Amendment 3: once approval returns the pen the
+    // handoff is `approved`, which is not a basis, so a re-accept is refused here too.
+    {
+      const { loadAdvisorAcceptBasis, advisorAcceptRefusal, ADVISOR_UNPAID_REFUSAL } = await import(
+        "../services/advisor-accept-basis.service"
+      );
+      const basis = await loadAdvisorAcceptBasis(assignment.tripId, userId);
+      if (advisorAcceptRefusal(basis)) {
+        return res.status(ADVISOR_UNPAID_REFUSAL.status).json({
+          code: ADVISOR_UNPAID_REFUSAL.code,
+          message: ADVISOR_UNPAID_REFUSAL.message,
+        });
+      }
+    }
     const updated = await storage.acceptTripAssignment(assignmentId, userId);
     if (!updated) return res.status(409).json({ message: "Assignment is not pending (already accepted or rejected)" });
     res.json(updated);
@@ -1541,6 +1558,7 @@ router.post('/trips/:id/plan-review', isAuthenticated, async (req, res) => {
     // Step 7b (R323, R-s): a delivered HANDOFF on this plan is answered by the SAME decision — approve
     // pays the expert and returns the pen; request changes spends one of the two included rounds and
     // is refused once both are used (checked before the advisor row moves, so the two agree).
+    let handoffAnswered = false;
     {
       const { getTripHandoff, approveHandoff, requestHandoffChanges } = await import('../services/handoff.service');
       const h = await getTripHandoff(id);
@@ -1550,6 +1568,7 @@ router.post('/trips/:id/plan-review', isAuthenticated, async (req, res) => {
             ? await approveHandoff(h.id, 'traveler', userId)
             : await requestHandoffChanges(h.id, userId, note ?? null);
         if (!out.ok) return res.status(out.status).json({ error: out.message, code: out.code });
+        handoffAnswered = true;
       }
     }
 
@@ -1589,6 +1608,17 @@ router.post('/trips/:id/plan-review', isAuthenticated, async (req, res) => {
     if (!updated) {
       // Lost the race (a concurrent decision already moved this row off 'delivered').
       return res.status(409).json({ error: 'This trip has no delivered plan awaiting review' });
+    }
+
+    // LANE A amendment 4: approval returns the pen on EVERY path, not only the handoff's. This calls the
+    // SAME author `approveHandoff` calls (`returnPenFor`, exported for this), so the rule has one copy and
+    // the two paths cannot drift. Before this, an expert accepted on a path with no handoff kept a WRITE
+    // status after approval, which is how suggestions could still be filed post-approval.
+    if (decision === 'approve' && !handoffAnswered && updated.localExpertId) {
+      const { returnPenFor } = await import('../services/handoff.service');
+      await returnPenFor(id, updated.localExpertId).catch((err: unknown) =>
+        console.error('[PlanReview] pen return failed (non-fatal):', err),
+      );
     }
 
     // Reverse notification (item 14b): the expert learns the customer's decision without polling
