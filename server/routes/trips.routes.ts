@@ -1118,6 +1118,7 @@ router.post("/api/trips/:tripId/vendors/bulk-email", isAuthenticated, vendorBulk
       const userId = getReqUserId(req);
       const denied = await authorizeTripLogistics(
         req.params.tripId, userId, "POST /api/trips/:tripId/vendors/bulk-email",
+        { requireWriteAccess: true },
       );
       if (denied) return res.status(denied.status).json({ message: denied.message });
 
@@ -1628,7 +1629,7 @@ router.post("/api/trips/:tripId/anchors", isAuthenticated, async (req, res) => {
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const trip = await storage.getTrip(req.params.tripId);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
-      const denied = await authorizeTripLogistics(req.params.tripId, userId, `${req.method} ${req.path}`);
+      const denied = await authorizeTripLogistics(req.params.tripId, userId, `${req.method} ${req.path}`, { requireWriteAccess: true });
       if (denied) return res.status(denied.status).json({ message: denied.message });
 
       const body = { ...req.body, tripId: req.params.tripId };
@@ -1721,7 +1722,7 @@ router.put("/api/anchors/:id", isAuthenticated, async (req, res) => {
       // authenticated user — accepted as low-sensitivity (anchor ids carry no secret).
       const existing = await storage.getTemporalAnchorById(req.params.id);
       if (!existing) return res.status(404).json({ message: "Anchor not found" });
-      const denied = await authorizeTripLogistics(existing.tripId, userId, `${req.method} ${req.path}`);
+      const denied = await authorizeTripLogistics(existing.tripId, userId, `${req.method} ${req.path}`, { requireWriteAccess: true });
       if (denied) return res.status(denied.status).json({ message: denied.message });
       // Validate-then-mutate: coerce the datetime + reject tripId reassignment
       // (was: raw req.body passed straight to the update — an unvalidated contract gap).
@@ -1748,7 +1749,7 @@ router.delete("/api/anchors/:id", isAuthenticated, async (req, res) => {
       // authenticated user — accepted as low-sensitivity (anchor ids carry no secret).
       const existing = await storage.getTemporalAnchorById(req.params.id);
       if (!existing) return res.status(404).json({ message: "Anchor not found" });
-      const denied = await authorizeTripLogistics(existing.tripId, userId, `${req.method} ${req.path}`);
+      const denied = await authorizeTripLogistics(existing.tripId, userId, `${req.method} ${req.path}`, { requireWriteAccess: true });
       if (denied) return res.status(denied.status).json({ message: denied.message });
       await storage.deleteTemporalAnchor(req.params.id);
       res.status(204).send();
@@ -1783,7 +1784,7 @@ router.post("/api/trips/:tripId/day-boundaries", isAuthenticated, async (req, re
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const trip = await storage.getTrip(req.params.tripId);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
-      const denied = await authorizeTripLogistics(req.params.tripId, userId, `${req.method} ${req.path}`);
+      const denied = await authorizeTripLogistics(req.params.tripId, userId, `${req.method} ${req.path}`, { requireWriteAccess: true });
       if (denied) return res.status(denied.status).json({ message: denied.message });
 
       const input = insertDayBoundarySchema.parse({ ...req.body, tripId: req.params.tripId });
@@ -1806,7 +1807,8 @@ router.post("/api/trips/:tripId/validate-schedule", isAuthenticated, async (req,
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const trip = await storage.getTrip(req.params.tripId);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
-      const denied = await authorizeTripLogistics(req.params.tripId, userId, `${req.method} ${req.path}`);
+      // Computes conflicts from rows it reads; writes nothing (F1 Phase 0).
+      const denied = await authorizeTripLogistics(req.params.tripId, userId, `${req.method} ${req.path}`, { requireWriteAccess: false });
       if (denied) return res.status(denied.status).json({ message: denied.message });
 
       const anchors = await storage.getTemporalAnchors(req.params.tripId);
@@ -1858,7 +1860,8 @@ router.post("/api/trips/:tripId/anchors/:anchorId/impacts", isAuthenticated, asy
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const trip = await storage.getTrip(req.params.tripId);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
-      const denied = await authorizeTripLogistics(req.params.tripId, userId, `${req.method} ${req.path}`);
+      // Reads the anchor and the plan, returns the impacts; writes nothing (F1 Phase 0).
+      const denied = await authorizeTripLogistics(req.params.tripId, userId, `${req.method} ${req.path}`, { requireWriteAccess: false });
       if (denied) return res.status(denied.status).json({ message: denied.message });
 
       const { detectAnchorImpacts } = await import('../services/logistics-presets.service');
@@ -1878,7 +1881,8 @@ router.post("/api/trips/:tripId/anchor-suggestions", isAuthenticated, async (req
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const trip = await storage.getTrip(req.params.tripId);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
-      const denied = await authorizeTripLogistics(req.params.tripId, userId, `${req.method} ${req.path}`);
+      // No AI call and no write: reads the plan and returns suggestions (F1 Phase 0).
+      const denied = await authorizeTripLogistics(req.params.tripId, userId, `${req.method} ${req.path}`, { requireWriteAccess: false });
       if (denied) return res.status(denied.status).json({ message: denied.message });
 
       const { templateSlug } = req.body;

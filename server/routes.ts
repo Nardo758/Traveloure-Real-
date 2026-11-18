@@ -1781,6 +1781,7 @@ export async function registerRoutes(
           req.params.id,
           callerUserId,
           "POST /api/trips/:id/generate-itinerary",
+        { requireWriteAccess: true },
         );
         if (denied) return res.status(denied.status).json({ message: denied.message });
       }
@@ -14029,6 +14030,7 @@ ${bannedCopyPromptLine()}`;
       const userId = getUserId(req)!;
       const denied = await authorizeTripLogistics(
         req.params.tripId, userId, "POST /api/trips/:tripId/alerts",
+      { requireWriteAccess: true },
       );
       if (denied) return res.status(denied.status).json({ message: denied.message });
       const alert = await emergencyService.createAlert({

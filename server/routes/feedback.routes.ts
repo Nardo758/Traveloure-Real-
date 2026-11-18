@@ -25,13 +25,14 @@ const router = Router();
 const postBody = z.object({ moment: z.string().max(40), code: z.string().max(40), text: z.string().max(4000).optional().nullable() }).strict();
 const deleteBody = z.object({ moment: z.string().max(40) }).strict();
 
-async function gate(req: any, res: any): Promise<string | null> {
+async function gate(req: any, res: any, write = false): Promise<string | null> {
   const userId = getUserId(req);
   if (!userId) {
     res.status(401).json({ message: "Not authenticated" });
     return null;
   }
-  const denied = await authorizeTripLogistics(req.params.id, userId, `${req.method} ${req.path}`);
+  // Reads keep read access; the POST and DELETE callers pass `write` (F1 Phase 0).
+    const denied = await authorizeTripLogistics(req.params.id, userId, `${req.method} ${req.path}`, { requireWriteAccess: write });
   if (denied) {
     res.status(404).json({ message: "No such plan" });
     return null;
@@ -51,7 +52,7 @@ router.get("/api/plans/:id/feedback", isAuthenticated, async (req: any, res) => 
 });
 
 router.post("/api/plans/:id/feedback", isAuthenticated, async (req: any, res) => {
-  const userId = await gate(req, res);
+  const userId = await gate(req, res, true);
   if (!userId) return;
   const parsed = postBody.safeParse(req.body ?? {});
   if (!parsed.success) return res.status(400).json({ message: "Send a moment and a code" });
@@ -71,7 +72,7 @@ router.post("/api/plans/:id/feedback", isAuthenticated, async (req: any, res) =>
 });
 
 router.delete("/api/plans/:id/feedback", isAuthenticated, async (req: any, res) => {
-  const userId = await gate(req, res);
+  const userId = await gate(req, res, true);
   if (!userId) return;
   const parsed = deleteBody.safeParse(req.body ?? {});
   if (!parsed.success || !isFeedbackMoment(parsed.data.moment)) return res.status(400).json({ message: "Send a moment" });

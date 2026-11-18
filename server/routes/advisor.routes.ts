@@ -481,6 +481,7 @@ router.post("/api/trips/:tripId/advisor/narration", aiRateLimit, isAuthenticated
     const { tripId } = req.params;
     const denied = await authorizeTripLogistics(
       tripId, userId, "POST /api/trips/:tripId/advisor/narration",
+    { requireWriteAccess: true },
     );
     if (denied) return res.status(denied.status).json({ message: denied.message });
 
