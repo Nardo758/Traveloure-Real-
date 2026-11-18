@@ -37,6 +37,10 @@
  */
 const fs = require("fs");
 const path = require("path");
+// F12 (ledger `2026-11-18-f12-ci-guards-parse`): a real parser, because five hand-written rules could not see
+// a workflow GitHub rejects. `yaml` refuses DUPLICATE KEYS by default, which is the #2047 shape: two `env:`
+// keys in one step parsed to 29 jobs under a permissive loader and GitHub still created zero jobs.
+const YAML = require("yaml");
 
 const RULES = {
   R1: "step-without-command",
@@ -44,7 +48,74 @@ const RULES = {
   R3: "unquoted-colon",
   R4: "tab-indent",
   R5: "inconsistent-siblings",
+  // F12: what only a parser can see. R1/R2/R5 stay BESIDE these - they catch valid YAML GitHub still refuses.
+  P1: "parse-error",
+  P2: "no-jobs",
+  P3: "job-without-steps",
+  P4: "step-without-command-parsed",
 };
+
+/**
+ * Parse one workflow the way GitHub does, and check the things a parse makes knowable.
+ *
+ * P1 covers everything the text rules cannot: a key at the wrong indentation (#2046), duplicate keys (#2047),
+ * tabs, an unclosed quote. P2/P3/P4 are the zero-jobs class - a workflow that parses but yields nothing to run.
+ */
+function scanParsed(text, file = "(inline)") {
+  const findings = [];
+  const add = (line, rule, message) => findings.push({ file, line, rule, message });
+
+  let doc;
+  try {
+    doc = YAML.parseDocument(text, { uniqueKeys: true, prettyErrors: false, strict: true });
+  } catch (err) {
+    const line = (err && err.linePos && err.linePos[0] && err.linePos[0].line) || 1;
+    add(line, "P1", `YAML parse error: ${String((err && err.message) || err).split("\n")[0]}`);
+    return findings;
+  }
+  if (doc.errors && doc.errors.length > 0) {
+    for (const err of doc.errors) {
+      const line = (err.linePos && err.linePos[0] && err.linePos[0].line) || 1;
+      add(line, "P1", `YAML parse error: ${String(err.message).split("\n")[0]}`);
+    }
+    return findings;
+  }
+
+  let doc_js;
+  try {
+    doc_js = doc.toJS();
+  } catch (err) {
+    add(1, "P1", `YAML could not be read as data: ${String((err && err.message) || err)}`);
+    return findings;
+  }
+
+  const jobs = doc_js && typeof doc_js === "object" ? doc_js.jobs : undefined;
+  if (!jobs || typeof jobs !== "object" || Object.keys(jobs).length === 0) {
+    add(1, "P2", "no jobs: the workflow declares an empty or missing `jobs` map, so it can never report a check");
+    return findings;
+  }
+
+  for (const [name, job] of Object.entries(jobs)) {
+    if (!job || typeof job !== "object") {
+      add(1, "P3", `job \`${name}\` is not a mapping`);
+      continue;
+    }
+    const hasSteps = Array.isArray(job.steps) && job.steps.length > 0;
+    const hasUses = typeof job.uses === "string" && job.uses.length > 0;
+    if (!hasSteps && !hasUses) {
+      add(1, "P3", `job \`${name}\` has neither \`steps\` nor \`uses\``);
+      continue;
+    }
+    if (Array.isArray(job.steps)) {
+      job.steps.forEach((step, k) => {
+        const ok = step && typeof step === "object" &&
+          (typeof step.run === "string" || typeof step.uses === "string");
+        if (!ok) add(1, "P4", `job \`${name}\` step ${k + 1} has neither \`run\` nor \`uses\``);
+      });
+    }
+  }
+  return findings;
+}
 
 function indentOf(line) {
   const m = line.match(/^[ \t]*/);
@@ -308,6 +379,108 @@ const GOOD = {
   ].join("\n"),
 };
 
+
+// ---------------------------------------------------------------------------
+// F12 SELF-TESTS: the two shapes that produced zero-job runs, plus the structural rules a parse makes knowable.
+const PARSED_BAD = [
+  {
+    label: "#2046 ce8c661 - an `env:` two spaces short inside a step",
+    expect: ["P1"],
+    text: [
+      "name: x",
+      "on: [pull_request]",
+      "jobs:",
+      "  a:",
+      "    runs-on: ubuntu-latest",
+      "    steps:",
+      "      - if: ${{ !cancelled() }}",
+      "        name: one",
+      "        run: node a.cjs",
+      "      env:",
+      "        STRIPE_SECRET_KEY: sk_test_x",
+    ].join("\n"),
+  },
+  {
+    label: "#2047 171ce3a34 - two `env:` keys in one step",
+    expect: ["P1"],
+    text: [
+      "name: x",
+      "on: [pull_request]",
+      "jobs:",
+      "  a:",
+      "    runs-on: ubuntu-latest",
+      "    steps:",
+      "      - name: two",
+      "        run: node b.cjs",
+      "        env:",
+      "          A: '1'",
+      "        env:",
+      "          B: '2'",
+    ].join("\n"),
+  },
+  { label: "an empty jobs map", expect: ["P2"], text: "name: x\non: [pull_request]\njobs: {}\n" },
+  {
+    label: "a job with neither steps nor uses",
+    expect: ["P3"],
+    text: "name: x\non: [pull_request]\njobs:\n  a:\n    runs-on: ubuntu-latest\n",
+  },
+  {
+    label: "a step with neither run nor uses",
+    expect: ["P4"],
+    text: [
+      "name: x",
+      "on: [pull_request]",
+      "jobs:",
+      "  a:",
+      "    runs-on: ubuntu-latest",
+      "    steps:",
+      "      - name: only a name",
+    ].join("\n"),
+  },
+];
+
+const PARSED_GOOD = [
+  [
+    "a workflow with a step, a reusable job and a quoted colon",
+    [
+      "name: x",
+      "on: [pull_request]",
+      "jobs:",
+      "  a:",
+      "    runs-on: ubuntu-latest",
+      "    steps:",
+      "      - name: 'a: colon is fine quoted'",
+      "        run: node a.cjs",
+      "  b:",
+      "    uses: ./.github/workflows/other.yml",
+    ].join("\n"),
+  ],
+];
+
+function selfTestParsed(failedRef) {
+  for (const fixture of PARSED_BAD) {
+    const found = scanParsed(fixture.text);
+    const rules = [...new Set(found.map((f) => f.rule))].sort();
+    const want = [...fixture.expect].sort();
+    const same = rules.length === want.length && rules.every((r, k) => r === want[k]);
+    if (!same) {
+      failedRef.n += 1;
+      console.error(`  SELF-TEST FAIL (expected ${want.join(", ")}, got ${rules.join(", ") || "nothing"}): ${fixture.label}`);
+    } else {
+      console.log(`  ok  PARSE FAILS on ${want.join(", ")} - ${fixture.label}`);
+    }
+  }
+  for (const [label, text] of PARSED_GOOD) {
+    const found = scanParsed(text);
+    if (found.length > 0) {
+      failedRef.n += 1;
+      console.error(`  SELF-TEST FAIL (false positive): ${label} - ${found.map((f) => `${f.rule}@${f.line}`).join(", ")}`);
+    } else {
+      console.log(`  ok  PARSE PASSES as required - ${label}`);
+    }
+  }
+}
+
 function selfTest() {
   let failed = 0;
   for (const fixture of BAD) {
@@ -331,6 +504,10 @@ function selfTest() {
       console.log(`  ok  PASSES as required — ${label}`);
     }
   }
+  // F12: the parser's own cases, on the two shapes that produced zero-job runs.
+  const parsedFailed = { n: 0 };
+  selfTestParsed(parsedFailed);
+  failed += parsedFailed.n;
   if (failed) {
     console.error(`self-test: ${failed} case(s) failed`);
     process.exit(1);
@@ -351,7 +528,15 @@ function main() {
   }
   const files = fs.readdirSync(dir).filter((f) => f.endsWith(".yml") || f.endsWith(".yaml")).sort();
   const findings = [];
-  for (const f of files) findings.push(...scanWorkflow(fs.readFileSync(path.join(dir, f), "utf8"), `.github/workflows/${f}`));
+  for (const f of files) {
+    const text = fs.readFileSync(path.join(dir, f), "utf8");
+    const rel = `.github/workflows/${f}`;
+    // A file GitHub cannot parse yields no jobs, so the textual rules are only half the answer: the parse runs
+    // first, and when it fails its finding is the one that explains the missing contexts.
+    const parsed = scanParsed(text, rel);
+    findings.push(...parsed);
+    findings.push(...scanWorkflow(text, rel));
+  }
   const composites = fs.existsSync(compositeDir)
     ? fs.readdirSync(compositeDir, { withFileTypes: true }).filter((d) => d.isDirectory())
         .filter((d) => fs.existsSync(path.join(compositeDir, d.name, "action.yml"))).length

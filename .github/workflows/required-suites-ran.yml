@@ -124,7 +124,17 @@ jobs:
             # (2) A run exists ⇒ the suite RAN. Queued, in progress or done, it is going to report.
             if [ -n "$run_line" ]; then
               state=$(printf '%s' "$run_line" | cut -f2)
-              echo "$suite — run exists ($state); counts as ran"
+              run_id=$(printf '%s' "$run_line" | cut -f4)
+              # F12: a run with ZERO JOBS is not a run. GitHub creates the run and no jobs when the workflow
+              # does not parse (#2046 run 44181575719, #2047 run 44332764964), so the suite context is absent
+              # and "a run exists" was proof of nothing.
+              jobs_total=$(gh api "repos/$REPO/actions/runs/$run_id/jobs?per_page=1" --jq '.total_count' 2>/dev/null || echo "")
+              if [ -z "$jobs_total" ] || [ "$jobs_total" = "0" ]; then
+                echo "::error title=$suite::$suite - did not run: the workflow did not parse (run $run_id has zero jobs)"
+                fail=1
+              else
+                echo "$suite - run exists ($state, $jobs_total job(s)); counts as ran"
+              fi
               # A skipped CHECK under that run is judged by the one skip rule, so a skip that the change set
               # cannot explain is still caught.
               # Ordering by started_at was wrong: a QUEUED check has started_at null (the API sets it when a
