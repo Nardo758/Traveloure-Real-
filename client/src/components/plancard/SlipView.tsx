@@ -178,10 +178,11 @@ import {
   primaryAnchorItemId,
   useOptionSets,
 } from "./SlipOptionSets";
-import { AddLocalExpertButton, ExpertDoorCard, useExpertDoorState } from "./ExpertDoor";
+import { ExpertDoorCard, useExpertDoorState } from "./ExpertDoor";
 import { DayExpertHook } from "../plan/DayExpertHook";
 import { HandoffChooserHost } from "@/components/plan/HandoffChooser";
 import { HandoffBanner, HandoffFooter, SuggestionStrip, useExpertSuggestions, useHandoff } from "@/components/plan/HandoffBanner";
+import { SlipActionRow } from "@/components/plancard/SlipActionRow";
 import { handoffDayStat, handoffExpertLabel, handoffPenScope, openHandoffChooser } from "@/lib/handoff-client";
 import { useExpertAvailability } from "@/lib/expert-availability";
 import { EXPERT_DOOR_COPY, getHelpNoteShown } from "@/lib/expert-door-copy";
@@ -2471,11 +2472,9 @@ export function SlipView({
       <SlipHeader
         guest={guest}
         occasion={partyRow}
-        expertControl={
-          expertDoorLive && expertDoorState === "dismissed" ? (
-            <AddLocalExpertButton onOpen={() => setExpertDoorState("open")} />
-          ) : null
-        }
+        // UI brief 1 (commit 1): the expert DOOR moved to the one action row below, with the same rule
+        // (`expertDoorLive && expertDoorState === "dismissed"`). This slot stays empty.
+        expertControl={null}
         // R3-23: the ONE occasion label, from the plan's `occasion_slug` (null stays null, A-8).
         occasionName={(data.trip as any)?.occasionLabel ?? null}
         menu={
@@ -2704,6 +2703,12 @@ export function SlipView({
               the only view control a fresh plan has. Its "Nothing added yet" sentence moved with the
               counts into the state board, so the placeholder and the segments can still never both
               draw: `SlipStatusStrip` returns null when every count is zero (§13). */}
+          <SlipActionRow
+            showOptimize={isOwner}
+            showExpert={expertDoorLive && expertDoorState === "dismissed"}
+            onOptimize={() => optimizerSlot?.scrollIntoView({ behavior: "smooth", block: "center" })}
+            onExpert={() => openHandoffChooser({})}
+          />
           <div
             className="flex items-center justify-between gap-3 flex-wrap"
             data-testid="slip-viewbar"
