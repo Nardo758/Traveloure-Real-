@@ -139,9 +139,6 @@ function functionBody(src: string, declaration: string): string {
  */
 const ALLOWED_ADDITIONS = {
   "slip-action-change-booking": "PS-5: Change how you book, the finished state's way back into the chooser",
-  // Row P-7 (ledger `2026-11-02-p7-get-help-with-this-plan`): the drafted-plan Get-help note and its button.
-  "slip-get-help-note": "P-7: the drafted-plan Get-help note under the last day",
-  "slip-get-help-note-button": "P-7: the drafted-plan Get-help note under the last day",
   // TC-5a (ledger `2026-10-12-tc5a-trip-card-entry`): the owner's ⋯ menu entry to the Trip Card,
   // after Share link, on any plan that has ever been finalized (`tripCardHasFinal(finalVersion)`).
   "slip-menu-trip-card": "TC-5a — the owner's menu link to /trip/:id on an ever-finalized plan",
@@ -256,12 +253,17 @@ const ALLOWED_ADDITIONS = {
   // handler of their own; the one new control is "Send feedback", the SAME tap in a dialog.
   "slip-plan-menu": "Main-rail — the ⋯ plan menu: Share, PDF, calendar, Browse services, Send feedback (no handler of its own)",
   "slip-action-feedback": "Main-rail — 'Send feedback' (ruling 3: Feedback → ⋯ menu) opens the SAME post-draft FeedbackTap",
-  "slip-bottom-bar": "Main-rail — the sticky bottom bar: Ask AI (secondary) · Finalize (primary) (no handler of its own)",
-  "slip-bottom-bar-space": "Main-rail — the spacer that holds the fixed bar's height at the end of the column (no handler)",
   "slip-bar-finish": "Main-rail — the Finish controls in the bar layout (same testids, same mutations; no handler of its own)",
   "slip-plan-panel": "Main-rail — what the rail still says, inside the column: Expert, engagement, plan extras (no handler)",
   "slip-plan-extras": "Main-rail — organize-into-events and the budget, drawn bare (no handler of its own)",
   "slip-trip-pass-offer": "Main-rail — ruling 3: the Trip Pass offered under the optimizer card after the first run (no handler of its own)",
+  // UI brief 1 (page frame; Leon, Nov 18 2026): the frame's own controls. The two actions and their row
+  // live in `components/plancard/SlipActionRow.tsx`, OUTSIDE this inventory's file set (the same treatment
+  // as the optimizer card's hire door); only the tools row and the foot are in the inventoried files.
+
+  // Finalize in the foot. Containers carry no handler; the two actions keep theirs.
+  "slip-tools-row": "UI brief 1 ? the one tools row: ToolsTray and Ask AI (no handler of its own)",
+  "slip-foot": "UI brief 1 ? Finalize in flow at the foot, the bar's audience and view (no handler of its own)",
   "slip-days-expand-all": "Main board (rows) — Expand all / Collapse all: opens or closes every day through the same day-open state each day's own toggle writes",
 } as const;
 
@@ -330,6 +332,17 @@ const ALLOWED_REPOINTS: Record<string, { to: string[]; reason: string }> = {
 };
 
 const ALLOWED_REMOVALS = {
+  "slip-bottom-bar":
+    "UI brief 1 (Leon, Nov 18 2026) ? the fixed bottom bar. Ask moved to the one tools row and Finalize to the " +
+    "foot, both with the bar's audience; the fixed element (and its spacer) is gone, so nothing can cover the foot.",
+  "slip-bottom-bar-space":
+    "UI brief 1 ? the spacer that held the fixed bar's height. Nothing is fixed any more.",
+  "slip-get-help-note":
+    "UI brief 1 cleanup ? the drafted-plan note was a SECOND door to the same chooser in the same situation; the " +
+    "action row's expert button is the one general door. The predicate `getHelpNoteShown` still exists.",
+  "slip-get-help-note-button":
+    "UI brief 1 cleanup ? the note's button; see `slip-get-help-note`. It opened `openHandoffChooser({})`, which " +
+    "the action row now offers.",
   "trip-pass-covered-label":
     "Main-rail (ruling 3; ledger `2026-10-08-slip-main-rail`) — \"Included in your Trip Pass\" is no longer " +
     "a label under the card: it is the Optimize button's own state, \"Optimize · included · N runs left\" " +
@@ -452,13 +465,12 @@ describe("1 — one centered column; the rail's pieces each have one home", () =
     assert.doesNotMatch(railCode, /data-testid="slip-rail"/, "no rail container");
     assert.match(railCode, /data-testid="slip-plan-panel"/);
     assert.match(railCode, /data-testid="slip-plan-menu"/);
-    assert.match(railCode, /data-testid="slip-bottom-bar"/);
+    assert.match(viewCode, /data-testid="slip-tools-row"/, "the tools row now holds Ask");
     assert.match(viewCode, /<SlipPlanMenu\b/, "the header mounts the menu");
-    assert.match(viewCode, /<SlipBottomBar\b/, "the column ends in the bar");
-    // The bar's two actions: Ask AI secondary, Finalize primary — the existing components, bar layout.
-    const bar = functionBody(railCode, "export function SlipBottomBar(");
-    assert.match(bar, /<AskAiDrawer[^>]*layout="bar"/);
-    assert.match(bar, /<FinishCard[^>]*layout="bar"/);
+    assert.match(viewCode, /data-testid="slip-foot"/, "the column ends in the foot");
+        // UI brief 1: the two actions kept their components and layouts - Ask in the tools row, Finalize in the foot.
+    assert.match(viewCode, /<AskAiDrawer[^>]*layout="row"/);
+    assert.match(viewCode, /<FinishCard[^>]*layout="bar"/);
     // Share, PDF, calendar, Browse and feedback are menu entries with their old testids.
     const menu = functionBody(railCode, "export function SlipPlanMenu(");
     for (const id of ["slip-action-share", "slip-action-pdf", "slip-action-calendar", "slip-browse-services", "slip-action-feedback"]) {

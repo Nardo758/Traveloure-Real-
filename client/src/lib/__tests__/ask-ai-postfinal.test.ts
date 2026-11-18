@@ -119,7 +119,10 @@ test("M1 — the Trip Card rail mounts the SAME drawer and passes the PLAN's sta
 });
 
 test("M2 — the slip mount is UNTOUCHED: it states no final standing, so it claims none", () => {
-  const slipMount = SLIP_RAIL.match(/<AskAiDrawer[\s\S]*?\/>/);
+  // UI brief 1: the slip's Ask moved from the rail's bottom bar into SlipView's one tools row - same
+  // component, same props; only the mounting file changed.
+  const slipViewSrc = readFileSync(path.join(ROOT, "client/src/components/plancard/SlipView.tsx"), "utf8");
+  const slipMount = slipViewSrc.match(/<AskAiDrawer[\s\S]*?\/>/);
   assert.ok(slipMount, "the slip's mount disappeared");
   assert.doesNotMatch(slipMount![0], /surface=/);
   assert.doesNotMatch(slipMount![0], /planFinal=/);
