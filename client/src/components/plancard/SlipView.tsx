@@ -178,7 +178,7 @@ import {
   primaryAnchorItemId,
   useOptionSets,
 } from "./SlipOptionSets";
-import { ExpertDoorCard, useExpertDoorState } from "./ExpertDoor";
+import { useExpertDoorState } from "./ExpertDoor";
 import { DayExpertHook } from "../plan/DayExpertHook";
 import { HandoffChooserHost } from "@/components/plan/HandoffChooser";
 import { HandoffBanner, HandoffFooter, SuggestionStrip, useExpertSuggestions, useHandoff } from "@/components/plan/HandoffBanner";
@@ -2705,7 +2705,7 @@ export function SlipView({
               draw: `SlipStatusStrip` returns null when every count is zero (§13). */}
           <SlipActionRow
             showOptimize={isOwner}
-            showExpert={expertDoorLive && expertDoorState === "dismissed"}
+            showExpert={expertDoorLive}
             onOptimize={() => optimizerSlot?.scrollIntoView({ behavior: "smooth", block: "center" })}
             onExpert={() => openHandoffChooser({})}
           />
@@ -2853,19 +2853,9 @@ export function SlipView({
       {/* LD 45 (5), KEPT (decision-maker, Oct 8, 2026): the done-for-you engagement, inline in the
           Handoff banner's slot above the day cards — owner only, only when one exists. */}
       <CoordinationCard tripId={tripId} isOwner={isOwner} />
-      {expertDoorLive && expertDoorState === "open" && data.trip ? (
-        <ExpertDoorCard
-          trip={{
-            id: tripId,
-            destination: data.trip.destination ?? "",
-            startDate: data.trip.startDate as any,
-            endDate: data.trip.endDate as any,
-            travelers: (data.trip as any).travelers ?? null,
-          }}
-          itemCount={allActivities.length}
-          onDismiss={() => setExpertDoorState("dismissed")}
-        />
-      ) : null}
+      {/* UI brief 1 (commit 1b, Leon Nov 18): the "How much help do you want?" CARD no longer renders on the
+          plan page. Since Lane A its request cannot be accepted, so the page sends every expert control to the
+          paid chooser instead. ExpertDoor.tsx and the request route are untouched. */}
       {/* Surface step 3: the ONE AnchorPanel — empty before the draft, ranked after it (R-y may
           collapse it to one line). Gone once the stay is decided (a stay, a comparison, a Skip). */}
       {/* ── THE EMPTY BOARD (slip conformance, boards rev 15; ledger
@@ -3013,7 +3003,7 @@ export function SlipView({
                       hook={data.expertHook}
                       teaser={day?.localTeaser ?? null}
                       inSeason={day?.inSeason ?? null}
-                      onAsk={() => setExpertDoorState("open")}
+                      onAsk={() => openHandoffChooser({})}
                     />
                   ) : null
                 }
@@ -3129,7 +3119,7 @@ export function SlipView({
                         !optionSets.some((st) => st.itineraryItemId === a.id)
                       }
                       replacingStay={currentStay && currentStay.id !== a.id ? currentStay.name : null}
-                      onOpenExpertDoor={() => setExpertDoorState("open")}
+                      onOpenExpertDoor={() => openHandoffChooser({})}
                       onFindHost={openFindHost}
                       savedQuestion={data.savedQuestions?.items[a.id] ?? null}
                       savedCity={data.savedQuestions?.cityName ?? null}
