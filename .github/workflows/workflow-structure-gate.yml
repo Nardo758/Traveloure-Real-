@@ -10,8 +10,8 @@ name: Workflow Structure Gate
 # This gate runs from its OWN workflow on purpose: a check that lived inside build.yml could not catch a
 # broken build.yml, because its own step would never start.
 #
-# It is dependency-free (node only, no npm ci, no database) so it reports in seconds, beside the rest of
-# CI rather than after it. The script states its five limits and the rule-to-cause map in its header.
+# F12: it now needs node_modules (`yaml`), so it installs before it guards. The old promise of running ahead
+# of any install is gone on purpose - five hand-written rules could not see a file GitHub rejects. The script states its five limits and the rule-to-cause map in its header.
 #
 # DRAFTS: this gate reports on READY, not on drafts (`if: github.event.pull_request.draft == false` on the
 # job). A draft is work in progress and must not be blocked by a structural check; the gate appears the
@@ -39,6 +39,13 @@ jobs:
     runs-on: ${{ github.event.repository.private && vars.CI_RUNNER || 'ubuntu-26.04' }}
     steps:
       - uses: actions/checkout@v5.1.0
+      # F12: the guard requires `yaml` now, so node_modules must exist BEFORE it runs.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - name: Install the guard one dependency
+        run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Guard self-test — the four corruptions must fail, real constructs must pass
         run: node scripts/check-workflows-structural.cjs --self-test
       - name: Scan every workflow file
