@@ -2734,7 +2734,7 @@ export function SlipView({
                   aria-pressed={slipView === "list"}
                   data-testid="button-slip-view-list"
                 >
-                  Days
+                  Days only
                 </button>
                 {/* PLAN-1 Phase 3: Calendar holds its place on the toggle until its artifact lands (disabled; no view). */}
                 <button
@@ -2753,7 +2753,7 @@ export function SlipView({
                   aria-pressed={slipView === "map"}
                   data-testid="button-slip-view-map"
                 >
-                  {allActivities.length > 0 ? `Map · ${locatedActivities.length} of ${allActivities.length}` : "Map"}
+                  {allActivities.length > 0 ? `Map only · ${locatedActivities.length} of ${allActivities.length}` : "Map only"}
                 </button>
               </div>
               {slipView === "list" && daySlots.length > 1 ? (
