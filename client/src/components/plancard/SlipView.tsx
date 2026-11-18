@@ -178,14 +178,12 @@ import {
   primaryAnchorItemId,
   useOptionSets,
 } from "./SlipOptionSets";
-import { useExpertDoorState } from "./ExpertDoor";
 import { DayExpertHook } from "../plan/DayExpertHook";
 import { HandoffChooserHost } from "@/components/plan/HandoffChooser";
 import { HandoffBanner, HandoffFooter, SuggestionStrip, useExpertSuggestions, useHandoff } from "@/components/plan/HandoffBanner";
 import { SlipActionRow } from "@/components/plancard/SlipActionRow";
 import { handoffDayStat, handoffExpertLabel, handoffPenScope, openHandoffChooser } from "@/lib/handoff-client";
 import { useExpertAvailability } from "@/lib/expert-availability";
-import { EXPERT_DOOR_COPY, getHelpNoteShown } from "@/lib/expert-door-copy";
 import {
   resolveAddDayNumber,
   slipItemTools,
@@ -1706,7 +1704,6 @@ export function useSlipViewModel({
   // attached — the owner's own advisor read (above) is the one signal, never a second query. The
   // advisor read must have ANSWERED before the card shows, so a plan that has an expert never
   // flashes the question.
-  const [expertDoorState, setExpertDoorState] = useExpertDoorState(tripId);
   // (moved below the availability read, PLAN-2 lane 3 / D1)
   const transitions = data.recentTransitions ?? [];
   const hasOptimized = transitions.some((t) => t.eventType === "variant_applied");
@@ -2163,8 +2160,6 @@ export function useSlipViewModel({
     openPlanModal,
     hasAdvisor,
     slipExpertsAvailable,
-    expertDoorState,
-    setExpertDoorState,
     expertDoorLive,
     hasOptimized,
     isPrimary,
@@ -2277,8 +2272,6 @@ export function SlipView({
     openPlanModal,
     hasAdvisor,
     slipExpertsAvailable,
-    expertDoorState,
-    setExpertDoorState,
     expertDoorLive,
     hasOptimized,
     isPrimary,
@@ -2472,8 +2465,8 @@ export function SlipView({
       <SlipHeader
         guest={guest}
         occasion={partyRow}
-        // UI brief 1 (commit 1): the expert DOOR moved to the one action row below, with the same rule
-        // (`expertDoorLive && expertDoorState === "dismissed"`). This slot stays empty.
+        // UI brief 1: the expert DOOR is the one action row below; this slot stays empty. The old card and its
+        // dismissed-state rule are gone with the card.
         expertControl={null}
         // R3-23: the ONE occasion label, from the plan's `occasion_slug` (null stays null, A-8).
         occasionName={(data.trip as any)?.occasionLabel ?? null}
@@ -3199,23 +3192,9 @@ export function SlipView({
             );
           })}
       </div>
-      {/* Row P-7: one note under the last day — a drafted plan with no advisor, while an expert is live. */}
-      {getHelpNoteShown({ isOwner, itemCount: allActivities.length, expertsAvailable: slipExpertsAvailable, hasAdvisor }) ? (
-        <div
-          className="flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-[color:var(--slip-line)] bg-[color:var(--slip-card)] px-4 py-3"
-          data-testid="slip-get-help-note"
-        >
-          <span className="text-sm text-[color:var(--slip-ink)]">{EXPERT_DOOR_COPY.draftedNote}</span>
-          <button
-            type="button"
-            className="min-h-11 rounded-full border border-[color:var(--slip-line)] px-4 text-[13px] font-semibold text-[color:var(--slip-teal-ink)] hover:bg-[color:var(--slip-ground)]"
-            onClick={() => openHandoffChooser({})}
-            data-testid="slip-get-help-note-button"
-          >
-            {EXPERT_DOOR_COPY.getHelp}
-          </button>
-        </div>
-      ) : null}
+      {/* UI brief 1 (cleanup): the get-help NOTE is gone. It was a second door to the same chooser in the
+          same situation; the action row's expert button is the one general door. The per-day hook and the
+          stay row keep their contextual controls. */}
       {/* The Handoff board's footer — "When <name> is done" — under the days it is about. */}
       {isOwner ? <HandoffFooter tripId={tripId} isOwner={isOwner} /> : null}
       </>
