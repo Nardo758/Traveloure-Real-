@@ -366,6 +366,7 @@ router.post("/api/expert/trips/:tripId/vendors", isAuthenticated, async (req, re
       // unassigned expert cannot plant vendor records on another traveler's trip.
       const authError = await authorizeTripLogistics(
         req.params.tripId, userId, "POST /api/expert/trips/:tripId/vendors",
+      { requireWriteAccess: true },
       );
       if (authError) return res.status(authError.status).json({ message: authError.message });
       // The admitted fields ARE the table's own columns, as a PICK of its insert schema (§19
@@ -419,6 +420,7 @@ router.put("/api/expert/vendors/:vendorId", isAuthenticated, async (req, res) =>
       if (!vendorTripId) return res.status(404).json({ message: "Vendor not found" });
       const authError = await authorizeTripLogistics(
         vendorTripId, userId, "PUT /api/expert/vendors/:vendorId",
+      { requireWriteAccess: true },
       );
       if (authError) return res.status(authError.status).json({ message: authError.message });
       const vendorUpdateInput = z.object({
@@ -458,6 +460,7 @@ router.delete("/api/expert/vendors/:vendorId", isAuthenticated, async (req, res)
       if (vendorTripId) {
         const authError = await authorizeTripLogistics(
           vendorTripId, userId, "DELETE /api/expert/vendors/:vendorId",
+        { requireWriteAccess: true },
         );
         if (authError) return res.status(authError.status).json({ message: authError.message });
         await storage.deleteVendorCoordination(req.params.vendorId);
