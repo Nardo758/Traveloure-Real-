@@ -1943,6 +1943,22 @@ jobs:
       - if: ${{ !cancelled() }}
         name: Migration 289 category_key repair
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/category-key-repair.db.test.ts
+      # LANE A (brief 0) - the paid-basis guard's seeded proofs: a captured handoff is a basis, a
+      # proposed one is not, a forged PaymentIntent without its ledger row is unpaid, and an approved
+      # or completed row is finished.
+      - if: ${{ !cancelled() }}
+        name: Advisor accept basis (LANE A - paid and open)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/advisor-accept-basis.db.test.ts
+        env:
+          STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+      # LANE A - the BEHAVIOURAL proofs through the handlers: approval returns the pen with no handoff,
+      # a re-accept is refused as finished at the route, and an admin assignment / concierge accept still
+      # reach their write status with the guard in place.
+      - if: ${{ !cancelled() }}
+        name: Advisor accept behaviour (LANE A - approval, re-accept, direct rails)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/advisor-accept-behaviour.db.test.ts
+        env:
+          STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
       # ── funnel-share-token-purge ────────────────────────────────────
       - name: "── funnel-share-token-purge (ledger 2026-09-27-funnel-share-token-purged — migration 326)"
         if: ${{ !cancelled() }}

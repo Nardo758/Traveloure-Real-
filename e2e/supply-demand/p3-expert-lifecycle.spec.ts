@@ -164,6 +164,16 @@ test('L1: expert lifecycle — hire → accept → suggest ×2 → reject/approv
   });
 
   const d2 = await dbStep(J, '04', 'accept: advisor status', advisorSql, [tripId, expertId]);
+  // LANE A: the hire above is a read-only invite, so a plain accept now needs a PAID BASIS for the pair. CI's
+  // Stripe stub cannot authorize the chooser's hold, so the captured handoff that stands behind a legitimate
+  // accept is SEEDED here (the paid door itself is proven at the service seam, handoff-lifecycle.db.test.ts).
+  const ownerRow = await q(`SELECT user_id FROM trips WHERE id = $1`, [tripId]);
+  await q(
+    `INSERT INTO expert_requests (id, user_id, trip_id, destination_city, request_type, status,
+       assigned_expert_id, handoff_kind, captured_at, payment_intent_id)
+     VALUES (gen_random_uuid(), $1, $2, 'Kyoto', 'plan_help', 'accepted', $3, 'polish', NOW(), $4)`,
+    [ownerRow[0]?.user_id, tripId, expertId, `pi_seeded_p3_${String(tripId).slice(0, 8)}`],
+  );
   await page.goto('/expert/inbox');
   await settle(page, 1000);
   await (await must(page, `button-accept-assignment-${tripId}`, '04')).click();

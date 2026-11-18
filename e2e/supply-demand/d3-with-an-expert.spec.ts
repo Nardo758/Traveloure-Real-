@@ -201,9 +201,54 @@ test('D3: traveler messages, hires and gets a suggestion from Expert E', async (
   // the same trip.assignment_id). Confirmed live: inbox.tsx AssignmentsSection ~1449.
   const acceptBtn = testid(page, `button-accept-${tripId}`);
   const acceptVisible = await appears(acceptBtn, 8000);
+
+  // (a) THE UNPAID INVITE MUST BE REFUSED BY NAME. The hire above is a read-only invite (Leon, Nov 17: it is
+  // never accepted through the plain accept), so pressing Accept must answer 409 `advisor_unpaid` and leave the
+  // row `pending`. Watch the response, then press, then read the row.
+  const refused = { status: 0, code: null as string | null };
+  page.on('response', async (res) => {
+    if (!res.url().includes('/expert/assignments/') || !res.url().includes('/accept')) return;
+    refused.status = res.status();
+    const body = await res.json().catch(() => null);
+    refused.code = (body as any)?.code ?? null;
+  });
   if (acceptVisible) {
     await acceptBtn.click().catch(() => {});
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(1500);
+  }
+  const rowAfterRefusal = expertUser?.id
+    ? await q(`SELECT status FROM trip_expert_advisors WHERE trip_id = $1 AND local_expert_id = $2`, [tripId, expertUser.id])
+    : [];
+  fileFinding({
+    journey: 'D3',
+    step: 'assignment:accept-refused-unpaid',
+    class: refused.status === 409 && refused.code === 'advisor_unpaid' ? 'BEHAVIOURAL' : 'SPEC_DIVERGENCE',
+    severity: refused.status === 409 && refused.code === 'advisor_unpaid' ? 'P3' : 'P1',
+    known: null,
+    title: `the unpaid invite's accept answered ${refused.status} code=${refused.code ?? 'none'}, row ${rowAfterRefusal[0]?.status ?? 'absent'}`,
+    expected:
+      'Basis guard (LANE A): an invite hired through POST /api/trips/:tripId/advisors has no paid basis, so the ' +
+      'plain accept answers 409 advisor_unpaid and trip_expert_advisors stays pending.',
+    actual: `status=${refused.status}, code=${refused.code ?? 'none'}, row=${rowAfterRefusal[0]?.status ?? 'absent'}`,
+    where: 'server/routes/booking-actions.ts (accept route, the guard before storage.acceptTripAssignment)',
+    evidence: { shot: 'shots/D3-06c-after-accept-assignment.png' },
+    behavioural: true,
+  });
+
+  // (b) THE PAID BASIS IS SEEDED HERE. CI's Stripe stub cannot authorize the chooser's hold (see the hire
+  // comment above), so the captured handoff that stands behind a legitimate accept is written as a fixture:
+  // a captured, accepted handoff for THIS (trip, expert) pair. The paid door itself is proven at the service
+  // seam (server/__tests__/handoff-lifecycle.db.test.ts), never by this journey.
+  const ownerRow = await q(`SELECT user_id FROM trips WHERE id = $1`, [tripId]);
+  await q(
+    `INSERT INTO expert_requests (id, user_id, trip_id, destination_city, request_type, status,
+       assigned_expert_id, handoff_kind, captured_at, payment_intent_id)
+     VALUES (gen_random_uuid(), $1, $2, 'Kyoto', 'plan_help', 'accepted', $3, 'polish', NOW(), $4)`,
+    [ownerRow[0]?.user_id, tripId, expertUser?.id, `pi_seeded_d3_${tripId.slice(0, 8)}`],
+  );
+  if (acceptVisible) {
+    await acceptBtn.click().catch(() => {});
+    await page.waitForTimeout(1500);
   }
   await shot(page, 'D3', '06c', 'after-accept-assignment');
   const advisorRowAfterAccept = expertUser?.id

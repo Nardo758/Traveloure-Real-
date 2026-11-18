@@ -682,16 +682,28 @@ export async function approveHandoff(requestId: string, by: "traveler" | "auto",
   return { ok: true, request: row };
 }
 
-/** The pen goes back: scoped items to `in_planning`, the advisor row to read-only `pending`. */
-async function returnPen(row: HandoffRow): Promise<void> {
-  if (!row.tripId || !row.assignedExpertId) return;
-  await supersedeOpenSuggestions(row.tripId, row.assignedExpertId);
-  await flipScope(row.tripId, scopeIds(row), "with_expert", "in_planning", "traveler", row.userId ?? "system");
+/**
+ * The pen goes back: the advisor row to read-only `pending`, the expert's open suggestions superseded.
+ *
+ * EXPORTED because approval must return the pen on paths that never had a handoff (LANE A amendment 4).
+ * The plan-review handler calls THIS rather than carrying a second copy of the rule; scoped-item flipping
+ * stays in `returnPen` below, which is the only caller holding the handoff's own scope ids.
+ */
+export async function returnPenFor(tripId: string, expertId: string): Promise<void> {
+  if (!tripId || !expertId) return;
+  await supersedeOpenSuggestions(tripId, expertId);
   // On-trip support keeps the expert able to READ the plan (`pending` is §12 read-only either way).
   await db.execute(sql`
     UPDATE trip_expert_advisors SET status = 'pending'
-    WHERE trip_id = ${row.tripId} AND local_expert_id = ${row.assignedExpertId} AND status IN ('accepted', 'assigned')
+    WHERE trip_id = ${tripId} AND local_expert_id = ${expertId} AND status IN ('accepted', 'assigned')
   `);
+}
+
+/** The pen goes back: scoped items to `in_planning`, the advisor row to read-only `pending`. */
+async function returnPen(row: HandoffRow): Promise<void> {
+  if (!row.tripId || !row.assignedExpertId) return;
+  await flipScope(row.tripId, scopeIds(row), "with_expert", "in_planning", "traveler", row.userId ?? "system");
+  await returnPenFor(row.tripId, row.assignedExpertId);
 }
 
 /** Request changes (R-s): two rounds included; a third is a new ask. */
