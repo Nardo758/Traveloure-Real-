@@ -61,6 +61,13 @@ const RULES = {
  * P1 covers everything the text rules cannot: a key at the wrong indentation (#2046), duplicate keys (#2047),
  * tabs, an unclosed quote. P2/P3/P4 are the zero-jobs class - a workflow that parses but yields nothing to run.
  */
+/** The parser reports an offset, not a line (`prettyErrors: false` leaves `linePos` undefined). */
+function lineFromPos(text, pos) {
+  const at = Array.isArray(pos) ? pos[0] : typeof pos === "number" ? pos : null;
+  if (at === null || at < 0) return 1;
+  return text.slice(0, at).split("\n").length;
+}
+
 function scanParsed(text, file = "(inline)") {
   const findings = [];
   const add = (line, rule, message) => findings.push({ file, line, rule, message });
@@ -69,13 +76,13 @@ function scanParsed(text, file = "(inline)") {
   try {
     doc = YAML.parseDocument(text, { uniqueKeys: true, prettyErrors: false, strict: true });
   } catch (err) {
-    const line = (err && err.linePos && err.linePos[0] && err.linePos[0].line) || 1;
+    const line = lineFromPos(text, err && err.pos);
     add(line, "P1", `YAML parse error: ${String((err && err.message) || err).split("\n")[0]}`);
     return findings;
   }
   if (doc.errors && doc.errors.length > 0) {
     for (const err of doc.errors) {
-      const line = (err.linePos && err.linePos[0] && err.linePos[0].line) || 1;
+      const line = lineFromPos(text, err.pos);
       add(line, "P1", `YAML parse error: ${String(err.message).split("\n")[0]}`);
     }
     return findings;
@@ -386,6 +393,7 @@ const PARSED_BAD = [
   {
     label: "#2046 ce8c661 - an `env:` two spaces short inside a step",
     expect: ["P1"],
+    badLine: 10,
     text: [
       "name: x",
       "on: [pull_request]",
@@ -403,6 +411,7 @@ const PARSED_BAD = [
   {
     label: "#2047 171ce3a34 - two `env:` keys in one step",
     expect: ["P1"],
+    badLine: 11,
     text: [
       "name: x",
       "on: [pull_request]",
@@ -466,8 +475,12 @@ function selfTestParsed(failedRef) {
     if (!same) {
       failedRef.n += 1;
       console.error(`  SELF-TEST FAIL (expected ${want.join(", ")}, got ${rules.join(", ") || "nothing"}): ${fixture.label}`);
+    } else if (fixture.badLine && found[0].line !== fixture.badLine) {
+      failedRef.n += 1;
+      console.error(`  SELF-TEST FAIL (named line ${found[0].line}, expected ${fixture.badLine}): ${fixture.label}`);
     } else {
-      console.log(`  ok  PARSE FAILS on ${want.join(", ")} - ${fixture.label}`);
+      const where = fixture.badLine ? ` at line ${found[0].line}` : "";
+      console.log(`  ok  PARSE FAILS on ${want.join(", ")}${where} - ${fixture.label}`);
     }
   }
   for (const [label, text] of PARSED_GOOD) {

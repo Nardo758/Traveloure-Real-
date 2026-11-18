@@ -125,16 +125,31 @@ jobs:
             if [ -n "$run_line" ]; then
               state=$(printf '%s' "$run_line" | cut -f2)
               run_id=$(printf '%s' "$run_line" | cut -f4)
-              # F12: a run with ZERO JOBS is not a run. GitHub creates the run and no jobs when the workflow
-              # does not parse (#2046 run 44181575719, #2047 run 44332764964), so the suite context is absent
-              # and "a run exists" was proof of nothing.
+              # F12: ZERO JOBS MEANS DIFFERENT THINGS AT DIFFERENT MOMENTS. GitHub creates the run first and
+              # its jobs when a runner picks them up, so a fresh head legitimately shows zero jobs. The
+              # decision therefore lives in ONE tested place - `scripts/ci/required-suite-verdict.cjs
+              # --self-test` - and a COMPLETED run with zero jobs is the only "did not parse" answer.
               jobs_total=$(gh api "repos/$REPO/actions/runs/$run_id/jobs?per_page=1" --jq '.total_count' 2>/dev/null || echo "")
-              if [ -z "$jobs_total" ] || [ "$jobs_total" = "0" ]; then
-                echo "::error title=$suite::$suite - did not run: the workflow did not parse (run $run_id has zero jobs)"
-                fail=1
-              else
-                echo "$suite - run exists ($state, $jobs_total job(s)); counts as ran"
-              fi
+              verdict=$(node scripts/ci/required-suite-verdict.cjs --status "$state" --jobs "$jobs_total" || true)
+              for attempt in 1 2 3; do
+                [ "$verdict" = "pending" ] || break
+                sleep 10
+                state=$(gh api "repos/$REPO/actions/runs/$run_id" --jq '.status' 2>/dev/null || echo "")
+                jobs_total=$(gh api "repos/$REPO/actions/runs/$run_id/jobs?per_page=1" --jq '.total_count' 2>/dev/null || echo "")
+                verdict=$(node scripts/ci/required-suite-verdict.cjs --status "$state" --jobs "$jobs_total" || true)
+              done
+              case "$verdict" in
+                ran) echo "$suite - run exists ($state, $jobs_total job(s)); counts as ran" ;;
+                pending) echo "$suite - run exists ($state, no job picked up yet); still starting, not judged" ;;
+                lookup-failed)
+                  echo "::error title=$suite::$suite - could not read the jobs for run $run_id; the lookup failed and this guard fails CLOSED (an unreadable signal is never a pass)"
+                  fail=1
+                  ;;
+                *)
+                  echo "::error title=$suite::$suite - did not run: the workflow did not parse (run $run_id completed with zero jobs)"
+                  fail=1
+                  ;;
+              esac
               # A skipped CHECK under that run is judged by the one skip rule, so a skip that the change set
               # cannot explain is still caught.
               # Ordering by started_at was wrong: a QUEUED check has started_at null (the API sets it when a
