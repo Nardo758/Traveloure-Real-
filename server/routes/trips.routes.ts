@@ -1118,7 +1118,7 @@ router.post("/api/trips/:tripId/vendors/bulk-email", isAuthenticated, vendorBulk
       const userId = getReqUserId(req);
       const denied = await authorizeTripLogistics(
         req.params.tripId, userId, "POST /api/trips/:tripId/vendors/bulk-email",
-      { requireWriteAccess: true },
+        { requireWriteAccess: true },
       );
       if (denied) return res.status(denied.status).json({ message: denied.message });
 

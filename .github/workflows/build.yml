@@ -1957,6 +1957,13 @@ jobs:
       - if: ${{ !cancelled() }}
         name: Advisor accept behaviour (LANE A - approval, re-accept, direct rails)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/advisor-accept-behaviour.db.test.ts
+      # F1 - the route layer: a pending advisor is refused on every write route that mounts alone, an
+      # accepted advisor and the owner are admitted, and no row changes on a refusal.
+      - if: ${{ !cancelled() }}
+        name: F1 pending-advisor write routes
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/f1-route-writes.db.test.ts
+        env:
+          STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
         env:
           STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
       # ── funnel-share-token-purge ────────────────────────────────────
