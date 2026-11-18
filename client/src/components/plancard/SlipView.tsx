@@ -2568,50 +2568,53 @@ export function SlipView({
               onCancel={() => setTrayChip(null)}
             />
           ) : null}
-          {isOwner && data.trip && slipView === "list" ? (
-            /* UI brief 1 (commit 2): ONE tools row. Ask mounts here with a layout-only row variant; the
-               fixed bottom bar still exists in this commit and still carries its own Ask (commit 3 removes it). */
+          {/* UI brief 1 (commit 2b, review): the row is NOT inside the owner-and-list gate any more. Ask keeps
+              the bar audience (isOwner || isExpertViewer, `SlipRail.tsx:1684`) and shows in BOTH views; ToolsTray
+              keeps its own owner-and-list gate INSIDE the row. */}
+          {(isOwner || isExpertViewer) && data.trip ? (
             <div className="flex flex-wrap items-center gap-2" data-testid="slip-tools-row">
-            <ToolsTray
-              tripId={tripId}
-              group={experienceGroup}
-              occasionSlug={occasion?.slug ?? null}
-              planEvents={planEvents}
-              isHidden={occasionIsHidden}
-              /* B-11 (ruled 2026-11-09): the party sheet's roster, owner-only. The CALLER owns the
-                 gate, so the tray stays a tool registry; a guest plan passes nothing and the sheet
-                 draws today's count view with no names and no controls. */
-              partyRoster={isOwner && data.trip ? <SlipPartyRoster trip={data.trip} tripId={tripId} isOwner={isOwner} /> : null}
-              whereToStay={
-                anchorSurface.trayChooser
-                  ? renderAnchorPanel("chooser")
-                  : anchorSurface.trayChange
-                    ? renderAnchorPanel("change")
-                    // B-9 (ruled 2026-11-09): the owner's lodging CTA says the approved words —
-                    // "Compare places to stay" (Wording approved — Leon). Owner-only by construction:
-                    // this tray is inside the `isOwner` gate and the option-set write is owner-gated
-                    // server-side too. A guest never sees it; their row is Browse on the Hotels tab.
-                    : <SlipAnchorCompareButton tripId={tripId} label="Compare places to stay" />
-              }
-              trip={{
-                destination: data.trip.destination ?? null,
-                startDate: (data.trip.startDate as any) ?? null,
-                endDate: (data.trip.endDate as any) ?? null,
-              }}
-              openTool={openTool}
-              onOpenToolChange={setOpenTool}
-              flags={healthFlags}
-              doneTools={doneTools}
-              zoneLine={zoneLine}
-              facts={{
-                datesConfirmed: (data.trip as any)?.datesConfirmed === true,
-                travelers: (data.trip as any)?.travelers ?? null,
-                stops: allActivities.length,
-              }}
-              onNeedDates={() => setTrayChip("dates")}
-              onNeedParty={askParty ? () => setTrayChip("who") : undefined}
-            />
-                <AskAiDrawer tripId={tripId} isOwner={isOwner} isExpertViewer={isExpertViewer} aiAction={aiAction} layout="row" />
+              {isOwner && slipView === "list" ? (
+              <ToolsTray
+                tripId={tripId}
+                group={experienceGroup}
+                occasionSlug={occasion?.slug ?? null}
+                planEvents={planEvents}
+                isHidden={occasionIsHidden}
+                /* B-11 (ruled 2026-11-09): the party sheet's roster, owner-only. The CALLER owns the
+                   gate, so the tray stays a tool registry; a guest plan passes nothing and the sheet
+                   draws today's count view with no names and no controls. */
+                partyRoster={isOwner && data.trip ? <SlipPartyRoster trip={data.trip} tripId={tripId} isOwner={isOwner} /> : null}
+                whereToStay={
+                  anchorSurface.trayChooser
+                    ? renderAnchorPanel("chooser")
+                    : anchorSurface.trayChange
+                      ? renderAnchorPanel("change")
+                      // B-9 (ruled 2026-11-09): the owner's lodging CTA says the approved words —
+                      // "Compare places to stay" (Wording approved — Leon). Owner-only by construction:
+                      // this tray is inside the `isOwner` gate and the option-set write is owner-gated
+                      // server-side too. A guest never sees it; their row is Browse on the Hotels tab.
+                      : <SlipAnchorCompareButton tripId={tripId} label="Compare places to stay" />
+                }
+                trip={{
+                  destination: data.trip.destination ?? null,
+                  startDate: (data.trip.startDate as any) ?? null,
+                  endDate: (data.trip.endDate as any) ?? null,
+                }}
+                openTool={openTool}
+                onOpenToolChange={setOpenTool}
+                flags={healthFlags}
+                doneTools={doneTools}
+                zoneLine={zoneLine}
+                facts={{
+                  datesConfirmed: (data.trip as any)?.datesConfirmed === true,
+                  travelers: (data.trip as any)?.travelers ?? null,
+                  stops: allActivities.length,
+                }}
+                onNeedDates={() => setTrayChip("dates")}
+                onNeedParty={askParty ? () => setTrayChip("who") : undefined}
+              />
+              ) : null}
+              <AskAiDrawer tripId={tripId} isOwner={isOwner} isExpertViewer={isExpertViewer} aiAction={aiAction} layout="row" />
             </div>
           ) : null}
           {/* Smoke 9 S9-4: the optimizer LEADS the page (§8) — directly under the tools tray at every
