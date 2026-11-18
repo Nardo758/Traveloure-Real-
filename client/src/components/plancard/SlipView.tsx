@@ -2571,7 +2571,10 @@ export function SlipView({
           {/* UI brief 1 (commit 2b, review): the row is NOT inside the owner-and-list gate any more. Ask keeps
               the bar audience (isOwner || isExpertViewer, `SlipRail.tsx:1684`) and shows in BOTH views; ToolsTray
               keeps its own owner-and-list gate INSIDE the row. */}
-          {(isOwner || isExpertViewer) && data.trip ? (
+          {/* UI brief 1 (commit 3b, review): Ask takes the bar's EXACT audience - owner or expert viewer AND
+              `slipView !== "map"` (the bar's mount gate on main, `SlipView.tsx:3261`). Ask did not show in the
+              map before this PR and does not now. Layout only. */}
+          {(isOwner || isExpertViewer) && data.trip && slipView !== "map" ? (
             <div className="flex flex-wrap items-center gap-2" data-testid="slip-tools-row">
               {isOwner && slipView === "list" ? (
               <ToolsTray
