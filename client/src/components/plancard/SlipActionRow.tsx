@@ -9,36 +9,35 @@
  * door uses - so nothing about what the door DOES changes. Optimize scrolls to the existing optimizer card
  * (the rail still portals it into the slot): this commit moves layout, not behaviour.
  */
-import { useQuery } from "@tanstack/react-query";
+import { optimizeBoardCtaLabel } from "@/components/plan/OptimizerLead";
+import type { OptimizationFeeQuote } from "@/lib/optimization-preview";
 
-/** "Optimize - $5.99" from the server's cents; the plain label while the price is unknown. Never a typed number. */
-export function optimizeActionLabel(priceCents: number | null | undefined, currency: string | null | undefined): string {
-  if (typeof priceCents !== "number" || !Number.isFinite(priceCents) || priceCents < 0) return "Optimize";
-  try {
-    const money = new Intl.NumberFormat(undefined, { style: "currency", currency: currency || "USD" }).format(priceCents / 100);
-    return `Optimize \u00b7 ${money}`;
-  } catch {
-    return "Optimize";
-  }
-}
-
-function useOptimizeActionLabel(): string {
-  const { data } = useQuery<{ optimizerRunDisplay?: { priceCents?: number; currency?: string } }>({
-    queryKey: ["/api/pricing"],
-    staleTime: 5 * 60_000,
-  });
-  return optimizeActionLabel(data?.optimizerRunDisplay?.priceCents, data?.optimizerRunDisplay?.currency);
+/**
+ * THE BUTTON SAYS WHAT THE CARD SAYS, because it is the card's own function, given the card's own fee.
+ *
+ * The card mounts with `tone="board"` (`SlipRail.tsx:654,673`), so its CTA is `optimizeBoardCtaLabel`
+ * (`OptimizerLead.tsx:109`) - the Trip Pass states ("included", and the runs-left count) included. The row
+ * calls that same function with the SAME fee quote, so it cannot drift: no second label rule, no literal, and
+ * no second fetch - the fee is the one `useOptimizerLeadData` already reads for the card
+ * (`use-optimizer-lead-data.ts:32-35`, query key `["/api/optimization-fee", { tripId }]`).
+ *
+ * Loading and disabled match the card exactly: no fee yet -> "Optimize"; `fee.aiDisabled` -> "Optimize".
+ */
+export function optimizeRowCtaLabel(fee: OptimizationFeeQuote | null | undefined): string {
+  return optimizeBoardCtaLabel(fee);
 }
 
 export interface SlipActionRowProps {
   showOptimize: boolean;
   showExpert: boolean;
+  /** The same fee quote the optimizer card is given; null while it loads. */
+  fee: OptimizationFeeQuote | null | undefined;
   onOptimize: () => void;
   onExpert: () => void;
 }
 
-export function SlipActionRow({ showOptimize, showExpert, onOptimize, onExpert }: SlipActionRowProps) {
-  const optimizeLabel = useOptimizeActionLabel();
+export function SlipActionRow({ showOptimize, showExpert, fee, onOptimize, onExpert }: SlipActionRowProps) {
+  const optimizeLabel = optimizeRowCtaLabel(fee);
   if (!showOptimize && !showExpert) return null;
   return (
     <div className="flex flex-wrap items-center gap-2" data-testid="slip-action-row">
