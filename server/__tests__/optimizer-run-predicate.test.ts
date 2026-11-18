@@ -219,8 +219,15 @@ describe("R5 — scope discipline", () => {
   });
   it("the READ-shaped optimization preview stays on the logistics read tier", () => {
     assert.match(optimizationRoutesSrc, /authorizeTripLogistics\(/);
+    // F1: a non-GET route STATES its choice. The read tier is now an explicit `false`, not the absence of
+    // the option - absence was only ever a proxy for it, and the default is unchanged (read access).
+    assert.match(
+      codeOnly(optimizationRoutesSrc),
+      /requireWriteAccess:\s*false/,
+      "the READ-shaped preview states the read narrowing explicitly",
+    );
     assert.ok(
-      !/requireWriteAccess/.test(codeOnly(optimizationRoutesSrc)),
+      !/requireWriteAccess:\s*true/.test(codeOnly(optimizationRoutesSrc)),
       "the READ-shaped preview must not take the write narrowing",
     );
   });

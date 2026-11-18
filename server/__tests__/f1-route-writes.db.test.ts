@@ -31,7 +31,7 @@ import { db } from "../db";
 
 const RUN = crypto.randomUUID().slice(0, 8);
 const uid = () => crypto.randomUUID();
-const ids = { owner: uid(), accepted: uid(), pending: uid(), trip: uid() };
+const ids = { owner: uid(), accepted: uid(), pending: uid(), trip: uid(), anchor: uid(), vendor: uid() };
 
 function assertDisposableDb(): void {
   if (process.env.JOURNEY_DB_WRITES_OK === "1") return;
@@ -95,6 +95,10 @@ const ROUTES = [
   { name: "POST /api/expert/trips/:id/vendors", file: "../routes/experts.routes", method: "POST", url: () => `/api/expert/trips/${ids.trip}/vendors`, body: { name: "Seed", category: "dining" }, refusal: 403 },
   { name: "POST /api/plans/:id/feedback", file: "../routes/feedback.routes", method: "POST", url: () => `/api/plans/${ids.trip}/feedback`, body: { moment: "slip", code: "helpful", text: "ok" }, refusal: 404 },
   { name: "DELETE /api/plans/:id/feedback", file: "../routes/feedback.routes", method: "DELETE", url: () => `/api/plans/${ids.trip}/feedback`, body: { moment: "slip" }, refusal: 404 },
+  { name: "PUT /api/anchors/:id", file: "../routes/trips.routes", method: "PUT", url: () => `/api/anchors/${ids.anchor}`, body: { anchorDatetime: "2027-05-01T11:00:00Z" }, refusal: 403 },
+  { name: "DELETE /api/anchors/:id", file: "../routes/trips.routes", method: "DELETE", url: () => `/api/anchors/${ids.anchor}`, body: undefined, refusal: 403 },
+  { name: "PUT /api/expert/vendors/:vendorId", file: "../routes/experts.routes", method: "PUT", url: () => `/api/expert/vendors/${ids.vendor}`, body: { vendorName: "Renamed" }, refusal: 403 },
+  { name: "DELETE /api/expert/vendors/:vendorId", file: "../routes/experts.routes", method: "DELETE", url: () => `/api/expert/vendors/${ids.vendor}`, body: undefined, refusal: 403 },
   { name: "POST /api/trips/:id/generate-presets", file: "../routes/booking-actions", method: "POST", url: () => `/api/trips/${ids.trip}/generate-presets`, body: {}, refusal: 403 },
   { name: "POST /api/trips/:id/advisor/narration", file: "../routes/advisor.routes", method: "POST", url: () => `/api/trips/${ids.trip}/advisor/narration?factsOnly=1`, body: {}, refusal: 403 },
 ] as const;
@@ -110,16 +114,27 @@ before(async () => {
     VALUES (${uid()}, ${ids.trip}, ${ids.accepted}, 'accepted', NOW())`);
   await db.execute(sql`INSERT INTO trip_expert_advisors (id, trip_id, local_expert_id, status, assigned_at)
     VALUES (${uid()}, ${ids.trip}, ${ids.pending}, 'pending', NOW())`);
+  // The two row lookups that run BEFORE the guard need a real row, or the route answers 404 for everybody.
+  await db.execute(sql`INSERT INTO temporal_anchors (id, trip_id, anchor_type, anchor_datetime)
+    VALUES (${ids.anchor}, ${ids.trip}, 'flight', '2027-05-01T09:00:00Z')`);
+  await db.execute(sql`INSERT INTO expert_vendor_coordination (id, trip_id, expert_id, vendor_name, vendor_category)
+    VALUES (${ids.vendor}, ${ids.trip}, ${ids.accepted}, 'Seed vendor', 'dining')`);
 });
 
 after(async () => {
+  await db.execute(sql`DELETE FROM expert_vendor_coordination WHERE trip_id = ${ids.trip}`);
+  await db.execute(sql`DELETE FROM temporal_anchors WHERE trip_id = ${ids.trip}`);
   await db.execute(sql`DELETE FROM trip_expert_advisors WHERE trip_id = ${ids.trip}`);
   await db.execute(sql`DELETE FROM trips WHERE id = ${ids.trip}`);
   await db.execute(sql`DELETE FROM users WHERE id IN (${ids.owner}, ${ids.accepted}, ${ids.pending})`);
 });
 
-const rowCounts = async () =>
-  (await db.execute(sql`SELECT count(*)::int AS anchors FROM temporal_anchors WHERE trip_id = ${ids.trip}`)).rows?.[0] as any;
+const rowCounts = async () => {
+  const anchors = (await db.execute(sql`SELECT count(*)::int AS n FROM temporal_anchors WHERE trip_id = ${ids.trip}`)).rows?.[0] as any;
+  const vendors = (await db.execute(sql`SELECT count(*)::int AS n FROM expert_vendor_coordination WHERE trip_id = ${ids.trip}`)).rows?.[0] as any;
+  const rows = (await db.execute(sql`SELECT count(*)::int AS n FROM trip_expert_advisors WHERE trip_id = ${ids.trip}`)).rows?.[0] as any;
+  return { anchors: anchors?.n, vendors: vendors?.n, advisors: rows?.n };
+};
 
 for (const r of ROUTES) {
   test(`${r.name}: a PENDING advisor is refused, and nothing is written`, async () => {
