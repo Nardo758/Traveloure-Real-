@@ -74,7 +74,7 @@ import { ExpertSuggestionsPanel } from "./ExpertSuggestionsPanel";
 // collapsibles, the contract board, the Trip Pass card and the budget line — one home each.
 import { FinishCard, SlipDraftAiRow, SlipRail, useSlipAiAction } from "./SlipRail";
 import { CoordinationCard } from "./SlipRail";
-import { SlipBottomBar, SlipPlanMenu } from "./SlipRail";
+import { SlipPlanMenu } from "./SlipRail";
 import type { SlipLeadCopy } from "./SlipRail";
 import { SlipHeaderMeta } from "./SlipHeaderMeta";
 import { InlineDatesPanel, InlineWhoPanel } from "@/components/plan/SlipAnchorPanels";
@@ -3245,18 +3245,17 @@ export function SlipView({
       )}
         </div>
 
-        {/* THE ACTION RAIL IS GONE (ruling 3; ledger `2026-10-08-slip-main-rail`). Its pieces live in
-            the plan column (`SlipRail` above), the ⋯ plan menu in the header, and the bottom bar. */}
-        {data.trip && slipView !== "map" && (
-          <SlipBottomBar
-            trip={data.trip}
-            tripId={tripId}
-            isOwner={isOwner}
-            isExpertViewer={isExpertViewer}
-            isPrimary={cardReady}
-            activities={allActivities}
-          />
-        )}
+        {/* UI brief 1 (commit 3): Finalize sits IN FLOW at the foot of the column. Its audience and views
+            are the bar's own, unchanged: `(isOwner || isExpertViewer)` (`SlipRail.tsx:1684`) and "not the map
+            view" (the mount gate the bar carried here). The map keeps its Trip Card banner card. */}
+        {data.trip && slipView !== "map" && (isOwner || isExpertViewer) ? (
+          <div className="flex items-center justify-end border-t border-[color:var(--slip-line)] pt-4" data-testid="slip-foot">
+            <FinishCard trip={data.trip} isOwner={isOwner} isPrimary={cardReady} activities={allActivities} layout="bar" />
+          </div>
+        ) : null}
+        {/* THE FIXED BOTTOM BAR IS GONE (UI brief 1, commit 3): Ask is in the one tools row and Finalize in
+            the foot above, both with the audience the bar had. No spacer, no fixed element, nothing over the
+            foot. */}
       </div>
       </PlanRowLookProvider>
     </div>
