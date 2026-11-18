@@ -266,6 +266,16 @@ jobs:
           JOURNEY_BASE_URL: http://127.0.0.1:5000
           JOURNEY_DB_WRITES_OK: '1'
 
+      # UI brief 1 (commit 6): the four page-frame screenshots, written by e2e/specs/page-frame.spec.ts.
+      - name: Upload the page-frame screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: page-frame-shots-2049
+          path: test-results/shots/2049
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Upload report
         if: always()
         uses: actions/upload-artifact@v4
