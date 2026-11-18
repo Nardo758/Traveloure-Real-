@@ -182,6 +182,7 @@ import { DayExpertHook } from "../plan/DayExpertHook";
 import { HandoffChooserHost } from "@/components/plan/HandoffChooser";
 import { HandoffBanner, HandoffFooter, SuggestionStrip, useExpertSuggestions, useHandoff } from "@/components/plan/HandoffBanner";
 import { SlipActionRow } from "@/components/plancard/SlipActionRow";
+import { AskAiDrawer } from "./AskAiDrawer";
 import { useOptimizerLeadData } from "@/components/plan/use-optimizer-lead-data";
 import { handoffDayStat, handoffExpertLabel, handoffPenScope, openHandoffChooser } from "@/lib/handoff-client";
 import { useExpertAvailability } from "@/lib/expert-availability";
@@ -2568,6 +2569,9 @@ export function SlipView({
             />
           ) : null}
           {isOwner && data.trip && slipView === "list" ? (
+            /* UI brief 1 (commit 2): ONE tools row. Ask mounts here with a layout-only row variant; the
+               fixed bottom bar still exists in this commit and still carries its own Ask (commit 3 removes it). */
+            <div className="flex flex-wrap items-center gap-2" data-testid="slip-tools-row">
             <ToolsTray
               tripId={tripId}
               group={experienceGroup}
@@ -2607,6 +2611,8 @@ export function SlipView({
               onNeedDates={() => setTrayChip("dates")}
               onNeedParty={askParty ? () => setTrayChip("who") : undefined}
             />
+                <AskAiDrawer tripId={tripId} isOwner={isOwner} isExpertViewer={isExpertViewer} aiAction={aiAction} layout="row" />
+            </div>
           ) : null}
           {/* Smoke 9 S9-4: the optimizer LEADS the page (§8) — directly under the tools tray at every
               width. The rail renders its OptimizerLead into this slot (a portal; its state stays there). */}
@@ -2853,7 +2859,8 @@ export function SlipView({
       <CoordinationCard tripId={tripId} isOwner={isOwner} />
       {/* UI brief 1 (commit 1b, Leon Nov 18): the "How much help do you want?" CARD no longer renders on the
           plan page. Since Lane A its request cannot be accepted, so the page sends every expert control to the
-          paid chooser instead. ExpertDoor.tsx and the request route are untouched. */}
+          paid chooser instead. ExpertDoor.tsx has since been deleted (nothing imported it); the request route
+          is untouched. */}
       {/* Surface step 3: the ONE AnchorPanel — empty before the draft, ranked after it (R-y may
           collapse it to one line). Gone once the stay is decided (a stay, a comparison, a Skip). */}
       {/* ── THE EMPTY BOARD (slip conformance, boards rev 15; ledger

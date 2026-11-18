@@ -13,19 +13,13 @@ import { optimizeBoardCtaLabel } from "@/components/plan/OptimizerLead";
 import type { OptimizationFeeQuote } from "@/lib/optimization-preview";
 
 /**
- * THE BUTTON SAYS WHAT THE CARD SAYS, because it is the card's own function, given the card's own fee.
- *
- * The card mounts with `tone="board"` (`SlipRail.tsx:654,673`), so its CTA is `optimizeBoardCtaLabel`
- * (`OptimizerLead.tsx:109`) - the Trip Pass states ("included", and the runs-left count) included. The row
- * calls that same function with the SAME fee quote, so it cannot drift: no second label rule, no literal, and
- * no second fetch - the fee is the one `useOptimizerLeadData` already reads for the card
- * (`use-optimizer-lead-data.ts:32-35`, query key `["/api/optimization-fee", { tripId }]`).
+ * THE BUTTON SAYS WHAT THE CARD SAYS: the row calls `optimizeBoardCtaLabel` itself - the function the card
+ * uses in its `tone="board"` mount (`SlipRail.tsx:654,673`, `OptimizerLead.tsx:109`) - with the SAME fee quote
+ * the card is given. No wrapper, no second label rule, no literal, no second fetch: the fee is the one
+ * `useOptimizerLeadData` already reads for the card (query key `["/api/optimization-fee", { tripId }]`).
  *
  * Loading and disabled match the card exactly: no fee yet -> "Optimize"; `fee.aiDisabled` -> "Optimize".
  */
-export function optimizeRowCtaLabel(fee: OptimizationFeeQuote | null | undefined): string {
-  return optimizeBoardCtaLabel(fee);
-}
 
 export interface SlipActionRowProps {
   showOptimize: boolean;
@@ -37,7 +31,7 @@ export interface SlipActionRowProps {
 }
 
 export function SlipActionRow({ showOptimize, showExpert, fee, onOptimize, onExpert }: SlipActionRowProps) {
-  const optimizeLabel = optimizeRowCtaLabel(fee);
+  const optimizeLabel = optimizeBoardCtaLabel(fee);
   if (!showOptimize && !showExpert) return null;
   return (
     <div className="flex flex-wrap items-center gap-2" data-testid="slip-action-row">

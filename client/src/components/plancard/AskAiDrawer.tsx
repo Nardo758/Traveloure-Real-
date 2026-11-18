@@ -103,7 +103,8 @@ export interface AskAiDrawerProps {
   surface?: AskAiSurface;
   /** `bar`: the slip's bottom bar draws the trigger as its secondary button (ledger
    *  `2026-10-08-slip-main-rail`). Layout only — visibility, price and every rule are the card's. */
-  layout?: "card" | "bar";
+  /** "row": the same control, sized for a row instead of the fixed bar - layout only, no behaviour. */
+  layout?: "card" | "bar" | "row";
   /**
    * THE PLAN'S FINAL STANDING, off the plancard DTO (`trip.finalizedAt` / `trip.finalVersion`).
    *
@@ -452,13 +453,13 @@ export function AskAiDrawer({
   // THE BOTTOM BAR (slip conformance, Main board; ledger `2026-10-08-slip-main-rail`): the same
   // drawer, opened from the bar's secondary button. The button carries the price line's own words
   // (§13: an unknown price prints none) and keeps the rail button's testid.
-  if (layout === "bar") {
+  if (layout === "bar" || layout === "row") {
     return (
       <>
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="h-[50px] flex-shrink-0 rounded-[14px] border border-[color:var(--slip-line-strong)] bg-[color:var(--slip-card)] px-[18px] text-[15px] font-semibold text-[color:var(--slip-navy)] hover:bg-[color:var(--slip-wash)]"
+          className={`${layout === "row" ? "h-10" : "h-[50px]"} flex-shrink-0 rounded-[14px] border border-[color:var(--slip-line-strong)] bg-[color:var(--slip-card)] px-[18px] text-[15px] font-semibold text-[color:var(--slip-navy)] hover:bg-[color:var(--slip-wash)]`}
           data-testid="slip-action-ask-ai"
         >
           {askAiBarLabel(priceLine)}
