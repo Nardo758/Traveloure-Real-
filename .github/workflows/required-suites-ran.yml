@@ -92,7 +92,7 @@ jobs:
           # (1) SHORT grace for the runs to appear — the signal that a suite will report at all.
           for attempt in $(seq 1 8); do
             gh api "repos/$REPO/actions/runs?head_sha=$SHA&per_page=100" --paginate \
-              --jq '.workflow_runs[] | [.path, .status, (.conclusion // "")] | @tsv' > "$runs"
+              --jq '.workflow_runs[] | [.path, .status, (.conclusion // ""), (.id|tostring)] | @tsv' > "$runs"
             missing=0
             while IFS='|' read -r suite workflow; do
               [ -z "$suite" ] && continue
@@ -141,12 +141,19 @@ jobs:
               case "$verdict" in
                 ran) echo "$suite - run exists ($state, $jobs_total job(s)); counts as ran" ;;
                 pending) echo "$suite - run exists ($state, no job picked up yet); still starting, not judged" ;;
+                unparsed)
+                  echo "::error title=$suite::$suite - did not run: the workflow did not parse (run $run_id completed with zero jobs)"
+                  fail=1
+                  ;;
                 lookup-failed)
                   echo "::error title=$suite::$suite - could not read the jobs for run $run_id; the lookup failed and this guard fails CLOSED (an unreadable signal is never a pass)"
                   fail=1
                   ;;
                 *)
-                  echo "::error title=$suite::$suite - did not run: the workflow did not parse (run $run_id completed with zero jobs)"
+                  # F12: only the named verdict "unparsed" may claim a parse failure. Anything else - including an
+                  # EMPTY verdict from a crashed script - is an unreadable signal, and it fails closed under its own
+                  # message rather than blaming the workflow's syntax.
+                  echo "::error title=$suite::$suite - verdict unreadable ('${verdict:-empty}'); failing CLOSED"
                   fail=1
                   ;;
               esac
