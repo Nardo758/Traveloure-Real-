@@ -618,55 +618,23 @@ router.get("/api/admin/bookings/balance-overdue", isAuthenticated, async (req, r
         AND sb.balance_due_at IS NOT NULL
         AND sb.balance_due_at < NOW()
       ORDER BY sb.balance_due_at ASC
-      LIMIT 200
+      LIMIT 50
     `);
-    res.json({ bookings: result.rows, count: result.rows.length });
-  } catch (err) {
-    console.error("Balance-overdue bookings error:", err);
-    res.status(500).json({ message: "Failed to fetch balance-overdue bookings" });
-  }
-});
-
-/**
- * GET /api/admin/bookings/stuck-pending
- * Returns service_bookings stuck in payment_pending status for more than 10 minutes.
- * These are bookings where Stripe was (or may have been) charged but the server
- * crashed before the PI ID was stamped or before the webhook arrived.
- * Ops should cross-check each against Stripe dashboard before manually reconciling.
- */
-router.get("/api/admin/bookings/stuck-pending", isAuthenticated, async (req, res) => {
-  const user = await getFullAdminUser(getUserId(req)!);
-  if (!user || !isAdminRole(user.role)) {
-    return res.status(403).json({ message: "Admin access required" });
-  }
-  try {
-    const result = await db.execute(sql`
-      SELECT
-        sb.id,
-        sb.traveler_id,
-        sb.provider_id,
-        sb.service_id,
-        sb.status,
-        sb.total_amount,
-        sb.stripe_payment_intent_id,
-        sb.idempotency_key,
-        sb.created_at,
-        u.email   AS traveler_email,
-        u.first_name AS traveler_first_name,
-        u.last_name  AS traveler_last_name,
-        ps.service_name
-      FROM service_bookings sb
-      LEFT JOIN users  u  ON u.id  = sb.traveler_id
-      LEFT JOIN provider_services ps ON ps.id = sb.service_id
-      WHERE sb.status = 'payment_pending'
-        AND sb.created_at < NOW() - INTERVAL '10 minutes'
-      ORDER BY sb.created_at ASC
-      LIMIT 200
-    `);
+    // F6 (#1823): the refund state is read from Stripe PER ROW at request time, over a page capped at 50 rows, so one
+    // request costs at most fifty reads. It is never cached and never guessed from the local row.
+    const { readPaymentRefundState } = await import("../services/checkout-claim.service");
+    const withRefund = await Promise.all(
+      result.rows.map(async (row: any) => {
+        const refund = await readPaymentRefundState(String(row.stripe_payment_intent_id ?? ""));
+        return { ...row, refundState: refund.state, refundMessage: refund.message };
+      }),
+    );
     res.json({
-      bookings: result.rows,
-      count: result.rows.length,
-      note: "These bookings may have been charged. Cross-check each stripe_payment_intent_id in the Stripe dashboard before manually reconciling.",
+      bookings: withRefund,
+      count: withRefund.length,
+      note:
+        "A payment signal arrived for a booking that could not be promoted (the row was NOT resurrected). " +
+        "Each row carries the refund state read from Stripe for its payment.",
     });
   } catch (err) {
     console.error("Stuck pending bookings error:", err);
@@ -714,14 +682,23 @@ router.get("/api/admin/bookings/reconciliation-exceptions", isAuthenticated, asy
       LEFT JOIN provider_services ps ON ps.id = sb.service_id
       WHERE sb.booking_details ? 'reconciliationException'
       ORDER BY sb.updated_at DESC
-      LIMIT 200
+      LIMIT 50
     `);
+    // F6 (#1823): the refund state is read from Stripe PER ROW at request time, over a page capped at 50 rows, so one
+    // request costs at most fifty reads. It is never cached and never guessed from the local row.
+    const { readPaymentRefundState } = await import("../services/checkout-claim.service");
+    const withRefund = await Promise.all(
+      result.rows.map(async (row: any) => {
+        const refund = await readPaymentRefundState(String(row.stripe_payment_intent_id ?? ""));
+        return { ...row, refundState: refund.state, refundMessage: refund.message };
+      }),
+    );
     res.json({
-      bookings: result.rows,
-      count: result.rows.length,
+      bookings: withRefund,
+      count: withRefund.length,
       note:
         "A payment signal arrived for a booking that could not be promoted (the row was NOT resurrected). " +
-        "Check each paymentIntentId in Stripe: succeeded ⇒ refund or re-book manually; not succeeded ⇒ dismiss.",
+        "Each row carries the refund state read from Stripe for its payment.",
     });
   } catch (err) {
     console.error("Reconciliation exceptions error:", err);

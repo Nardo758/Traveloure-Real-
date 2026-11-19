@@ -1398,11 +1398,14 @@ async function recordReconciliationException(
   reason: string,
   result: PaymentPromotionResult,
 ): Promise<void> {
+  // F6: the message reads the payment's REFUND STATE from Stripe before it says anything about a refund. The reader
+  // fails safe, so an unreadable answer reads `needs_manual_refund` and never `refunded`.
+  const refund = await readPaymentRefundState(paymentIntentId);
   logger.error(
-    { bookingId: row.id, paymentIntentId, actor, reason, status: row.status },
-    "[checkout-promote] RECONCILIATION EXCEPTION — a payment signal arrived for a booking that cannot be " +
-      "promoted. The row is NOT resurrected. If the PaymentIntent really succeeded this is money that " +
-      "needs a manual refund or a manual booking — see GET /api/admin/bookings/reconciliation-exceptions.",
+    { bookingId: row.id, paymentIntentId, actor, reason, status: row.status, refundState: refund.state },
+    "[checkout-promote] RECONCILIATION EXCEPTION - a payment signal arrived for a booking that cannot be " +
+      "promoted. The row is NOT resurrected. Refund state read from Stripe: " + refund.state + "." +
+      (refund.message ? " " + refund.message : " Nothing moved; no refund is due."),
   );
   try {
     await db.transaction(async (tx) => {
@@ -1981,6 +1984,62 @@ export type LateSuccessRefundResult =
 export interface LateSuccessRefundOptions {
   paymentIntentId: string;
   actor: string;
+}
+
+/**
+ * F6 (#1823, brief of record 2026-11-10 lines 155-190): ONE reader for a payment's refund state, Stripe first.
+ *
+ * Three states and no fourth: `refunded` (succeeded and fully refunded), `needs_manual_refund` (succeeded and not
+ * fully refunded, OR Stripe could not be read - an unreadable answer fails SAFE and never claims a refund), and
+ * `not_charged` (never succeeded: nothing moved, so this is not a refund case and keeps today's dismiss handling).
+ * It writes nothing, changes no status and issues no refund.
+ */
+export type PaymentRefundState = "refunded" | "needs_manual_refund" | "not_charged";
+
+export const PAYMENT_REFUND_STATE_MESSAGES = {
+  refunded: "Refunded automatically. Stripe shows this payment fully refunded. No action needed.",
+  needs_manual_refund: "Needs a manual refund. Check this payment in Stripe and refund it.",
+  not_charged: null,
+} as const;
+
+export interface PaymentRefundStateDeps {
+  /** The Stripe read; injected so the test can stub every branch without a network. */
+  retrievePaymentIntent?: (id: string) => Promise<any>;
+}
+
+export interface PaymentRefundStateResult {
+  state: PaymentRefundState;
+  message: string | null;
+}
+
+export async function readPaymentRefundState(
+  paymentIntentId: string,
+  deps: PaymentRefundStateDeps = {},
+): Promise<PaymentRefundStateResult> {
+  const manual: PaymentRefundStateResult = {
+    state: "needs_manual_refund",
+    message: PAYMENT_REFUND_STATE_MESSAGES.needs_manual_refund,
+  };
+  if (!paymentIntentId) return manual;
+  try {
+    const retrieve = deps.retrievePaymentIntent ?? (async (id: string) => {
+      const { stripe } = await import("./stripe-payment.service");
+      return stripe.paymentIntents.retrieve(id, { expand: ["latest_charge"] });
+    });
+    const intent = await retrieve(paymentIntentId);
+    if (intent?.status !== "succeeded") {
+      return { state: "not_charged", message: PAYMENT_REFUND_STATE_MESSAGES.not_charged };
+    }
+    const charge = intent.latest_charge && typeof intent.latest_charge === "object" ? intent.latest_charge : null;
+    const amount = Number(intent.amount ?? charge?.amount ?? 0);
+    const refunded = Number(charge?.amount_refunded ?? intent.amount_refunded ?? 0);
+    if (amount > 0 && refunded >= amount) {
+      return { state: "refunded", message: PAYMENT_REFUND_STATE_MESSAGES.refunded };
+    }
+    return manual;
+  } catch {
+    return manual;
+  }
 }
 
 export async function refundLateSuccessOnFailedIntent(opts: LateSuccessRefundOptions): Promise<LateSuccessRefundResult> {
