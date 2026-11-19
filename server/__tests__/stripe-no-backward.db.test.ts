@@ -75,10 +75,12 @@ before(async () => {
     VALUES (${bookingId}, ${"F7 fixture " + RUN}, 'pending', 'unpaid', ${piId}, '{}'::jsonb)
   `);
   // The cart rail's row: the minimum the guarded flip keys on.
+  // The cart fixture carries the columns a booking row needs: the admin-list fixture's own shape plus the PI id the
+  // handlers read (`admin-bookings-list.db.test.ts:39` is the minimal insert that works on this schema).
   await db.execute(sql`
-    INSERT INTO service_bookings (id, status, stripe_payment_intent_id, booking_details)
-    VALUES (${cartBookingId}, 'payment_pending', ${piId}, '{}'::jsonb)
-  `).catch(() => { /* the cart fixture is best-effort; F7.1 skips its assertion if the row cannot exist */ });
+    INSERT INTO service_bookings (id, status, stripe_payment_intent_id, booking_details, total_amount)
+    VALUES (${cartBookingId}, 'payment_pending', ${piId}, '{}'::jsonb, 10)
+  `);
 });
 
 after(async () => {
