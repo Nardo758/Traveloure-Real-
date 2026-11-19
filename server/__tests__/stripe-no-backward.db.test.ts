@@ -15,6 +15,7 @@
  *   F7.6 a redelivered ignored event writes ONE record -> the record's `NOT (... @> eventId)` dedupe
  *   F7.7 a failure created before confirmation is ignored and recorded with stripeCreated -> the record's field set
  *
+ *   F7.11 a two-booking cart       -> `recordLateCartEvent` reads EVERY row on the intent, one record on each
  * DB-backed, and CI is its database (this workstation has none, per the overnight rule).
  */
 import { test, before, after } from "node:test";
