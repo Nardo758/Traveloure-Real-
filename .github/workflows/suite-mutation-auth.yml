@@ -193,6 +193,11 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      # A dispatch run PRODUCES evidence, so it cannot also demand that the committed report already matches
+      # the bytes of the report the audit just wrote (`--check` is a byte compare and the report embeds the audit
+      # timestamp). On pull_request the check is the proof that the committed files are current - that is the run
+      # that matters, and the one this PR cites.
       - name: Generated mutation-auth coverage is current
+        if: github.event_name != 'workflow_dispatch'
         run: npm run check:mutation-auth-coverage
 
