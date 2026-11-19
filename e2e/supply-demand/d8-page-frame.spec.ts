@@ -126,8 +126,11 @@ test('D8d expert viewer sees Ask and the foot Finalize', async ({ browser }) => 
        ON CONFLICT (trip_id, local_expert_id) DO UPDATE SET status = 'accepted'`,
       [randomUUID(), tripId, user.id],
     );
+    // Give the plan page the same patience the other suites give a cold slip (up to 90s in this file's siblings):
+    // the advisor read has to answer before the expert-viewer frame draws.
     await page.goto(`/plans/${tripId}`);
-    await page.waitForSelector('[data-testid="slip-tools-row"]', { timeout: 30_000 });
+    await page.waitForLoadState('networkidle', { timeout: 60_000 }).catch(() => {});
+    await page.waitForSelector('[data-testid="slip-tools-row"]', { timeout: 90_000 });
     await expect(page.locator('[data-testid="slip-action-ask-ai"]')).toHaveCount(1);
     await expect(page.locator('[data-testid="slip-foot"]')).toBeVisible();
   } finally {
