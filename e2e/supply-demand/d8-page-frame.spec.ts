@@ -118,11 +118,12 @@ test('D8d expert viewer sees Ask and the foot Finalize', async ({ browser }) => 
     const user = await userByEmail(email);
     expect(user?.id, 'the expert account exists').toBeTruthy();
     await q(`UPDATE users SET role = 'expert' WHERE id = $1`, [user.id]);
+    // `id` has no column default (the schema sets it in the app), so the insert supplies one.
     await q(
-      `INSERT INTO trip_expert_advisors (trip_id, local_expert_id, status)
-       VALUES ($1, $2, 'accepted')
+      `INSERT INTO trip_expert_advisors (id, trip_id, local_expert_id, status)
+       VALUES ($1, $2, $3, 'accepted')
        ON CONFLICT (trip_id, local_expert_id) DO UPDATE SET status = 'accepted'`,
-      [tripId, user.id],
+      [randomUUID(), tripId, user.id],
     );
     await page.goto(`/plans/${tripId}`);
     await page.waitForSelector('[data-testid="slip-tools-row"]', { timeout: 30_000 });
