@@ -46,21 +46,30 @@ async function buildOwnerAndPlan(page: Page): Promise<string> {
 /** Every element under a 3x3 grid of points inside the Finalize button must be it or one of its kin. */
 async function expectNotIntersected(page: Page) {
   const button = page.locator('[data-testid="slip-foot"] button').last();
+  // The foot sits at the end of a long column: bring it into the viewport first, or the probe measures points
+  // outside the window and finds nothing at all (a false pass, and the bug this case exists for would hide).
+  await button.scrollIntoViewIfNeeded();
   const box = await button.boundingBox();
   expect(box, 'Finalize has a box').not.toBeNull();
-  const intruders = await page.evaluate(({ x, y, w, h }) => {
+  const probe = await page.evaluate(({ x, y, w, h }) => {
     const own = document.elementFromPoint(x + w / 2, y + h / 2);
     const kin = (el: Element | null) => !!el && !!own && (own.contains(el) || el.contains(own));
     const found: string[] = [];
+    let probed = 0;
     for (const fx of [0.15, 0.5, 0.85]) {
       for (const fy of [0.15, 0.5, 0.85]) {
-        const el = document.elementsFromPoint(x + w * fx, y + h * fy)[0] ?? null;
+        const px = x + w * fx;
+        const py = y + h * fy;
+        if (px < 0 || py < 0 || px > window.innerWidth - 1 || py > window.innerHeight - 1) continue;
+        probed += 1;
+        const el = document.elementsFromPoint(px, py)[0] ?? null;
         if (!kin(el)) found.push(el ? (el.getAttribute('data-testid') ?? el.tagName) : '<none>');
       }
     }
-    return found;
+    return { found, probed };
   }, { x: box!.x, y: box!.y, w: box!.width, h: box!.height });
-  expect(intruders, 'nothing may sit over the Finalize button').toEqual([]);
+  expect(probe.probed, 'the probe measured real points inside the viewport').toBeGreaterThanOrEqual(5);
+  expect(probe.found, 'nothing may sit over the Finalize button').toEqual([]);
 }
 
 test('D8a owner: the frame in list and map, at 1280 and 390', async ({ page }) => {
