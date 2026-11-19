@@ -127,3 +127,47 @@ test("F8.7 transfer.created still completes a payout (the event the pinned API v
   assert.equal(row.status, "completed");
   await db.execute(sql`DELETE FROM expert_payouts WHERE id = ${fresh}`);
 });
+
+test("F8.8 a NEW transfer.created after a full reversal does not move the payout back or re-mark earnings", async () => {
+  // F8.1 already reversed payoutA fully. A late `transfer.created` with a NEW event id must not resurrect it.
+  const transfer = { id: `tr_late_${RUN}`, metadata: { payoutId: payoutA, requesterType: "expert" } };
+  await processStripeWebhookEvent(transferEvent("transfer.created", transfer));
+  const [payout] = (await db.execute(sql`SELECT status FROM expert_payouts WHERE id = ${payoutA}`)).rows as any[];
+  const earnings = (await db.execute(sql`SELECT status FROM expert_earnings WHERE reference_id = ${"f8-" + RUN}`)).rows as any[];
+  // If EITHER of these comes back completed/paid_out the guard in storage.ts:189 (failed -> completed) is the cause and
+  // that needs a ruling; this test is written to FAIL loudly in that case, which is the report.
+  assert.notEqual(payout.status, "completed", "a late transfer.created must not re-complete a failed payout");
+  assert.equal(earnings.some((e) => e.status === "paid_out"), false, "and must not mark earnings paid_out again");
+});
+
+test("F8.9 a reversal for a payout that is not 'completed' changes no earnings and asks for manual review", async () => {
+  const notCompleted = uid();
+  await db.execute(sql`INSERT INTO expert_payouts (id, expert_id, amount, status) VALUES (${notCompleted}, ${expertUser}, 10, 'processing')`);
+  await db.execute(sql`
+    INSERT INTO expert_earnings (id, expert_id, type, amount, status, payout_id, dispute_state, reference_id)
+    VALUES (${uid()}, ${expertUser}, 'service_booking', 5, 'paid_out', ${notCompleted}, 'none', ${"f8-nc-" + RUN})
+  `);
+  const transfer = { id: `tr_nc_${RUN}`, reversed: true, metadata: { payoutId: notCompleted, requesterType: "expert" } };
+  await processStripeWebhookEvent(transferEvent("transfer.reversed", transfer));
+  const [earning] = (await db.execute(sql`SELECT status, payout_id FROM expert_earnings WHERE reference_id = ${"f8-nc-" + RUN}`)).rows as any[];
+  assert.equal(earning.status, "paid_out", "no earnings change");
+  assert.equal(earning.payout_id, notCompleted, "and the payout id stays");
+  const [note] = (await db.execute(sql`SELECT metadata FROM admin_notifications WHERE metadata->>'payoutId' = ${notCompleted} ORDER BY created_at DESC LIMIT 1`)).rows as any[];
+  assert.equal(note.metadata.needsManualReview, true);
+  assert.equal(note.metadata.payoutStatus, "processing");
+  await db.execute(sql`DELETE FROM expert_earnings WHERE reference_id = ${"f8-nc-" + RUN}`);
+  await db.execute(sql`DELETE FROM expert_payouts WHERE id = ${notCompleted}`);
+});
+
+test("F8.10 an unknown requesterType touches no table and asks for manual review", async () => {
+  const ghost = uid();
+  await db.execute(sql`INSERT INTO expert_payouts (id, expert_id, amount, status) VALUES (${ghost}, ${expertUser}, 10, 'completed')`);
+  const transfer = { id: `tr_unk_${RUN}`, reversed: true, metadata: { payoutId: ghost, requesterType: "sommelier" } };
+  await processStripeWebhookEvent(transferEvent("transfer.reversed", transfer));
+  const [payout] = (await db.execute(sql`SELECT status FROM expert_payouts WHERE id = ${ghost}`)).rows as any[];
+  assert.equal(payout.status, "completed", "an unknown rail changes nothing");
+  const [note] = (await db.execute(sql`SELECT metadata FROM admin_notifications WHERE metadata->>'transferId' = ${`tr_unk_${RUN}`} ORDER BY created_at DESC LIMIT 1`)).rows as any[];
+  assert.equal(note.metadata.needsManualReview, true);
+  assert.equal(note.metadata.payoutRowsMoved, 0);
+  await db.execute(sql`DELETE FROM expert_payouts WHERE id = ${ghost}`);
+});

@@ -343,82 +343,101 @@ export async function processStripeWebhookEvent(event: Stripe.Event): Promise<vo
       }
 
       case "transfer.reversed": {
-        // F8 (#1243): a reversed Connect transfer is a payout that did not reach the seller. Ruling: handle the
-        // reversal, return the earnings rows to payable with the event id recorded, one admin-visible row, no new
-        // column, no amount math here. `transfer.reversed === true` is a FULL reversal; `amount_reversed < amount`
-        // (reversed false) is partial and, until ruled, changes no earnings row and is flagged for manual review.
+        // F8 (#1243), Leon Nov 19 2026: ALL OR NOTHING. One transaction wraps the payout row, both earnings statements
+        // and the admin row; the payout moves FIRST and earnings follow only if it moved. `transfer.reversed === true`
+        // is a FULL reversal; `reversed === false` with `amount_reversed < amount` is partial and changes no earnings.
         const transfer = event.data.object as Stripe.Transfer;
         const payoutId = transfer.metadata?.payoutId;
         const requesterType = transfer.metadata?.requesterType;
-        if (!payoutId || !requesterType) break;
-        const earningsTable = requesterType === "expert" ? "expert_earnings" : "provider_earnings";
-        const payoutsTable = requesterType === "expert" ? "expert_payouts" : "provider_payouts";
         const fullyReversed = (transfer as any).reversed === true;
-        let returnedRows = 0;
-        let payoutMoved = 0;
+        const knownRail = requesterType === "expert" || requesterType === "provider";
 
-        if (fullyReversed) {
-          // The earnings rows go back to payable in ONE guarded statement. A row with an open dispute goes to `held`,
-          // never to `releasable` (the disputed-holds invariant the storage layer states).
-          const updated = await db.execute(sql`
-            UPDATE ${sql.raw(earningsTable)} SET
-              status = CASE WHEN COALESCE(dispute_state, 'none') = 'open' THEN 'held' ELSE 'releasable' END,
-              payout_id = NULL
-            WHERE payout_id = ${payoutId} AND status = 'paid_out'
-            RETURNING id
-          `);
-          returnedRows = (updated.rows ?? []).length;
+        await db.transaction(async (tx) => {
+          const earningsTable = requesterType === "expert" ? "expert_earnings" : "provider_earnings";
+          const payoutsTable = requesterType === "expert" ? "expert_payouts" : "provider_payouts";
+          let returnedRows = 0;
+          let payoutMoved = 0;
+          let payoutStatusNow: string | null = null;
+          const needsManualReviewReasons: string[] = [];
 
-          // The payout row moves completed -> failed, guarded in the same transaction, with the event id recorded in
-          // the column each table actually has (`expert_payouts.metadata` jsonb, `provider_payouts.notes`).
-          if (requesterType === "expert") {
-            const moved = await db.execute(sql`
-              UPDATE expert_payouts SET
-                status = 'failed',
-                metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('transferReversedEventId', ${event.id}::text)
-              WHERE id = ${payoutId} AND status = 'completed'
-              RETURNING id
-            `);
-            payoutMoved = (moved.rows ?? []).length;
+          if (!payoutId || !knownRail) {
+            // (3) an unknown rail touches NO table; the admin row is the only trace.
+            needsManualReviewReasons.push(!payoutId ? "no payout id on the transfer metadata" : `unknown requesterType '${String(requesterType)}'`);
+          } else if (fullyReversed) {
+            // (2) the payout first, guarded: completed -> failed, RETURNING id.
+            if (requesterType === "expert") {
+              const moved = await tx.execute(sql`
+                UPDATE expert_payouts SET
+                  status = 'failed',
+                  metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('transferReversedEventId', ${event.id}::text)
+                WHERE id = ${payoutId} AND status = 'completed'
+                RETURNING id
+              `);
+              payoutMoved = (moved.rows ?? []).length;
+            } else {
+              const moved = await tx.execute(sql`
+                UPDATE provider_payouts SET
+                  status = 'failed',
+                  notes = CONCAT_WS(' | ', notes, ${"transfer.reversed " + event.id})
+                WHERE id = ${payoutId} AND status = 'completed'
+                RETURNING id
+              `);
+              payoutMoved = (moved.rows ?? []).length;
+            }
+
+            if (payoutMoved) {
+              // Earnings return to payable ONLY because the payout moved. A disputed row goes to `held`.
+              const updated = await tx.execute(sql`
+                UPDATE ${sql.raw(earningsTable)} SET
+                  status = CASE WHEN COALESCE(dispute_state, 'none') = 'open' THEN 'held' ELSE 'releasable' END,
+                  payout_id = NULL
+                WHERE payout_id = ${payoutId} AND status = 'paid_out'
+                RETURNING id
+              `);
+              returnedRows = (updated.rows ?? []).length;
+            } else {
+              // Nothing moved: change no earnings, ask a human, and record where the payout actually stands.
+              const [row] = (await tx.execute(sql`
+                SELECT status FROM ${sql.raw(payoutsTable)} WHERE id = ${payoutId} LIMIT 1
+              `)).rows as Array<{ status?: string | null }>;
+              payoutStatusNow = row?.status ?? null;
+              needsManualReviewReasons.push(
+                payoutStatusNow ? `payout is '${payoutStatusNow}', not 'completed'` : "no payout row for that id",
+              );
+            }
           } else {
-            const moved = await db.execute(sql`
-              UPDATE provider_payouts SET
-                status = 'failed',
-                notes = CONCAT_WS(' | ', notes, ${"transfer.reversed " + event.id})
-              WHERE id = ${payoutId} AND status = 'completed'
-              RETURNING id
-            `);
-            payoutMoved = (moved.rows ?? []).length;
+            needsManualReviewReasons.push("partial reversal: no earnings row may change");
           }
-        }
 
-        // ONE admin-visible row, through the existing record. No amount beyond what the payout row already shows, no
-        // user data. A partial reversal is marked for manual review because it changes no earnings row.
-        await db.insert(adminNotifications).values({
-          type: "stripe_connect_transfer_reversed",
-          message:
-            `Connect transfer ${transfer.id} for payout ${payoutId} was ${fullyReversed ? "fully" : "PARTIALLY"} reversed` +
-            (fullyReversed
-              ? `; ${returnedRows} earning row(s) returned to payable, payout ${payoutMoved ? "marked failed" : "unchanged"}.`
-              : "; no earnings row was changed - PARTIAL reversal needs manual review."),
-          reason: "transfer.reversed",
-          metadata: {
-            eventId: event.id,
-            transferId: transfer.id,
-            payoutId,
-            requesterType,
-            full: fullyReversed,
-            returnedEarnings: returnedRows,
-            payoutRowsMoved: payoutMoved,
-            stripeCreated: new Date(event.created * 1000).toISOString(),
-            needsManualReview: !fullyReversed,
-          },
-        } as any);
+          const needsManualReview = needsManualReviewReasons.length > 0;
+          await tx.insert(adminNotifications).values({
+            type: "stripe_connect_transfer_reversed",
+            message:
+              `Connect transfer ${transfer.id} for payout ${payoutId ?? "<none>"} was ${fullyReversed ? "fully" : "PARTIALLY"} reversed` +
+              (needsManualReview
+                ? `; no earnings row was changed - manual review: ${needsManualReviewReasons.join("; ")}.`
+                : `; ${returnedRows} earning row(s) returned to payable, payout marked failed.`),
+            reason: "transfer.reversed",
+            metadata: {
+              eventId: event.id,
+              transferId: transfer.id,
+              payoutId: payoutId ?? null,
+              requesterType: requesterType ?? null,
+              full: fullyReversed,
+              returnedEarnings: returnedRows,
+              payoutRowsMoved: payoutMoved,
+              payoutStatus: payoutStatusNow,
+              stripeCreated: new Date(event.created * 1000).toISOString(),
+              needsManualReview,
+            },
+          } as any);
+        });
         console.info(
-          `[WEBHOOK] transfer.reversed payoutId=${payoutId} full=${fullyReversed} earnings=${returnedRows} payoutMoved=${payoutMoved}`,
+          `[WEBHOOK] transfer.reversed payoutId=${payoutId} full=${fullyReversed} rail=${String(requesterType)}`,
         );
         break;
       }
+
 
       case "payment_intent.succeeded": {
         const paymentIntent = event.data.object as Stripe.PaymentIntent;
