@@ -259,5 +259,5 @@ test("M10: the two binding mount counts are unchanged; the band reuses the rail'
   assert.equal((view.match(/<FinishCard\b/g) ?? []).length, 2, "the foot (list) + the banner (map): one per view");
   assert.equal((view.match(/<SlipDraftAiRow\b/g) ?? []).length, 1);
   // In map view the rail gives way to the map's rail, so exactly one of each renders per view.
-  assert.match(view, /\{data\.trip && slipView !== "map" && \(/);
+  assert.match(view, /\{isOwner && data\.trip && slipView !== "map" \? \(/);
 });
