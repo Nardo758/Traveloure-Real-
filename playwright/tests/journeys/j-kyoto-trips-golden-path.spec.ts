@@ -1761,55 +1761,11 @@ test.describe("7 · a local expert checks the plan", () => {
     });
   });
 
-  test("§7 expert door — the picker shows only byline-gated experts who list the level", async ({ page }) => {
-    const gated = seedKyotoExpert("pick");
-    const ungated = seedKyotoExpert("nogate", { ungated: true });
-    await signedInTraveler(page, "door-pick");
-    const tripId = await createTrip(page.request, "Kyoto pick", KYOTO);
-    await createItem(page.request, tripId, "Yasaka Shrine", 1);
-    await page.goto(`/plans/${tripId}?help=expert`);
-    await expect(testid(page, "expert-door-card")).toBeVisible({ timeout: 20_000 });
-    // "Check my plan" lists the fixture's advisory offering; its band is its own price.
-    await expect(testid(page, "expert-door-band-check")).toContainText("$60");
-    await testid(page, "expert-door-level-check").click();
-    await expect(testid(page, `expert-picker-card-${gated.handle}`)).toBeVisible({ timeout: 20_000 });
-    await expect(testid(page, `expert-picker-card-${ungated.handle}`)).toHaveCount(0);
-    await expect(testid(page, `expert-picker-card-${gated.handle}`)).toContainText(gated.neighborhood);
-    await expect(testid(page, `expert-picker-request-${gated.serviceId}`)).toBeVisible();
-    // The same expert lists no planning offering, so "Plan it with me" never shows them.
-    const api = await (await page.request.get(`${BASE_URL}/api/trips/${tripId}/expert-help/picker?level=plan`)).json();
-    expect(api.experts.map((x: any) => x.handle)).not.toContain(gated.handle);
-    // No user id crosses the wire (LD 40).
-    const check = await (await page.request.get(`${BASE_URL}/api/trips/${tripId}/expert-help/picker?level=check`)).json();
-    expect(JSON.stringify(check)).not.toContain(gated.expertId);
-  });
-
-  test("§7 — a local expert checks the plan: Request attaches them through the storefront rail and the card hides", async ({ page }) => {
-    const expert = seedKyotoExpert("checks");
-    await signedInTraveler(page, "door-req");
-    const tripId = await createTrip(page.request, "Kyoto request", KYOTO);
-    await createItem(page.request, tripId, "Fushimi Inari", 1);
-    await page.goto(`/plans/${tripId}?help=expert`);
-    await testid(page, "expert-door-level-check").click();
-    const req = testid(page, `expert-picker-request-${expert.serviceId}`);
-    await expect(req).toBeVisible({ timeout: 20_000 });
-    const posted = await actAndAwait(page, () => req.click(), { method: "POST", path: /^\/api\/expert-booking-requests$/ });
-    expect(ok2xx(posted)).toBe(true);
-    // DB: the advisor row came from the ONE author (pending until the expert accepts, §12).
-    const [adv] = await rows<{ status: string }>(
-      `SELECT status FROM trip_expert_advisors WHERE trip_id = $1 AND local_expert_id = $2`,
-      [tripId, expert.expertId],
-    );
-    expect(adv?.status).toBe("pending");
-    await expect.poll(async () => (await rows<{ n: number }>(
-      `SELECT count(*)::int AS n FROM funnel_events WHERE trip_id = $1 AND event_type = 'expert_request_sent'`, [tripId])
-    )[0].n, { timeout: 10_000 }).toBe(1);
-    // DOM: with an expert attached neither the card nor the header control renders.
-    await page.reload();
-    await expect(testid(page, "slip-view-toggle")).toBeVisible({ timeout: 20_000 });
-    await expect(testid(page, "expert-door-card")).toHaveCount(0);
-    await expect(testid(page, "slip-add-local-expert")).toHaveCount(0);
-  });
+    // UI brief 1 (Leon, Nov 18 2026): the "How much help do you want?" card left the plan page, and with it the
+    // request picker this pair of tests drove (`?help=expert`, `expert-door-*`, `expert-picker-*` - the last of
+    // which exists nowhere in `client/` any more). The expert door now opens the paid HandoffChooser, whose own
+    // coverage is `handoff-chooser` in the handoff suites. Deleting these two cases rather than weakening them is
+    // logged as Q-8 in the pack's findings.md.
 });
 
 // ── §8 · a month later ────────────────────────────────────────────────────────────────────────

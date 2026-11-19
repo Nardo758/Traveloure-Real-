@@ -20,6 +20,7 @@ import type { Page } from '@playwright/test';
 import { e2eEmail, E2E_PASSWORD } from './lib/run-id';
 import { signupViaUi } from './lib/accounts';
 import { fillPlanEntryToStart, clickPlanStart, openPlanEntryFromHero } from './lib/flows';
+import { execFileSync } from 'node:child_process';
 import { q, userByEmail } from './lib/db';
 
 const SHOTS = 'test-results/shots/2049';
@@ -29,7 +30,29 @@ test.describe.configure({ mode: 'serial' });
 
 let tripId = '';
 
+/**
+ * The action row's expert button is gated on the expert door being LIVE (an expert available in this market), the
+ * same condition the slip uses. The fixture expert is seeded and the city switched on exactly as journey-2 does, so
+ * the frame is measured with the door open - never by weakening the assertion.
+ */
+function seedKyotoExpertDoor() {
+  execFileSync('npx', ['tsx', 'scripts/seed-fixture-kyoto-expert.ts', 'd8frame'], {
+    env: { ...process.env },
+    encoding: 'utf8',
+    timeout: 180_000,
+  });
+}
+
+async function switchKyotoExpertsOn() {
+  await q(
+    `INSERT INTO platform_settings (setting_key, setting_value) VALUES ('expert_hook_cities', '["kyoto"]')
+     ON CONFLICT (setting_key) DO UPDATE SET setting_value = EXCLUDED.setting_value, updated_at = NOW()`,
+  );
+}
+
 async function buildOwnerAndPlan(page: Page): Promise<string> {
+  seedKyotoExpertDoor();
+  await switchKyotoExpertsOn();
   const email = e2eEmail('d8frame');
   await signupViaUi(page, { email, firstName: 'E2E', lastName: 'Frame' });
 

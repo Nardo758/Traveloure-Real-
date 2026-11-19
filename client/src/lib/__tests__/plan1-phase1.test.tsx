@@ -83,10 +83,11 @@ describe("PLAN-1 Phase 1", () => {
 
   it("P2 owner map view: header, band, map — no tools tray, cost strip, Stay here or lodging ranking", () => {
     const slip = read("client/src/components/plancard/SlipView.tsx");
-    assert.match(slip, /\{isOwner && data\.trip && slipView === "list" \? \(\s*<ToolsTray/);
+    assert.match(slip, /\{isOwner && slipView === "list" \? \(\s*<ToolsTray/);
     assert.match(slip, /\{slipView === "list" && !guest \? \(\s*<PlanCostStrip/); // PLAN-1 Phase 3: and never for a guest
     const mapStart = slip.indexOf('{slipView === "map" && data.trip ? (');
-    const mapView = slip.slice(mapStart, slip.indexOf("      ) : (\n", mapStart));
+    // UI brief 1: the map branch now closes at its own `) : (` before the list branch, so the slice stops there.
+    const mapView = slip.slice(mapStart, slip.indexOf('      ) : (', mapStart));
     assert.ok(mapView.length > 200);
     for (const absent of ["ToolsTray", "PlanCostStrip", "renderAnchorPanel", "AnchorPanel", "StayBookButton", "WhereToStay"]) {
       assert.ok(!mapView.includes(absent), `map view draws no ${absent}`);
