@@ -181,7 +181,6 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
           JOURNEY_BASE_URL: http://127.0.0.1:5000
-          MUTATION_AUTH_EVIDENCE_PATH: generated/security/mutation-auth-live-evidence.json
         run: npm run run:mutation-auth-live-audit
 
       - name: Upload the mutation-auth evidence
@@ -189,7 +188,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: mutation-auth-evidence
-          path: generated/security/mutation-auth-live-evidence.json
+          # The audit script writes this fixed path (scripts/run-mutation-auth-live-audit.ts) - it reads no env override.
+          path: generated/security/mutation-auth-evidence.json
           if-no-files-found: error
           retention-days: 14
 
