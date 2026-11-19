@@ -83,7 +83,8 @@ describe("PLAN-1 Phase 1", () => {
 
   it("P2 owner map view: header, band, map — no tools tray, cost strip, Stay here or lodging ranking", () => {
     const slip = read("client/src/components/plancard/SlipView.tsx");
-    assert.match(slip, /\{isOwner && slipView === "list" \? \(\s*<ToolsTray/);
+  assert.match(slip, /\{isOwner && data\.trip && slipView !== "map" \? \(\s*<div[^>]*data-testid="slip-tools-row"/);
+  assert.match(slip, /data-testid="slip-tools-row"[\s\S]{0,400}?<ToolsTray/);
     assert.match(slip, /\{slipView === "list" && !guest \? \(\s*<PlanCostStrip/); // PLAN-1 Phase 3: and never for a guest
     const mapStart = slip.indexOf('{slipView === "map" && data.trip ? (');
     // UI brief 1: the map branch now closes at its own `) : (` before the list branch, so the slice stops there.

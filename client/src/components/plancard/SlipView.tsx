@@ -2574,7 +2574,7 @@ export function SlipView({
           {/* UI brief 1 (commit 3b, review): Ask takes the bar's EXACT audience - owner or expert viewer AND
               `slipView !== "map"` (the bar's mount gate on main, `SlipView.tsx:3261`). Ask did not show in the
               map before this PR and does not now. Layout only. */}
-          {(isOwner || isExpertViewer) && data.trip && slipView !== "map" ? (
+          {isOwner && data.trip && slipView !== "map" ? (
             <div className="flex flex-wrap items-center gap-2" data-testid="slip-tools-row">
               {isOwner && slipView === "list" ? (
               <ToolsTray
@@ -3251,7 +3251,7 @@ export function SlipView({
         {/* UI brief 1 (commit 3): Finalize sits IN FLOW at the foot of the column. Its audience and views
             are the bar's own, unchanged: `(isOwner || isExpertViewer)` (`SlipRail.tsx:1684`) and "not the map
             view" (the mount gate the bar carried here). The map keeps its Trip Card banner card. */}
-        {data.trip && slipView !== "map" && (isOwner || isExpertViewer) ? (
+        {isOwner && data.trip && slipView !== "map" ? (
           <div className="flex items-center justify-end border-t border-[color:var(--slip-line)] pt-4" data-testid="slip-foot">
             <FinishCard trip={data.trip} isOwner={isOwner} isPrimary={cardReady} activities={allActivities} layout="bar" />
           </div>

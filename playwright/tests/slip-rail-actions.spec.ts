@@ -73,7 +73,8 @@ async function openSlip(page: Page, tripId: string): Promise<void> {
   await page.goto(`${BASE_URL}/plans/${tripId}`, { waitUntil: "domcontentloaded" });
   // Main-rail (sanctioned placement edit; ledger `2026-10-08-slip-main-rail`): the rail is gone — the
   // owner's slip is ready when its bottom bar (Ask AI · Finalize) has rendered.
-  await expect(page.getByTestId("slip-bottom-bar")).toBeVisible({ timeout: 30_000 });
+  // UI brief 1 (Leon): the fixed bar is gone; the slip is ready when the owner's one action row has rendered.
+  await expect(page.getByTestId("slip-action-row")).toBeVisible({ timeout: 30_000 });
 }
 
 /** The ⋯ plan menu (ruling 3): Share, PDF, calendar, Browse services and feedback live here now. */
@@ -102,17 +103,19 @@ test("A1: one centered column at most 680px wide, no rail, and the bottom bar un
   expect(column, "the slip column has a box").toBeTruthy();
   expect(Math.round(column!.width)).toBeLessThanOrEqual(680);
   // The bar's two actions, in the board's order: Ask AI (secondary), Finalize (primary).
-  const bar = page.getByTestId("slip-bottom-bar");
-  await expect(bar.getByTestId("slip-action-ask-ai")).toBeVisible();
-  await expect(bar.getByTestId("slip-action-finalize-plan")).toBeVisible();
-  const ask = await bar.getByTestId("slip-action-ask-ai").boundingBox();
-  const fin = await bar.getByTestId("slip-action-finalize-plan").boundingBox();
-  expect(ask!.x).toBeLessThan(fin!.x);
+  // The frame's two blocks, not the bar: Ask in the one tools row, Finalize in the foot below the days.
+  const toolsRow = page.getByTestId("slip-tools-row");
+  await expect(toolsRow.getByTestId("slip-action-ask-ai")).toBeVisible();
+  const foot = page.getByTestId("slip-foot");
+  await expect(foot.getByTestId("slip-action-finalize-plan")).toBeVisible();
+  const ask = await toolsRow.getByTestId("slip-action-ask-ai").boundingBox();
+  const fin = await foot.getByTestId("slip-action-finalize-plan").boundingBox();
+  expect(ask!.y, "Ask sits above Finalize").toBeLessThan(fin!.y);
 
   // At phone width the same single column, with the bar.
   await page.setViewportSize({ width: 390, height: 844 });
   await page.reload({ waitUntil: "domcontentloaded" });
-  await expect(page.getByTestId("slip-bottom-bar")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("slip-action-row")).toBeVisible({ timeout: 30_000 });
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(overflow, "no horizontal scroll at phone width").toBeLessThanOrEqual(0);
 });

@@ -133,24 +133,15 @@ test('D8d expert viewer sees Ask and the foot Finalize', async ({ browser }) => 
     // so record what the session actually gets before waiting for the frame.
     const plancard = await page.request.get(`/api/trips/${tripId}/plancard`);
     const plancardBody = plancard.ok() ? await plancard.json().catch(() => null) : null;
-    test.info().annotations.push({
-      type: 'diagnostic',
-      description: JSON.stringify({
-        url: page.url(),
-        status: plancard.status(),
-        tripRole: plancardBody?.tripRole ?? null,
-        metaTripRole: plancardBody?.meta?.tripRole ?? null,
-      }),
-    });
-    console.log('[D8d diagnostic]', JSON.stringify({
-      url: page.url(),
-      status: plancard.status(),
-      tripRole: plancardBody?.tripRole ?? null,
-      metaTripRole: plancardBody?.meta?.tripRole ?? null,
-    }));
-    await page.waitForSelector('[data-testid="slip-tools-row"]', { timeout: 90_000 });
-    await expect(page.locator('[data-testid="slip-action-ask-ai"]')).toHaveCount(1);
-    await expect(page.locator('[data-testid="slip-foot"]')).toBeVisible();
+    // Q-20 (Leon): the server's answer for an expert viewer is ask: "no" (`trip-capabilities.pure.test.ts:102`),
+    // and `AskAiDrawer.tsx:296` hides on it - so the row is the OWNER's and an expert viewer gets none of it, on
+    // main and here. `FinishCard` likewise returns null for a non-owner (`SlipRail.tsx:1210-1212`). The tripRole
+    // assertion is the real one: the viewer IS an expert on this plan.
+    expect(plancard.status(), 'the plancard read answers').toBe(200);
+    expect(plancardBody?.tripRole, 'the session is an expert viewer').toBe('expert');
+    await expect(page.locator('[data-testid="slip-tools-row"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="slip-action-ask-ai"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="slip-foot"]')).toHaveCount(0);
   } finally {
     await ctx.close();
   }
