@@ -136,30 +136,39 @@ test("F8.6 a provider reversal moves provider_payouts to failed and records the 
 });
 
 test("F8.7 transfer.created still completes a payout (the event the pinned API version has)", async () => {
+  // F8.7 gets its OWN expert: `markEarningsPaidOutForPayoutTx` (storage.ts:7262) pays out that expert's releasable rows
+  // when it completes a payout, and with the shared expert it consumed payout A's returned row, which F8.8 asserts on.
+  const ownExpert = uid();
   const fresh = uid();
-  await db.execute(sql`INSERT INTO expert_payouts (id, expert_id, amount, status) VALUES (${fresh}, ${expertUser}, 10, 'processing')`);
-  const transfer = { id: `tr_c_${RUN}`, metadata: { payoutId: fresh, requesterType: "expert" } };
-  await processStripeWebhookEvent(transferEvent("transfer.created", transfer));
-  const [row] = (await db.execute(sql`SELECT status FROM expert_payouts WHERE id = ${fresh}`)).rows as any[];
-  assert.equal(row.status, "completed");
-  await db.execute(sql`DELETE FROM expert_payouts WHERE id = ${fresh}`);
+  await db.execute(sql`INSERT INTO users (id, email, role, first_name, last_name) VALUES (${ownExpert}, ${`f8-f7-${RUN}@ci.test`}, 'expert', 'F8', 'Seven')`);
+  try {
+    await db.execute(sql`INSERT INTO expert_payouts (id, expert_id, amount, status) VALUES (${fresh}, ${ownExpert}, 10, 'processing')`);
+    const transfer = { id: `tr_c_${RUN}`, metadata: { payoutId: fresh, requesterType: "expert" } };
+    await processStripeWebhookEvent(transferEvent("transfer.created", transfer));
+    const [row] = (await db.execute(sql`SELECT status FROM expert_payouts WHERE id = ${fresh}`)).rows as any[];
+    assert.equal(row.status, "completed");
+  } finally {
+    await db.execute(sql`DELETE FROM expert_earnings WHERE expert_id = ${ownExpert}`).catch(() => {});
+    await db.execute(sql`DELETE FROM expert_payouts WHERE expert_id = ${ownExpert}`).catch(() => {});
+    await db.execute(sql`DELETE FROM users WHERE id = ${ownExpert}`).catch(() => {});
+  }
 });
 
 test("F8.8 a NEW transfer.created after a full reversal does not move the payout back or re-mark earnings", async () => {
-  // F8.1 already reversed payoutA fully. Assert on THAT payout's own two rows - the earlier version queried by
-  // `reference_id`, which also matched payout B's row (still paid_out after F8.5's partial reversal, correctly).
   const ids = sql.raw(`ARRAY['${payoutAEarningIds.join("','")}']::varchar[]`);
   const beforeRows = (await db.execute(sql`SELECT id, status, payout_id FROM expert_earnings WHERE id = ANY(${ids}) ORDER BY id`)).rows as any[];
+  // The snapshot must ALREADY be what F8.1 left: one releasable, one held, both without a payout id.
+  assert.equal(beforeRows.length, 2);
+  assert.ok(beforeRows.some((r) => r.status === "releasable" && r.payout_id === null), "before: one releasable, no payout id");
+  assert.ok(beforeRows.some((r) => r.status === "held" && r.payout_id === null), "before: one held, no payout id");
+
   const transfer = { id: `tr_late_${RUN}`, metadata: { payoutId: payoutA, requesterType: "expert" } };
   await processStripeWebhookEvent(transferEvent("transfer.created", transfer));
+
   const [payout] = (await db.execute(sql`SELECT status FROM expert_payouts WHERE id = ${payoutA}`)).rows as any[];
   const afterRows = (await db.execute(sql`SELECT id, status, payout_id FROM expert_earnings WHERE id = ANY(${ids}) ORDER BY id`)).rows as any[];
-
   assert.notEqual(payout.status, "completed", "a late transfer.created must not re-complete a failed payout");
-  assert.deepEqual(afterRows, beforeRows, "and must leave this payout's earnings exactly as the reversal left them");
-  assert.equal(afterRows.length, 2);
-  assert.ok(afterRows.some((r) => r.status === "releasable" && r.payout_id === null), "one releasable with no payout id");
-  assert.ok(afterRows.some((r) => r.status === "held" && r.payout_id === null), "one held (disputed) with no payout id");
+  assert.deepEqual(afterRows, beforeRows, "and leaves this payout's earnings exactly as the reversal left them");
 });
 
 test("F8.9 a reversal for a payout that is not 'completed' changes no earnings and asks for manual review", async () => {
@@ -220,11 +229,23 @@ test("F8.11 if the admin-row insert fails, the payout and earnings roll back wit
     await db.execute(sql.raw(`CREATE TRIGGER ${fnName}_trg BEFORE INSERT ON admin_notifications FOR EACH ROW EXECUTE FUNCTION ${fnName}()`));
 
     const transfer = { id: rbTransfer, reversed: true, metadata: { payoutId: rbPayout, requesterType: "expert" } };
-    await assert.rejects(
-      () => processStripeWebhookEvent(transferEvent("transfer.reversed", transfer)),
-      /f8 forced failure/,
-      "the handler throws when the admin row cannot be written",
-    );
+    // The DB layer wraps the trigger's text: the phrase is in err.message OR in err.cause.message, so match either and
+    // print both when neither has it.
+    let caught: any = null;
+    try {
+      await processStripeWebhookEvent(transferEvent("transfer.reversed", transfer));
+    } catch (err: any) {
+      caught = err;
+    }
+    assert.ok(caught, "the handler throws when the admin row cannot be written");
+    const haystack = `${caught?.message ?? ""} ${String(caught?.cause?.message ?? "")}`;
+    if (!/forced failure/i.test(haystack)) {
+      console.error("[F8.11] err.message:", caught?.message);
+      console.error("[F8.11] err.cause?.message:", caught?.cause?.message);
+    }
+    assert.match(haystack, /forced failure/i, "the failure names the trigger's exception");
+    const [{ n: adminRows }] = (await db.execute(sql`SELECT COUNT(*)::int AS n FROM admin_notifications WHERE message LIKE ${"%" + rbTransfer + "%"}`)).rows as any[];
+    assert.equal(adminRows, 0, "no admin row survives the rollback");
 
     const [payout] = (await db.execute(sql`SELECT status FROM expert_payouts WHERE id = ${rbPayout}`)).rows as any[];
     assert.equal(payout.status, "completed", "the payout update rolled back");
