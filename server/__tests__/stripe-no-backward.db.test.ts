@@ -112,7 +112,10 @@ test("F7.3a the same holds for a canceled event (legacy)", async () => {
 
 test("F7.3b and the ledger row of a succeeded intent is not rewritten", async () => {
   const ledgerId = `pi_f7_ledger_${RUN}`;
-  await db.execute(sql`INSERT INTO payment_intents (id, stripe_payment_intent_id, status) VALUES (${uid()}, ${ledgerId}, 'succeeded')`);
+  await db.execute(sql`
+    INSERT INTO payment_intents (stripe_payment_intent_id, amount, currency, status, metadata)
+    VALUES (${ledgerId}, '10.00', 'usd', 'succeeded', '{"type":"f7_fixture"}'::jsonb)
+  `);
   await service.handlePaymentCanceled(intent(ledgerId, undefined), eventFor("payment_intent.canceled", intent(ledgerId, undefined)));
   const [row] = (await db.execute(sql`SELECT status FROM payment_intents WHERE stripe_payment_intent_id = ${ledgerId}`)).rows ?? [];
   assert.equal(row.status, "succeeded");
@@ -121,7 +124,10 @@ test("F7.3b and the ledger row of a succeeded intent is not rewritten", async ()
 
 test("F7.4 a succeeded ledger row survives a failed event too", async () => {
   const ledgerId = `pi_f7_ledger_f_${RUN}`;
-  await db.execute(sql`INSERT INTO payment_intents (id, stripe_payment_intent_id, status) VALUES (${uid()}, ${ledgerId}, 'succeeded')`);
+  await db.execute(sql`
+    INSERT INTO payment_intents (stripe_payment_intent_id, amount, currency, status, metadata)
+    VALUES (${ledgerId}, '10.00', 'usd', 'succeeded', '{"type":"f7_fixture"}'::jsonb)
+  `);
   await service.handlePaymentFailed(intent(ledgerId, undefined), eventFor("payment_intent.payment_failed", intent(ledgerId, undefined)));
   const [row] = (await db.execute(sql`SELECT status FROM payment_intents WHERE stripe_payment_intent_id = ${ledgerId}`)).rows ?? [];
   assert.equal(row.status, "succeeded");
@@ -160,4 +166,24 @@ test("F7.7 a failure created before confirmation is ignored, and recorded with s
   const records = row.metadata?.lateFailureIgnored ?? [];
   assert.equal(records.length, 1);
   assert.equal(records[0].stripeCreated, new Date(before * 1000).toISOString());
+});
+
+test("F7.8 a confirmed CART booking is not moved by a failed event, and keeps ONE record", async () => {
+  await db.execute(sql`UPDATE service_bookings SET status='confirmed', booking_details='{}'::jsonb WHERE id = ${cartBookingId}`);
+  const pi = intent(piId, undefined);
+  await service.handlePaymentFailed(pi, eventFor("payment_intent.payment_failed", pi));
+  const [row] = (await db.execute(sql`SELECT status, booking_details FROM service_bookings WHERE id = ${cartBookingId}`)).rows ?? [];
+  assert.equal(row.status, "confirmed");
+  const records = row.booking_details?.lateFailureIgnored ?? [];
+  assert.equal(records.length, 1, "one record in booking_details");
+  assert.equal(records[0].rail, "cart");
+});
+
+test("F7.9 the same for a canceled event on a confirmed CART booking", async () => {
+  await db.execute(sql`UPDATE service_bookings SET status='confirmed', booking_details='{}'::jsonb WHERE id = ${cartBookingId}`);
+  const pi = intent(piId, undefined);
+  await service.handlePaymentCanceled(pi, eventFor("payment_intent.canceled", pi));
+  const [row] = (await db.execute(sql`SELECT status, booking_details FROM service_bookings WHERE id = ${cartBookingId}`)).rows ?? [];
+  assert.equal(row.status, "confirmed");
+  assert.equal((row.booking_details?.lateFailureIgnored ?? []).length, 1);
 });
