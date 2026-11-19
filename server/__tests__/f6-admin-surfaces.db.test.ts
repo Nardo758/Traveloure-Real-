@@ -130,3 +130,13 @@ test("F6.8 a non-admin is refused 403 on BOTH surfaces", async () => {
     other.s.close();
   }
 });
+
+test("F6.9 stuck-pending answers 200 for an admin with a fixture row (the 500 F7 shipped)", async () => {
+  // F7's `late` query UNIONed `bookings.id` (uuid) with `service_bookings.id` (varchar) INSIDE this handler, so the
+  // route answered 500 for every admin. This PR moved the late list out and casts the UNION; this case is the proof.
+  await insertException(false); // at least one fixture row exists for the surface to read
+  const res = await fetch(`${base}/api/admin/bookings/stuck-pending`);
+  assert.equal(res.status, 200, "stuck-pending answers 200, not 500");
+  const body = (await res.json()) as any;
+  assert.equal(Object.prototype.hasOwnProperty.call(body, "lateFailureIgnored"), false, "and carries no late list");
+});
