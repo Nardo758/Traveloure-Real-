@@ -22,6 +22,8 @@ const providerUser = uid();
 const payoutA = uid();
 const payoutB = uid();
 const payoutP = uid();
+/** F8.8: payout A's two earning ids, captured where they are created. */
+const payoutAEarningIds: string[] = [];
 
 function assertDisposableDb(): void {
   if (process.env.JOURNEY_DB_WRITES_OK === "1") return;
@@ -55,9 +57,11 @@ before(async () => {
   await db.execute(sql`INSERT INTO provider_payouts (id, provider_id, amount, status) VALUES (${payoutP}, ${providerUser}, 10, 'completed')`);
   // Two paid_out earnings on payout A (one of them disputed), one on payout B that must stay untouched.
   for (const [payout, dispute] of [[payoutA, "none"], [payoutA, "open"], [payoutB, "none"]] as const) {
+    const earningId = uid();
+    if (payout === payoutA) payoutAEarningIds.push(earningId);
     await db.execute(sql`
       INSERT INTO expert_earnings (id, expert_id, type, amount, status, payout_id, dispute_state, reference_id)
-      VALUES (${uid()}, ${expertUser}, 'service_booking', 5, 'paid_out', ${payout}, ${dispute}, ${"f8-" + RUN})
+      VALUES (${earningId}, ${expertUser}, 'service_booking', 5, 'paid_out', ${payout}, ${dispute}, ${"f8-" + RUN})
     `);
   }
 });
@@ -93,14 +97,24 @@ test("F8.3 the payout moves completed -> failed and records the event id in meta
 });
 
 test("F8.4 a redelivered reversal changes nothing and writes no second admin row", async () => {
-  // The SAME event id twice: that is what a redelivery is. (The first version of this test minted a new id each
-  // call, so the durable claim was never exercised and the case could not fail for the right reason.)
+  // The SAME event OBJECT twice - that is what a redelivery is. Count after the first delivery, deliver again, count
+  // again: equal. The payout and its earnings must also be unchanged by the second delivery.
   const transfer = { id: `tr_${RUN}`, reversed: true, amount_reversed: 10, metadata: { payoutId: payoutA, requesterType: "expert" } };
   const redelivered = transferEvent("transfer.reversed", transfer);
-  const before = (await db.execute(sql`SELECT COUNT(*)::int AS n FROM admin_notifications WHERE metadata->>'payoutId' = ${payoutA}`)).rows as any[];
   await processStripeWebhookEvent(redelivered);
-  const after = (await db.execute(sql`SELECT COUNT(*)::int AS n FROM admin_notifications WHERE metadata->>'payoutId' = ${payoutA}`)).rows as any[];
-  assert.equal(after[0].n, before[0].n, "the durable claim dedupes the redelivery");
+  const firstRows = (await db.execute(sql`SELECT COUNT(*)::int AS n FROM admin_notifications WHERE metadata->>'payoutId' = ${payoutA}`)).rows as any[];
+  const firstEarnings = (await db.execute(sql`SELECT id, status, payout_id FROM expert_earnings WHERE id = ANY(${sql.raw(`ARRAY['${payoutAEarningIds.join("','")}']::varchar[]`)}) ORDER BY id`)).rows as any[];
+  const [firstPayout] = (await db.execute(sql`SELECT status FROM expert_payouts WHERE id = ${payoutA}`)).rows as any[];
+
+  await processStripeWebhookEvent(redelivered);
+
+  const secondRows = (await db.execute(sql`SELECT COUNT(*)::int AS n FROM admin_notifications WHERE metadata->>'payoutId' = ${payoutA}`)).rows as any[];
+  const secondEarnings = (await db.execute(sql`SELECT id, status, payout_id FROM expert_earnings WHERE id = ANY(${sql.raw(`ARRAY['${payoutAEarningIds.join("','")}']::varchar[]`)}) ORDER BY id`)).rows as any[];
+  const [secondPayout] = (await db.execute(sql`SELECT status FROM expert_payouts WHERE id = ${payoutA}`)).rows as any[];
+
+  assert.equal(secondRows[0].n, firstRows[0].n, "no second admin row");
+  assert.deepEqual(secondEarnings, firstEarnings, "earnings unchanged by the redelivery");
+  assert.deepEqual(secondPayout, firstPayout, "payout unchanged by the redelivery");
 });
 
 test("F8.5 a PARTIAL reversal changes no earnings row and asks for manual review", async () => {
@@ -132,15 +146,20 @@ test("F8.7 transfer.created still completes a payout (the event the pinned API v
 });
 
 test("F8.8 a NEW transfer.created after a full reversal does not move the payout back or re-mark earnings", async () => {
-  // F8.1 already reversed payoutA fully. A late `transfer.created` with a NEW event id must not resurrect it.
+  // F8.1 already reversed payoutA fully. Assert on THAT payout's own two rows - the earlier version queried by
+  // `reference_id`, which also matched payout B's row (still paid_out after F8.5's partial reversal, correctly).
+  const ids = sql.raw(`ARRAY['${payoutAEarningIds.join("','")}']::varchar[]`);
+  const beforeRows = (await db.execute(sql`SELECT id, status, payout_id FROM expert_earnings WHERE id = ANY(${ids}) ORDER BY id`)).rows as any[];
   const transfer = { id: `tr_late_${RUN}`, metadata: { payoutId: payoutA, requesterType: "expert" } };
   await processStripeWebhookEvent(transferEvent("transfer.created", transfer));
   const [payout] = (await db.execute(sql`SELECT status FROM expert_payouts WHERE id = ${payoutA}`)).rows as any[];
-  const earnings = (await db.execute(sql`SELECT status FROM expert_earnings WHERE reference_id = ${"f8-" + RUN}`)).rows as any[];
-  // If EITHER of these comes back completed/paid_out the guard in storage.ts:189 (failed -> completed) is the cause and
-  // that needs a ruling; this test is written to FAIL loudly in that case, which is the report.
+  const afterRows = (await db.execute(sql`SELECT id, status, payout_id FROM expert_earnings WHERE id = ANY(${ids}) ORDER BY id`)).rows as any[];
+
   assert.notEqual(payout.status, "completed", "a late transfer.created must not re-complete a failed payout");
-  assert.equal(earnings.some((e) => e.status === "paid_out"), false, "and must not mark earnings paid_out again");
+  assert.deepEqual(afterRows, beforeRows, "and must leave this payout's earnings exactly as the reversal left them");
+  assert.equal(afterRows.length, 2);
+  assert.ok(afterRows.some((r) => r.status === "releasable" && r.payout_id === null), "one releasable with no payout id");
+  assert.ok(afterRows.some((r) => r.status === "held" && r.payout_id === null), "one held (disputed) with no payout id");
 });
 
 test("F8.9 a reversal for a payout that is not 'completed' changes no earnings and asks for manual review", async () => {
@@ -191,7 +210,7 @@ test("F8.11 if the admin-row insert fails, the payout and earnings roll back wit
     await db.execute(sql.raw(`
       CREATE OR REPLACE FUNCTION ${fnName}() RETURNS trigger AS $$
       BEGIN
-        IF NEW.metadata->>'transferId' = '${rbTransfer}' THEN
+        IF NEW.type = 'stripe_connect_transfer_reversed' AND NEW.message LIKE '%${rbTransfer}%' THEN
           RAISE EXCEPTION 'f8 forced failure for the rollback case';
         END IF;
         RETURN NEW;
