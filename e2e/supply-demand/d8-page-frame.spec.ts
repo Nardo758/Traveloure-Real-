@@ -36,8 +36,13 @@ let tripId = '';
  * the frame is measured with the door open - never by weakening the assertion.
  */
 function seedKyotoExpertDoor() {
+  // The same environment journey-2 gives it: the local CI database, and the test-account flag the seeder needs.
   execFileSync('npx', ['tsx', 'scripts/seed-fixture-kyoto-expert.ts', 'd8frame'], {
-    env: { ...process.env },
+    env: {
+      ...process.env,
+      DATABASE_URL: process.env.DATABASE_URL ?? 'postgresql://postgres:postgres@localhost:5432/traveloure',
+      ALLOW_TEST_ACCOUNTS: '1',
+    },
     encoding: 'utf8',
     timeout: 180_000,
   });
