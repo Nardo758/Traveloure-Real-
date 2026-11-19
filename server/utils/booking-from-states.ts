@@ -454,8 +454,8 @@ export const LEGACY_PREPAYMENT_STATUSES = ["pending_payment", "pending", "paymen
  */
 export const STRIPE_TERMINAL_FROM_STATUSES = ["pending", "payment_pending"] as const;
 
-/** `status IN ('pending','payment_pending')`, as one SQL fragment. */
-export const BOOKING_IS_PENDING = sql`status IN ('pending', 'payment_pending')`;
+/** `status IN (...)` built FROM the one list above, so the set is named once and only once. */
+export const BOOKING_IS_PENDING = sql`status IN (${sql.join(STRIPE_TERMINAL_FROM_STATUSES.map((s) => sql`${s}`), sql`, `)})`;
 
 /** A row that already took money is never demoted by a later event. */
 export const BOOKING_IS_NOT_PAID = sql`COALESCE(payment_status, '') NOT IN ('paid', 'succeeded')`;

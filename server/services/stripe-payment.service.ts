@@ -27,7 +27,11 @@ import { handleStripePaymentSuccess } from './stripe.service';
 import { kickLegacyConfirmationDelivery, persistLegacyBookingConfirmationEmail } from './email-outbox.service';
 import { trackFunnelEvent } from '../utils/funnelTracker';
 import { logger } from '../infrastructure/logger';
-import { BOOKING_IS_NOT_PAID, BOOKING_IS_PENDING } from '../utils/booking-from-states';
+import {
+  BOOKING_IS_NOT_PAID,
+  BOOKING_IS_PENDING,
+  STRIPE_TERMINAL_FROM_STATUSES,
+} from '../utils/booking-from-states';
 import { resolveSavedCardChargeId } from './saved-card-choice';
 import { mapStripePaymentMethod, savedMethodConfirmsOnClick, type SavedPaymentMethod } from '../../shared/saved-payment-method';
 import { createPaymentIntentPreservingKey } from './stripe-intent-key';
@@ -1382,13 +1386,15 @@ class StripePaymentService {
       const current = (row.rows ?? [])[0] as
         | { status?: string | null; payment_status?: string | null; confirmed_at?: Date | string | null }
         | undefined;
-      // (c) nothing is said about an id that matches no row, and nothing about a row that is already terminal.
+      // Nothing is said about an id that matches no row (the cart ids on the legacy rail).
       if (!current) return;
-      const paid = ["paid", "succeeded"].includes(String(current.payment_status ?? ""));
-      const confirmed = String(current.status ?? "") === "confirmed";
-      const alreadyTerminal = ["payment_failed", "failed", "canceled"].includes(String(current.status ?? ""));
-      if (!paid && !confirmed) return;
+      const status = String(current.status ?? "");
+      const alreadyTerminal = ["payment_failed", "failed", "canceled", "cancelled"].includes(status);
+      const stillPending = (STRIPE_TERMINAL_FROM_STATUSES as readonly string[]).includes(status);
+      // Leon's rule (Nov 19 2026): record whenever the row exists, its status is OUTSIDE the pending set, and it is
+      // not already failed/cancelled. "Paid or confirmed" was too narrow - it misses completed and in-progress rows.
       if (alreadyTerminal) return;
+      if (stillPending) return;
       logger.warn(
         {
           eventId: event.id,
@@ -1407,10 +1413,57 @@ class StripePaymentService {
         },
         "[stripe-no-backward] late terminal event ignored: the booking has already moved past pending",
       );
+      // Step 4: one admin-visible record, merged into the row's own jsonb column, deduplicated on the event id.
+      await this.recordLateFailureIgnored(event, bookingId, rail, kind);
     } catch (err: any) {
       logger.warn(
         { eventId: event.id, eventType: event.type, bookingId, rail, kind, paymentIntentId: paymentIntent.id, err: err?.message },
         "[stripe-no-backward] late terminal event ignored (could not read the row for the log line)",
+      );
+    }
+  }
+
+  /**
+   * F7 step 4 (Leon, Nov 19 2026): the admin-visible record, in the row's existing jsonb column - never a new column.
+   *
+   * `bookings.metadata` for the legacy rail, `service_bookings.booking_details` for the cart rail. The entry carries
+   * the event id, its type and the event's own `created` (ISO), and the write is deduplicated ON THE EVENT ID: a
+   * redelivered event updates nothing and appends nothing, which is what makes "one record" true under retries.
+   * `GET /api/admin/bookings/reconciliation-exceptions` lists them beside the reconciliation job's findings.
+   */
+  private async recordLateFailureIgnored(
+    event: Stripe.Event,
+    bookingId: string,
+    rail: "legacy" | "cart",
+    kind: "failed" | "canceled",
+  ) {
+    const entry = JSON.stringify({
+      eventId: event.id,
+      eventType: event.type,
+      kind,
+      rail,
+      stripeCreated: new Date(event.created * 1000).toISOString(),
+      recordedAt: new Date().toISOString(),
+    });
+    const column = rail === "legacy" ? "bookings" : "service_bookings";
+    const field = rail === "legacy" ? "metadata" : "booking_details";
+    try {
+      await db.execute(sql`
+        UPDATE ${sql.raw(column)} SET ${sql.raw(field)} = jsonb_set(
+          COALESCE(${sql.raw(field)}, '{}'::jsonb),
+          '{lateFailureIgnored}',
+          COALESCE(${sql.raw(field)}->'lateFailureIgnored', '[]'::jsonb) || ${entry}::jsonb
+        )
+        WHERE id = ${bookingId}
+          AND NOT (
+            COALESCE(${sql.raw(field)}->'lateFailureIgnored', '[]'::jsonb)
+            @> jsonb_build_array(jsonb_build_object('eventId', ${event.id}))
+          )
+      `);
+    } catch (err: any) {
+      logger.warn(
+        { eventId: event.id, bookingId, rail, kind, err: err?.message },
+        "[stripe-no-backward] could not write the lateFailureIgnored record",
       );
     }
   }

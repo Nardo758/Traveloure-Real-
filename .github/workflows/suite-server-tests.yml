@@ -148,7 +148,6 @@ jobs:
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/stripe-no-backward.db.test.ts
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
-          JOURNEY_DB_WRITES_OK: '1'
 
       - name: Canonical paid-booking confirmation regressions (node:test)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/canonical-booking-email.db.test.ts

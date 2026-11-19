@@ -663,9 +663,25 @@ router.get("/api/admin/bookings/stuck-pending", isAuthenticated, async (req, res
       ORDER BY sb.created_at ASC
       LIMIT 200
     `);
+    // F7 (#1820, Leon Nov 19 2026): a terminal Stripe event that arrived for a booking which had already moved on is
+    // recorded on the row itself - `bookings.metadata.lateFailureIgnored` (legacy) or
+    // `service_bookings.booking_details.lateFailureIgnored` (cart), deduplicated on the event id - and listed here
+    // beside the reconciliation job's own findings.
+    const late = await db.execute(sql`
+      SELECT 'legacy' AS rail, b.id, b.status, b.metadata->'lateFailureIgnored' AS records, b.updated_at
+      FROM bookings b
+      WHERE b.metadata ? 'lateFailureIgnored'
+      UNION ALL
+      SELECT 'cart' AS rail, sb.id, sb.status, sb.booking_details->'lateFailureIgnored' AS records, sb.updated_at
+      FROM service_bookings sb
+      WHERE sb.booking_details ? 'lateFailureIgnored'
+      ORDER BY updated_at DESC
+      LIMIT 200
+    `);
     res.json({
       bookings: result.rows,
-      count: result.rows.length,
+      lateFailureIgnored: late.rows,
+      count: result.rows.length + late.rows.length,
       note: "These bookings may have been charged. Cross-check each stripe_payment_intent_id in the Stripe dashboard before manually reconciling.",
     });
   } catch (err) {
