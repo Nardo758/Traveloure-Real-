@@ -8047,43 +8047,12 @@ ${bannedCopyPromptLine()}`;
         // back).
         return res.status(409).json({ message: "This booking changed before your update was applied. Reload and try again." });
       }
-
-      // E1: trip-share bridge. When an EXPERT accepts a booking that carries a
-      // tripId (routes.ts /api/expert-booking-requests stores it on the
-      // service_bookings.tripId column), create-or-reuse the trip_expert_advisors
-      // row linking that trip to the accepting expert so the shared trip appears
-      // in their Workstation. Session-verified acting expert (booking.providerId
-      // === userId, checked above) — never from body (§14). Idempotent (§15): the
-      // table has a UNIQUE(tripId, localExpertId) index, so an existing row (any
-      // status) is reused rather than re-inserted; a pending row is atomically
-      // flipped to accepted. Accept-only — decline/other statuses never reach here.
-      // The concierge accept granted its access inside the flip above; this bridge covers every other
-      // expert booking and stays non-fatal, as before.
-      if (status === "confirmed" && booking.tripId && !conciergeGrant) {
-        try {
-          const [ownerRow] = await db
-            .select({ role: users.role })
-            .from(users)
-            .where(eq(users.id, userId))
-            .limit(1);
-          if (isExpertRole(ownerRow?.role)) {
-            const existing = await storage.getTripExpertAdvisoryAssignment(booking.tripId, userId);
-            if (!existing) {
-              await storage.createTripExpertAdvisor({
-                tripId: booking.tripId,
-                localExpertId: userId,
-                status: "accepted",
-              });
-            } else if (existing.status === "pending") {
-              await storage.acceptTripAssignment(existing.id, userId);
-            }
-            // Any other existing status (already accepted, rejected) is left as-is.
-          }
-        } catch (bridgeErr) {
-          // Non-fatal for a non-concierge booking: the booking accept itself must still succeed.
-          console.error("Failed to bridge booking accept to trip_expert_advisors:", bridgeErr);
-        }
-      }
+      // F25 (brief 25; Leon, Nov 18 2026): THE TRIP-SHARE BRIDGE IS DELETED. It gave an expert a write status on
+      // the plan for ANY confirmed booking carrying a `tripId`, whatever was bought - a question session, a
+      // "Text a local", anything - while the one class that SHOULD grant (plan work) already receives `accepted`
+      // at checkout from `plan-work-access.service.ts` (RULING 11, `grantPlanWorkAdvisorAccess`). So the bridge
+      // only ever added access where it should not, and it was the second caller of `acceptTripAssignment`.
+      // The concierge accept keeps its own grant in the status flip above (`conciergeGrant`), unchanged.
 
       res.json(updated ? sanitizeBookingForExpert(updated, (await getDbRole(req)) ?? 'provider', userId) : updated);
     } catch (err) {

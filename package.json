@@ -60,7 +60,8 @@
     "test:e2e:staging": "playwright test -c playwright.e2e.config.ts",
     "test:e2e:staging:smoke": "playwright test -c playwright.e2e.config.ts --project=chromium e2e/specs/smoke.spec.ts e2e/specs/login-ui.spec.ts",
     "migrate:dry-run": "tsx server/migrations/dry-run-entry.ts",
-    "migrate:bootstrap": "tsx server/migrations/bootstrap-prod-ledger.ts"
+    "migrate:bootstrap": "tsx server/migrations/bootstrap-prod-ledger.ts",
+    "test:plan-work-bridge": "tsx --test server/__tests__/plan-work-bridge-gone.test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.72.1",
