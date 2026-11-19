@@ -663,25 +663,9 @@ router.get("/api/admin/bookings/stuck-pending", isAuthenticated, async (req, res
       ORDER BY sb.created_at ASC
       LIMIT 200
     `);
-    // F7 (#1820, Leon Nov 19 2026): a terminal Stripe event that arrived for a booking which had already moved on is
-    // recorded on the row itself - `bookings.metadata.lateFailureIgnored` (legacy) or
-    // `service_bookings.booking_details.lateFailureIgnored` (cart), deduplicated on the event id - and listed here
-    // beside the reconciliation job's own findings.
-    const late = await db.execute(sql`
-      SELECT 'legacy' AS rail, b.id, b.status, b.metadata->'lateFailureIgnored' AS records, b.updated_at
-      FROM bookings b
-      WHERE b.metadata ? 'lateFailureIgnored'
-      UNION ALL
-      SELECT 'cart' AS rail, sb.id, sb.status, sb.booking_details->'lateFailureIgnored' AS records, sb.updated_at
-      FROM service_bookings sb
-      WHERE sb.booking_details ? 'lateFailureIgnored'
-      ORDER BY updated_at DESC
-      LIMIT 200
-    `);
     res.json({
       bookings: result.rows,
-      lateFailureIgnored: late.rows,
-      count: result.rows.length + late.rows.length,
+      count: result.rows.length,
       note: "These bookings may have been charged. Cross-check each stripe_payment_intent_id in the Stripe dashboard before manually reconciling.",
     });
   } catch (err) {
@@ -711,6 +695,8 @@ router.get("/api/admin/bookings/reconciliation-exceptions", isAuthenticated, asy
     return res.status(403).json({ message: "Admin access required" });
   }
   try {
+  // F6 (Leon, Nov 19 2026): `offset` pages the list; the 50-row cap is a PAGE SIZE, not a ceiling.
+  const offset = Math.max(0, Math.min(10_000, Number.parseInt(String((req.query as any).offset ?? "0"), 10) || 0));
     const result = await db.execute(sql`
       SELECT
         sb.id,
@@ -730,14 +716,49 @@ router.get("/api/admin/bookings/reconciliation-exceptions", isAuthenticated, asy
       LEFT JOIN provider_services ps ON ps.id = sb.service_id
       WHERE sb.booking_details ? 'reconciliationException'
       ORDER BY sb.updated_at DESC
+      LIMIT 50 OFFSET ${offset}
+    `);
+    // F6 (Leon, Nov 19 2026): the cap must never HIDE rows. The total comes from the same WHERE, and `offset` pages
+    // through the rest, so 51 exceptions are 50 + a reachable 1, never 50 and silence.
+    const totalRes = await db.execute(sql`
+      SELECT COUNT(*)::int AS total FROM service_bookings WHERE booking_details ? 'reconciliationException'
+    `);
+    const total = Number((totalRes.rows ?? [])[0]?.total ?? 0);
+    // F6 (#1823): the refund state is read from Stripe PER ROW at request time, over a page capped at 50 rows, so one
+    // request costs at most fifty reads. It is never cached and never guessed from the local row.
+    const { readPaymentRefundState } = await import("../services/checkout-claim.service");
+    const withRefund = await Promise.all(
+      result.rows.map(async (row: any) => {
+        const refund = await readPaymentRefundState(String(row.stripe_payment_intent_id ?? ""));
+        return { ...row, refundState: refund.state, refundMessage: refund.message };
+      }),
+    );
+    // The two tables key their id differently (`bookings.id` is uuid, `service_bookings.id` is varchar), so the
+    // UNION must agree on types: every column is cast to text (F6, after the handler answered 500 in CI).
+    const late = await db.execute(sql`
+      SELECT 'legacy'::text AS rail, b.id::text AS id, b.status::text AS status,
+             b.metadata->'lateFailureIgnored' AS records, b.updated_at
+      FROM bookings b
+      WHERE b.metadata ? 'lateFailureIgnored'
+      UNION ALL
+      SELECT 'cart'::text AS rail, sb.id::text AS id, sb.status::text AS status,
+             sb.booking_details->'lateFailureIgnored' AS records, sb.updated_at
+      FROM service_bookings sb
+      WHERE sb.booking_details ? 'lateFailureIgnored'
+      ORDER BY updated_at DESC
       LIMIT 200
     `);
+
     res.json({
-      bookings: result.rows,
-      count: result.rows.length,
+      bookings: withRefund,
+      lateFailureIgnored: late.rows,
+      count: withRefund.length,
+      total,
+      offset,
+      truncated: offset + withRefund.length < total,
       note:
         "A payment signal arrived for a booking that could not be promoted (the row was NOT resurrected). " +
-        "Check each paymentIntentId in Stripe: succeeded ⇒ refund or re-book manually; not succeeded ⇒ dismiss.",
+        "Each row carries the refund state read from Stripe for its payment.",
     });
   } catch (err) {
     console.error("Reconciliation exceptions error:", err);
