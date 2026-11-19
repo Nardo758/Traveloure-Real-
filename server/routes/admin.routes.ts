@@ -733,12 +733,16 @@ router.get("/api/admin/bookings/reconciliation-exceptions", isAuthenticated, asy
         return { ...row, refundState: refund.state, refundMessage: refund.message };
       }),
     );
+    // The two tables key their id differently (`bookings.id` is uuid, `service_bookings.id` is varchar), so the
+    // UNION must agree on types: every column is cast to text (F6, after the handler answered 500 in CI).
     const late = await db.execute(sql`
-      SELECT 'legacy' AS rail, b.id, b.status, b.metadata->'lateFailureIgnored' AS records, b.updated_at
+      SELECT 'legacy'::text AS rail, b.id::text AS id, b.status::text AS status,
+             b.metadata->'lateFailureIgnored' AS records, b.updated_at
       FROM bookings b
       WHERE b.metadata ? 'lateFailureIgnored'
       UNION ALL
-      SELECT 'cart' AS rail, sb.id, sb.status, sb.booking_details->'lateFailureIgnored' AS records, sb.updated_at
+      SELECT 'cart'::text AS rail, sb.id::text AS id, sb.status::text AS status,
+             sb.booking_details->'lateFailureIgnored' AS records, sb.updated_at
       FROM service_bookings sb
       WHERE sb.booking_details ? 'lateFailureIgnored'
       ORDER BY updated_at DESC
