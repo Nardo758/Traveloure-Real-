@@ -20,7 +20,6 @@ import type { Page } from '@playwright/test';
 import { e2eEmail, E2E_PASSWORD } from './lib/run-id';
 import { signupViaUi } from './lib/accounts';
 import { fillPlanEntryToStart, clickPlanStart, openPlanEntryFromHero } from './lib/flows';
-import { execFileSync } from 'node:child_process';
 import { q, userByEmail } from './lib/db';
 
 const SHOTS = 'test-results/shots/2049';
@@ -30,34 +29,7 @@ test.describe.configure({ mode: 'serial' });
 
 let tripId = '';
 
-/**
- * The action row's expert button is gated on the expert door being LIVE (an expert available in this market), the
- * same condition the slip uses. The fixture expert is seeded and the city switched on exactly as journey-2 does, so
- * the frame is measured with the door open - never by weakening the assertion.
- */
-function seedKyotoExpertDoor() {
-  // The same environment journey-2 gives it: the local CI database, and the test-account flag the seeder needs.
-  execFileSync('npx', ['tsx', 'scripts/seed-fixture-kyoto-expert.ts', 'd8frame'], {
-    env: {
-      ...process.env,
-      DATABASE_URL: process.env.DATABASE_URL ?? 'postgresql://postgres:postgres@localhost:5432/traveloure',
-      ALLOW_TEST_ACCOUNTS: '1',
-    },
-    encoding: 'utf8',
-    timeout: 180_000,
-  });
-}
-
-async function switchKyotoExpertsOn() {
-  await q(
-    `INSERT INTO platform_settings (setting_key, setting_value) VALUES ('expert_hook_cities', '["kyoto"]')
-     ON CONFLICT (setting_key) DO UPDATE SET setting_value = EXCLUDED.setting_value, updated_at = NOW()`,
-  );
-}
-
 async function buildOwnerAndPlan(page: Page): Promise<string> {
-  seedKyotoExpertDoor();
-  await switchKyotoExpertsOn();
   const email = e2eEmail('d8frame');
   await signupViaUi(page, { email, firstName: 'E2E', lastName: 'Frame' });
 
@@ -104,12 +76,14 @@ test('D8a owner: the frame in list and map, at 1280 and 390', async ({ page }) =
       await page.locator('[data-testid="button-slip-view-list"]').click();
       await page.waitForSelector('[data-testid="slip-action-row"]', { timeout: 30_000 });
     }
-    await page.screenshot({ path: `${SHOTS}/owner-list-${width}.png` });
 
+    // Leon's Q-14 ruling: this runner's market has no qualifying expert, so the door is OFF here and the row
+    // carries exactly ONE action, Optimize. The two-button state is measured in `kyoto-slice`, where the door is on.
     const row = page.locator('[data-testid="slip-action-row"]');
     await expect(row).toBeVisible();
-    await expect(row.locator('button')).toHaveCount(2);
-    await expect(page.locator('[data-testid="button-slip-expert-help"]')).toHaveCount(1);
+    await expect(row.locator('button')).toHaveCount(1);
+    await expect(page.locator('[data-testid="button-slip-optimize"]')).toHaveCount(1);
+    await expect(page.locator('[data-testid="button-slip-expert-help"]')).toHaveCount(0);
     for (const id of REMOVED) await expect(page.locator(`[data-testid="${id}"]`)).toHaveCount(0);
     await expectNotIntersected(page);
 
