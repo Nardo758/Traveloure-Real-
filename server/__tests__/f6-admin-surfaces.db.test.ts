@@ -77,13 +77,11 @@ before(async () => {
   await db.execute(sql`INSERT INTO users (id, email, role, first_name, last_name) VALUES (${travelerUser}, ${`f6-user-${RUN}@ci.test`}, 'traveler', 'F6', 'User')`);
   await db.execute(sql`INSERT INTO users (id, email, role, first_name, last_name) VALUES (${providerUser}, ${`f6-provider-${RUN}@ci.test`}, 'provider', 'F6', 'Provider')`);
   // service_bookings.service_id and provider_id are NOT NULL with FKs.
+  // `provider_services` keys its owner as `user_id` (`shared/schema.ts:1281`), not `provider_id`.
   await db.execute(sql`
-    INSERT INTO provider_services (id, provider_id, service_name, category_key, status)
-    VALUES (${serviceId}, ${providerUser}, ${"F6 fixture " + RUN}, 'custom_other', 'active')
-  `).catch(async () => {
-    // The column set differs across eras; fall back to the minimum the FK needs.
-    await db.execute(sql`INSERT INTO provider_services (id, provider_id, service_name) VALUES (${serviceId}, ${providerUser}, ${"F6 fixture " + RUN})`);
-  });
+    INSERT INTO provider_services (id, user_id, service_name)
+    VALUES (${serviceId}, ${providerUser}, ${"F6 fixture " + RUN})
+  `);
   const booted = await boot("admin");
   server = booted.s; base = booted.base;
 });
