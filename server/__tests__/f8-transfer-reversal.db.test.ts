@@ -93,9 +93,12 @@ test("F8.3 the payout moves completed -> failed and records the event id in meta
 });
 
 test("F8.4 a redelivered reversal changes nothing and writes no second admin row", async () => {
+  // The SAME event id twice: that is what a redelivery is. (The first version of this test minted a new id each
+  // call, so the durable claim was never exercised and the case could not fail for the right reason.)
   const transfer = { id: `tr_${RUN}`, reversed: true, amount_reversed: 10, metadata: { payoutId: payoutA, requesterType: "expert" } };
+  const redelivered = transferEvent("transfer.reversed", transfer);
   const before = (await db.execute(sql`SELECT COUNT(*)::int AS n FROM admin_notifications WHERE metadata->>'payoutId' = ${payoutA}`)).rows as any[];
-  await processStripeWebhookEvent(transferEvent("transfer.reversed", transfer));
+  await processStripeWebhookEvent(redelivered);
   const after = (await db.execute(sql`SELECT COUNT(*)::int AS n FROM admin_notifications WHERE metadata->>'payoutId' = ${payoutA}`)).rows as any[];
   assert.equal(after[0].n, before[0].n, "the durable claim dedupes the redelivery");
 });
@@ -170,4 +173,49 @@ test("F8.10 an unknown requesterType touches no table and asks for manual review
   assert.equal(note.metadata.needsManualReview, true);
   assert.equal(note.metadata.payoutRowsMoved, 0);
   await db.execute(sql`DELETE FROM expert_payouts WHERE id = ${ghost}`);
+});
+
+test("F8.11 if the admin-row insert fails, the payout and earnings roll back with it", async () => {
+  // No injection seam exists on the handler's module-level `db`, so the failure is forced at the DATABASE level: a
+  // trigger on admin_notifications that raises for THIS run's transfer id. The handler's transaction must roll the
+  // payout update and the earnings update back with it.
+  const rbPayout = uid();
+  const rbTransfer = `tr_rb_${RUN}`;
+  await db.execute(sql`INSERT INTO expert_payouts (id, expert_id, amount, status) VALUES (${rbPayout}, ${expertUser}, 10, 'completed')`);
+  await db.execute(sql`
+    INSERT INTO expert_earnings (id, expert_id, type, amount, status, payout_id, dispute_state, reference_id)
+    VALUES (${uid()}, ${expertUser}, 'service_booking', 5, 'paid_out', ${rbPayout}, 'none', ${"f8-rb-" + RUN})
+  `);
+  const fnName = `f8_fail_admin_${RUN}`;
+  try {
+    await db.execute(sql.raw(`
+      CREATE OR REPLACE FUNCTION ${fnName}() RETURNS trigger AS $$
+      BEGIN
+        IF NEW.metadata->>'transferId' = '${rbTransfer}' THEN
+          RAISE EXCEPTION 'f8 forced failure for the rollback case';
+        END IF;
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql
+    `));
+    await db.execute(sql.raw(`CREATE TRIGGER ${fnName}_trg BEFORE INSERT ON admin_notifications FOR EACH ROW EXECUTE FUNCTION ${fnName}()`));
+
+    const transfer = { id: rbTransfer, reversed: true, metadata: { payoutId: rbPayout, requesterType: "expert" } };
+    await assert.rejects(
+      () => processStripeWebhookEvent(transferEvent("transfer.reversed", transfer)),
+      /f8 forced failure/,
+      "the handler throws when the admin row cannot be written",
+    );
+
+    const [payout] = (await db.execute(sql`SELECT status FROM expert_payouts WHERE id = ${rbPayout}`)).rows as any[];
+    assert.equal(payout.status, "completed", "the payout update rolled back");
+    const [earning] = (await db.execute(sql`SELECT status, payout_id FROM expert_earnings WHERE reference_id = ${"f8-rb-" + RUN}`)).rows as any[];
+    assert.equal(earning.status, "paid_out", "the earnings update rolled back");
+    assert.equal(earning.payout_id, rbPayout, "and its payout id is still there");
+  } finally {
+    await db.execute(sql.raw(`DROP TRIGGER IF EXISTS ${fnName}_trg ON admin_notifications`)).catch(() => {});
+    await db.execute(sql.raw(`DROP FUNCTION IF EXISTS ${fnName}()`)).catch(() => {});
+    await db.execute(sql`DELETE FROM expert_earnings WHERE reference_id = ${"f8-rb-" + RUN}`).catch(() => {});
+    await db.execute(sql`DELETE FROM expert_payouts WHERE id = ${rbPayout}`).catch(() => {});
+  }
 });

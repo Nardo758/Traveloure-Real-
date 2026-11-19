@@ -378,7 +378,7 @@ export async function processStripeWebhookEvent(event: Stripe.Event): Promise<vo
               const moved = await tx.execute(sql`
                 UPDATE provider_payouts SET
                   status = 'failed',
-                  notes = CONCAT_WS(' | ', notes, ${"transfer.reversed " + event.id})
+                  notes = CONCAT_WS(' | ', notes, ${"transfer.reversed " + event.id}::text)
                 WHERE id = ${payoutId} AND status = 'completed'
                 RETURNING id
               `);

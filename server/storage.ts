@@ -186,9 +186,15 @@ import { HELD_VARIANT_STATUS } from "@shared/version-check";
 function variantIsShownSql() {
   return sqlOp`${itineraryVariants.status} IS DISTINCT FROM ${HELD_VARIANT_STATUS}`;
 }
+/**
+ * F8 (#1243), Leon Nov 19 2026: a payout that a reversal moved to `failed` must NOT be re-completed by a late
+ * `transfer.created` - retrying a failed payout is a separate, explicit action, out of F8's scope. So the guard
+ * refuses `failed -> completed` as well as `completed -> completed`; the webhook then answers 200 to Stripe having
+ * changed nothing (the earnings rows keep their state too).
+ */
 function completedPayoutGuard(statusColumn: any, options?: PayoutStatusUpdateOptions) {
   if (options?.onlyFrom?.length) return inArray(statusColumn, [...options.onlyFrom]);
-  return sqlOp`${statusColumn} <> 'completed'`;
+  return sqlOp`${statusColumn} NOT IN ('completed', 'failed')`;
 }
 
 type PayoutClaimResult<T> = {
