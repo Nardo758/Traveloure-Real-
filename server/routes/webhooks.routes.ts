@@ -342,6 +342,84 @@ export async function processStripeWebhookEvent(event: Stripe.Event): Promise<vo
         break;
       }
 
+      case "transfer.reversed": {
+        // F8 (#1243): a reversed Connect transfer is a payout that did not reach the seller. Ruling: handle the
+        // reversal, return the earnings rows to payable with the event id recorded, one admin-visible row, no new
+        // column, no amount math here. `transfer.reversed === true` is a FULL reversal; `amount_reversed < amount`
+        // (reversed false) is partial and, until ruled, changes no earnings row and is flagged for manual review.
+        const transfer = event.data.object as Stripe.Transfer;
+        const payoutId = transfer.metadata?.payoutId;
+        const requesterType = transfer.metadata?.requesterType;
+        if (!payoutId || !requesterType) break;
+        const earningsTable = requesterType === "expert" ? "expert_earnings" : "provider_earnings";
+        const payoutsTable = requesterType === "expert" ? "expert_payouts" : "provider_payouts";
+        const fullyReversed = (transfer as any).reversed === true;
+        let returnedRows = 0;
+        let payoutMoved = 0;
+
+        if (fullyReversed) {
+          // The earnings rows go back to payable in ONE guarded statement. A row with an open dispute goes to `held`,
+          // never to `releasable` (the disputed-holds invariant the storage layer states).
+          const updated = await db.execute(sql`
+            UPDATE ${sql.raw(earningsTable)} SET
+              status = CASE WHEN COALESCE(dispute_state, 'none') = 'open' THEN 'held' ELSE 'releasable' END,
+              payout_id = NULL
+            WHERE payout_id = ${payoutId} AND status = 'paid_out'
+            RETURNING id
+          `);
+          returnedRows = (updated.rows ?? []).length;
+
+          // The payout row moves completed -> failed, guarded in the same transaction, with the event id recorded in
+          // the column each table actually has (`expert_payouts.metadata` jsonb, `provider_payouts.notes`).
+          if (requesterType === "expert") {
+            const moved = await db.execute(sql`
+              UPDATE expert_payouts SET
+                status = 'failed',
+                metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('transferReversedEventId', ${event.id}::text)
+              WHERE id = ${payoutId} AND status = 'completed'
+              RETURNING id
+            `);
+            payoutMoved = (moved.rows ?? []).length;
+          } else {
+            const moved = await db.execute(sql`
+              UPDATE provider_payouts SET
+                status = 'failed',
+                notes = CONCAT_WS(' | ', notes, ${"transfer.reversed " + event.id})
+              WHERE id = ${payoutId} AND status = 'completed'
+              RETURNING id
+            `);
+            payoutMoved = (moved.rows ?? []).length;
+          }
+        }
+
+        // ONE admin-visible row, through the existing record. No amount beyond what the payout row already shows, no
+        // user data. A partial reversal is marked for manual review because it changes no earnings row.
+        await db.insert(adminNotifications).values({
+          type: "stripe_connect_transfer_reversed",
+          message:
+            `Connect transfer ${transfer.id} for payout ${payoutId} was ${fullyReversed ? "fully" : "PARTIALLY"} reversed` +
+            (fullyReversed
+              ? `; ${returnedRows} earning row(s) returned to payable, payout ${payoutMoved ? "marked failed" : "unchanged"}.`
+              : "; no earnings row was changed - PARTIAL reversal needs manual review."),
+          reason: "transfer.reversed",
+          metadata: {
+            eventId: event.id,
+            transferId: transfer.id,
+            payoutId,
+            requesterType,
+            full: fullyReversed,
+            returnedEarnings: returnedRows,
+            payoutRowsMoved: payoutMoved,
+            stripeCreated: new Date(event.created * 1000).toISOString(),
+            needsManualReview: !fullyReversed,
+          },
+        } as any);
+        console.info(
+          `[WEBHOOK] transfer.reversed payoutId=${payoutId} full=${fullyReversed} earnings=${returnedRows} payoutMoved=${payoutMoved}`,
+        );
+        break;
+      }
+
       case "payment_intent.succeeded": {
         const paymentIntent = event.data.object as Stripe.PaymentIntent;
 
