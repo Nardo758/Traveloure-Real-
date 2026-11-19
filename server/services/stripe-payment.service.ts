@@ -27,6 +27,7 @@ import { handleStripePaymentSuccess } from './stripe.service';
 import { kickLegacyConfirmationDelivery, persistLegacyBookingConfirmationEmail } from './email-outbox.service';
 import { trackFunnelEvent } from '../utils/funnelTracker';
 import { logger } from '../infrastructure/logger';
+import { BOOKING_IS_NOT_PAID, BOOKING_IS_PENDING } from '../utils/booking-from-states';
 import { resolveSavedCardChargeId } from './saved-card-choice';
 import { mapStripePaymentMethod, savedMethodConfirmsOnClick, type SavedPaymentMethod } from '../../shared/saved-payment-method';
 import { createPaymentIntentPreservingKey } from './stripe-intent-key';
@@ -903,11 +904,11 @@ class StripePaymentService {
           break;
 
         case 'payment_intent.payment_failed':
-          await this.handlePaymentFailed(event.data.object as Stripe.PaymentIntent);
+          await this.handlePaymentFailed(event.data.object as Stripe.PaymentIntent, event);
           break;
 
         case 'payment_intent.canceled':
-          await this.handlePaymentCanceled(event.data.object as Stripe.PaymentIntent);
+          await this.handlePaymentCanceled(event.data.object as Stripe.PaymentIntent, event);
           break;
 
         case 'payment_intent.requires_action':
@@ -1303,7 +1304,7 @@ class StripePaymentService {
     }
   }
 
-  private async handlePaymentFailed(paymentIntent: Stripe.PaymentIntent) {
+  private async handlePaymentFailed(paymentIntent: Stripe.PaymentIntent, event: Stripe.Event) {
     const { bookingIds } = paymentIntent.metadata;
 
     // THE CART RAIL (ledger `2026-09-27-platform-payment-failed`, R161). A cart checkout's PI is a
@@ -1331,11 +1332,11 @@ class StripePaymentService {
         UPDATE bookings SET
           status = 'payment_failed',
           payment_status = 'failed'
-        WHERE id = ${bookingId} AND status IN ('pending', 'payment_pending')
+        WHERE id = ${bookingId} AND ${BOOKING_IS_PENDING} AND ${BOOKING_IS_NOT_PAID}
         RETURNING id
       `);
       if ((updated.rows ?? []).length === 0) {
-        await this.ignoreLateTerminalEvent(paymentIntent, bookingId, 'failed');
+        await this.ignoreLateTerminalEvent(event, paymentIntent, bookingId, 'legacy', 'failed');
       }
     }
 
@@ -1354,9 +1355,24 @@ class StripePaymentService {
    * existing section 15c record. The 15c record is the reconciliation job's detection surface, and writing to it from
    * the webhook is a separate, reviewable change; logged in the pack's findings (Q-28) rather than guessed here.
    */
+  /**
+   * F7: the ONE place a refused terminal event is reported.
+   *
+   * Leon's ruling (Nov 19 2026): log ONLY when the row exists and is paid or confirmed. An id that matches no row
+   * (a cart PI's `service_bookings` ids on the legacy rail) says nothing; a redelivery of an already-failed booking
+   * says nothing either. The line carries the EVENT's clock (`event.created`, ISO), never the PaymentIntent's, plus
+   * the event id, the booking, the rail and the event type.
+   *
+   * STEP 4 IS STOPPED, not guessed: the brief names `bookings.metadata` for the legacy rail, and that column does
+   * not exist in `shared/schema.ts` (`bookings`, line 9111). Leon's rule is "no new column", so the admin-visible
+   * record waits for a store that exists. The cart rail's `service_bookings.booking_details` does exist, and its
+   * record lands in the cart-path commit.
+   */
   private async ignoreLateTerminalEvent(
+    event: Stripe.Event,
     paymentIntent: Stripe.PaymentIntent,
     bookingId: string,
+    rail: "legacy" | "cart",
     kind: "failed" | "canceled",
   ) {
     try {
@@ -1364,26 +1380,36 @@ class StripePaymentService {
         SELECT status, payment_status, confirmed_at FROM bookings WHERE id = ${bookingId} LIMIT 1
       `);
       const current = (row.rows ?? [])[0] as
-        | { status?: string; payment_status?: string; confirmed_at?: Date | string | null }
+        | { status?: string | null; payment_status?: string | null; confirmed_at?: Date | string | null }
         | undefined;
+      // (c) nothing is said about an id that matches no row, and nothing about a row that is already terminal.
+      if (!current) return;
+      const paid = ["paid", "succeeded"].includes(String(current.payment_status ?? ""));
+      const confirmed = String(current.status ?? "") === "confirmed";
+      const alreadyTerminal = ["payment_failed", "failed", "canceled"].includes(String(current.status ?? ""));
+      if (!paid && !confirmed) return;
+      if (alreadyTerminal) return;
       logger.warn(
         {
+          eventId: event.id,
+          eventType: event.type,
           bookingId,
+          rail,
           kind,
           paymentIntentId: paymentIntent.id,
-          stripeCreated: paymentIntent.created,
-          bookingStatus: current?.status ?? null,
-          bookingPaymentStatus: current?.payment_status ?? null,
-          bookingConfirmedAt: current?.confirmed_at ?? null,
+          stripeCreated: new Date(event.created * 1000).toISOString(),
+          bookingStatus: current.status ?? null,
+          bookingPaymentStatus: current.payment_status ?? null,
+          bookingConfirmedAt: current.confirmed_at ?? null,
           predatesConfirmation:
-            current?.confirmed_at != null &&
-            paymentIntent.created * 1000 < new Date(current.confirmed_at).getTime(),
+            current.confirmed_at != null &&
+            event.created * 1000 < new Date(current.confirmed_at).getTime(),
         },
         "[stripe-no-backward] late terminal event ignored: the booking has already moved past pending",
       );
     } catch (err: any) {
       logger.warn(
-        { bookingId, kind, paymentIntentId: paymentIntent.id, stripeCreated: paymentIntent.created, err: err?.message },
+        { eventId: event.id, eventType: event.type, bookingId, rail, kind, paymentIntentId: paymentIntent.id, err: err?.message },
         "[stripe-no-backward] late terminal event ignored (could not read the row for the log line)",
       );
     }
@@ -1392,7 +1418,7 @@ class StripePaymentService {
   /**
    * Handle canceled payment
    */
-  private async handlePaymentCanceled(paymentIntent: Stripe.PaymentIntent) {
+  private async handlePaymentCanceled(paymentIntent: Stripe.PaymentIntent, event: Stripe.Event) {
     const { bookingIds } = paymentIntent.metadata;
 
     // Update payment intent status
@@ -1419,11 +1445,11 @@ class StripePaymentService {
         UPDATE bookings SET
           status = 'canceled',
           payment_status = 'canceled'
-        WHERE id = ${bookingId} AND status IN ('pending', 'payment_pending')
+        WHERE id = ${bookingId} AND ${BOOKING_IS_PENDING} AND ${BOOKING_IS_NOT_PAID}
         RETURNING id
       `);
       if ((updated.rows ?? []).length === 0) {
-        await this.ignoreLateTerminalEvent(paymentIntent, bookingId, 'canceled');
+        await this.ignoreLateTerminalEvent(event, paymentIntent, bookingId, 'legacy', 'canceled');
       }
     }
   }

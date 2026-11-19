@@ -1,3 +1,5 @@
+import { sql } from "drizzle-orm";
+
 /**
  * `service_bookings` FROM-STATE ALLOW-LISTS — one home, §18b.
  *
@@ -438,3 +440,22 @@ export const STRIPE_DISPUTE_WON_RESTORE_FROM_STATUSES: readonly string[] = ["dis
  * The webhook's UPDATE carries this list in its WHERE clause, so the transition itself is the guard.
  */
 export const LEGACY_PREPAYMENT_STATUSES = ["pending_payment", "pending", "payment_failed"] as const;
+
+/**
+ * F7 (#1820): the set a TERMINAL STRIPE EVENT may move a booking out of - never a transition list.
+ *
+ * This file's own rule (see the header) keeps `payment_pending` out of every owner/artifact/acceptance list, because
+ * a `payment_pending` row with no PaymentIntent is an unauthorized provisional claim. A Stripe failure or cancel
+ * event is a different caller: it names the booking through the PaymentIntent's own metadata, so the row it touches
+ * is the row that PI claimed. Excluding `payment_pending` here would leave exactly those rows unable to fail, which
+ * is the state #1820 exists to prevent.
+ *
+ * The paid condition rides beside it: a row that already took money is never demoted by a later event.
+ */
+export const STRIPE_TERMINAL_FROM_STATUSES = ["pending", "payment_pending"] as const;
+
+/** `status IN ('pending','payment_pending')`, as one SQL fragment. */
+export const BOOKING_IS_PENDING = sql`status IN ('pending', 'payment_pending')`;
+
+/** A row that already took money is never demoted by a later event. */
+export const BOOKING_IS_NOT_PAID = sql`COALESCE(payment_status, '') NOT IN ('paid', 'succeeded')`;
