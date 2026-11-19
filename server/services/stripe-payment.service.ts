@@ -1489,28 +1489,32 @@ class StripePaymentService {
     kind: "failed" | "canceled",
   ) {
     try {
+      // ONE PI CAN CARRY SEVERAL CART BOOKINGS (Leon, Nov 19 2026): a cart checkout stamps every claim's id on the
+      // same intent. Read them ALL and record on each row that is past the pending set and not already terminal.
       const res = await db.execute(sql`
-        SELECT id, status FROM service_bookings WHERE stripe_payment_intent_id = ${paymentIntent.id} LIMIT 1
+        SELECT id, status FROM service_bookings WHERE stripe_payment_intent_id = ${paymentIntent.id}
       `);
-      const row = (res.rows ?? [])[0] as { id?: string; status?: string | null } | undefined;
-      if (!row?.id) return;
-      const status = String(row.status ?? "");
-      if (["payment_failed", "failed", "canceled", "cancelled"].includes(status)) return;
-      if ((STRIPE_TERMINAL_FROM_STATUSES as readonly string[]).includes(status)) return;
-      logger.warn(
-        {
-          eventId: event.id,
-          eventType: event.type,
-          bookingId: row.id,
-          rail: "cart",
-          kind,
-          paymentIntentId: paymentIntent.id,
-          stripeCreated: new Date(event.created * 1000).toISOString(),
-          bookingStatus: status,
-        },
-        "[stripe-no-backward] late terminal event ignored: the cart booking has already moved past payment_pending",
-      );
-      await this.recordLateFailureIgnored(event, row.id, "cart", kind);
+      const rows = (res.rows ?? []) as Array<{ id?: string; status?: string | null }>;
+      for (const row of rows) {
+        if (!row?.id) continue;
+        const status = String(row.status ?? "");
+        if (["payment_failed", "failed", "canceled", "cancelled"].includes(status)) continue;
+        if ((STRIPE_TERMINAL_FROM_STATUSES as readonly string[]).includes(status)) continue;
+        logger.warn(
+          {
+            eventId: event.id,
+            eventType: event.type,
+            bookingId: row.id,
+            rail: "cart",
+            kind,
+            paymentIntentId: paymentIntent.id,
+            stripeCreated: new Date(event.created * 1000).toISOString(),
+            bookingStatus: status,
+          },
+          "[stripe-no-backward] late terminal event ignored: the cart booking has already moved past payment_pending",
+        );
+        await this.recordLateFailureIgnored(event, row.id, "cart", kind);
+      }
     } catch (err: any) {
       logger.warn(
         { eventId: event.id, paymentIntentId: paymentIntent.id, err: err?.message },

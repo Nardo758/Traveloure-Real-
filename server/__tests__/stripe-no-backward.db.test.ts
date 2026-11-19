@@ -200,3 +200,22 @@ test("F7.10 a legacy booking in 'pending_payment' still fails, and writes NO lat
   assert.equal(row.status, "payment_failed");
   assert.deepEqual(row.metadata?.lateFailureIgnored ?? [], [], "no late record for a booking that was still pending");
 });
+
+test("F7.11 a TWO-booking cart: one event records once on EACH confirmed row", async () => {
+  const secondId = crypto.randomUUID();
+  const twoPi = `pi_f7_two_${RUN}`;
+  await db.execute(sql`UPDATE service_bookings SET stripe_payment_intent_id = ${twoPi}, status='confirmed', booking_details='{}'::jsonb WHERE id = ${cartBookingId}`);
+  await db.execute(sql`
+    INSERT INTO service_bookings (id, status, stripe_payment_intent_id, booking_details, total_amount)
+    VALUES (${secondId}, 'confirmed', ${twoPi}, '{}'::jsonb, 12)
+  `);
+  const pi = intent(twoPi, undefined);
+  await service.handlePaymentFailed(pi, eventFor("payment_intent.payment_failed", pi));
+  const rows = (await db.execute(sql`SELECT id, status, booking_details FROM service_bookings WHERE stripe_payment_intent_id = ${twoPi}`)).rows ?? [];
+  assert.equal(rows.length, 2, "two rows on the intent");
+  for (const row of rows as any[]) {
+    assert.equal(row.status, "confirmed", "neither row moved");
+    assert.equal((row.booking_details?.lateFailureIgnored ?? []).length, 1, "one record on each row");
+  }
+  await db.execute(sql`DELETE FROM service_bookings WHERE id = ${secondId}`);
+});
