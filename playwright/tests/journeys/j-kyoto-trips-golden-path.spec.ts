@@ -1701,10 +1701,10 @@ test.describe("7 · a local expert checks the plan", () => {
     // The two screenshots the pack keeps: this run is the one where the door is ON.
     await page.setViewportSize({ width: 1280, height: 900 });
     await row.scrollIntoViewIfNeeded();
-    await page.screenshot({ path: "test-results/shots/2049/owner-list-1280.png" });
+    await page.screenshot({ path: "shots/2049/owner-list-1280.png" });
     await page.setViewportSize({ width: 390, height: 844 });
     await row.scrollIntoViewIfNeeded();
-    await page.screenshot({ path: "test-results/shots/2049/owner-list-390.png" });
+    await page.screenshot({ path: "shots/2049/owner-list-390.png" });
     await testid(page, "button-slip-expert-help").click();
     await expect(testid(page, "handoff-chooser")).toBeVisible({ timeout: 20_000 });
   });

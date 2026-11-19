@@ -23,7 +23,7 @@ import { signupViaUi } from './lib/accounts';
 import { fillPlanEntryToStart, clickPlanStart, openPlanEntryFromHero } from './lib/flows';
 import { q, userByEmail } from './lib/db';
 
-const SHOTS = 'test-results/shots/2049';
+const SHOTS = 'shots/2049';
 const REMOVED = ['slip-add-local-expert', 'slip-get-help-note-button', 'expert-door-card', 'slip-bottom-bar'];
 
 test.describe.configure({ mode: 'serial' });
@@ -118,7 +118,6 @@ test('D8d expert viewer sees Ask and the foot Finalize', async ({ browser }) => 
     await signupViaUi(page, { email, firstName: 'E2E', lastName: 'Viewer' });
     const user = await userByEmail(email);
     expect(user?.id, 'the expert account exists').toBeTruthy();
-    await q(`UPDATE users SET role = 'expert' WHERE id = $1`, [user.id]);
     // `id` has no column default (the schema sets it in the app), so the insert supplies one.
     await q(
       `INSERT INTO trip_expert_advisors (id, trip_id, local_expert_id, status)
@@ -130,6 +129,25 @@ test('D8d expert viewer sees Ask and the foot Finalize', async ({ browser }) => 
     // the advisor read has to answer before the expert-viewer frame draws.
     await page.goto(`/plans/${tripId}`);
     await page.waitForLoadState('networkidle', { timeout: 60_000 }).catch(() => {});
+    // ONE diagnostic, per Leon (Q-15): an accepted advisor row is enough server-side (`server/utils/trip-role.ts:50`),
+    // so record what the session actually gets before waiting for the frame.
+    const plancard = await page.request.get(`/api/trips/${tripId}/plancard`);
+    const plancardBody = plancard.ok() ? await plancard.json().catch(() => null) : null;
+    test.info().annotations.push({
+      type: 'diagnostic',
+      description: JSON.stringify({
+        url: page.url(),
+        status: plancard.status(),
+        tripRole: plancardBody?.tripRole ?? null,
+        metaTripRole: plancardBody?.meta?.tripRole ?? null,
+      }),
+    });
+    console.log('[D8d diagnostic]', JSON.stringify({
+      url: page.url(),
+      status: plancard.status(),
+      tripRole: plancardBody?.tripRole ?? null,
+      metaTripRole: plancardBody?.meta?.tripRole ?? null,
+    }));
     await page.waitForSelector('[data-testid="slip-tools-row"]', { timeout: 90_000 });
     await expect(page.locator('[data-testid="slip-action-ask-ai"]')).toHaveCount(1);
     await expect(page.locator('[data-testid="slip-foot"]')).toBeVisible();
