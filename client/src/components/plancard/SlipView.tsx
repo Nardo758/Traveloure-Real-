@@ -74,7 +74,7 @@ import { ExpertSuggestionsPanel } from "./ExpertSuggestionsPanel";
 // collapsibles, the contract board, the Trip Pass card and the budget line — one home each.
 import { FinishCard, SlipDraftAiRow, SlipRail, useSlipAiAction } from "./SlipRail";
 import { CoordinationCard } from "./SlipRail";
-import { SlipBottomBar, SlipPlanMenu } from "./SlipRail";
+import { SlipPlanMenu } from "./SlipRail";
 import type { SlipLeadCopy } from "./SlipRail";
 import { SlipHeaderMeta } from "./SlipHeaderMeta";
 import { InlineDatesPanel, InlineWhoPanel } from "@/components/plan/SlipAnchorPanels";
@@ -178,13 +178,14 @@ import {
   primaryAnchorItemId,
   useOptionSets,
 } from "./SlipOptionSets";
-import { AddLocalExpertButton, ExpertDoorCard, useExpertDoorState } from "./ExpertDoor";
 import { DayExpertHook } from "../plan/DayExpertHook";
 import { HandoffChooserHost } from "@/components/plan/HandoffChooser";
 import { HandoffBanner, HandoffFooter, SuggestionStrip, useExpertSuggestions, useHandoff } from "@/components/plan/HandoffBanner";
+import { SlipActionRow } from "@/components/plancard/SlipActionRow";
+import { AskAiDrawer } from "./AskAiDrawer";
+import { useOptimizerLeadData } from "@/components/plan/use-optimizer-lead-data";
 import { handoffDayStat, handoffExpertLabel, handoffPenScope, openHandoffChooser } from "@/lib/handoff-client";
 import { useExpertAvailability } from "@/lib/expert-availability";
-import { EXPERT_DOOR_COPY, getHelpNoteShown } from "@/lib/expert-door-copy";
 import {
   resolveAddDayNumber,
   slipItemTools,
@@ -1705,7 +1706,6 @@ export function useSlipViewModel({
   // attached — the owner's own advisor read (above) is the one signal, never a second query. The
   // advisor read must have ANSWERED before the card shows, so a plan that has an expert never
   // flashes the question.
-  const [expertDoorState, setExpertDoorState] = useExpertDoorState(tripId);
   // (moved below the availability read, PLAN-2 lane 3 / D1)
   const transitions = data.recentTransitions ?? [];
   const hasOptimized = transitions.some((t) => t.eventType === "variant_applied");
@@ -2162,8 +2162,6 @@ export function useSlipViewModel({
     openPlanModal,
     hasAdvisor,
     slipExpertsAvailable,
-    expertDoorState,
-    setExpertDoorState,
     expertDoorLive,
     hasOptimized,
     isPrimary,
@@ -2276,8 +2274,6 @@ export function SlipView({
     openPlanModal,
     hasAdvisor,
     slipExpertsAvailable,
-    expertDoorState,
-    setExpertDoorState,
     expertDoorLive,
     hasOptimized,
     isPrimary,
@@ -2351,6 +2347,9 @@ export function SlipView({
   const partyRow = occasion ?? guest?.partyOccasion ?? null;
   // A guest's plan reads no member rail: every per-plan read and control below takes this, empty for a guest.
   const tripId = guest ? "" : planTripId;
+  // THE ONE FEE READ the optimizer card also uses (`SlipRail.tsx:459` -> `useOptimizerLeadData`): same hook,
+  // same query keys (`["/api/optimization-fee", { tripId }]`), so React Query serves both from one request.
+  const optimizeFee = useOptimizerLeadData(tripId, isOwner && !guest).fee;
   // Step 8b-2 (ruling 4): the map band reads the ONE AI action the rail reads.
   const aiAction = useSlipAiAction(tripId, allActivities);
   // FB-1 step 4: "Your plan, fixed" by tap — only for a viewer with the item tools, once a run exists.
@@ -2471,11 +2470,9 @@ export function SlipView({
       <SlipHeader
         guest={guest}
         occasion={partyRow}
-        expertControl={
-          expertDoorLive && expertDoorState === "dismissed" ? (
-            <AddLocalExpertButton onOpen={() => setExpertDoorState("open")} />
-          ) : null
-        }
+        // UI brief 1: the expert DOOR is the one action row below; this slot stays empty. The old card and its
+        // dismissed-state rule are gone with the card.
+        expertControl={null}
         // R3-23: the ONE occasion label, from the plan's `occasion_slug` (null stays null, A-8).
         occasionName={(data.trip as any)?.occasionLabel ?? null}
         menu={
@@ -2571,46 +2568,57 @@ export function SlipView({
               onCancel={() => setTrayChip(null)}
             />
           ) : null}
-          {isOwner && data.trip && slipView === "list" ? (
-            <ToolsTray
-              tripId={tripId}
-              group={experienceGroup}
-              occasionSlug={occasion?.slug ?? null}
-              planEvents={planEvents}
-              isHidden={occasionIsHidden}
-              /* B-11 (ruled 2026-11-09): the party sheet's roster, owner-only. The CALLER owns the
-                 gate, so the tray stays a tool registry; a guest plan passes nothing and the sheet
-                 draws today's count view with no names and no controls. */
-              partyRoster={isOwner && data.trip ? <SlipPartyRoster trip={data.trip} tripId={tripId} isOwner={isOwner} /> : null}
-              whereToStay={
-                anchorSurface.trayChooser
-                  ? renderAnchorPanel("chooser")
-                  : anchorSurface.trayChange
-                    ? renderAnchorPanel("change")
-                    // B-9 (ruled 2026-11-09): the owner's lodging CTA says the approved words —
-                    // "Compare places to stay" (Wording approved — Leon). Owner-only by construction:
-                    // this tray is inside the `isOwner` gate and the option-set write is owner-gated
-                    // server-side too. A guest never sees it; their row is Browse on the Hotels tab.
-                    : <SlipAnchorCompareButton tripId={tripId} label="Compare places to stay" />
-              }
-              trip={{
-                destination: data.trip.destination ?? null,
-                startDate: (data.trip.startDate as any) ?? null,
-                endDate: (data.trip.endDate as any) ?? null,
-              }}
-              openTool={openTool}
-              onOpenToolChange={setOpenTool}
-              flags={healthFlags}
-              doneTools={doneTools}
-              zoneLine={zoneLine}
-              facts={{
-                datesConfirmed: (data.trip as any)?.datesConfirmed === true,
-                travelers: (data.trip as any)?.travelers ?? null,
-                stops: allActivities.length,
-              }}
-              onNeedDates={() => setTrayChip("dates")}
-              onNeedParty={askParty ? () => setTrayChip("who") : undefined}
-            />
+          {/* UI brief 1 (commit 2b, review): the row is NOT inside the owner-and-list gate any more. Ask keeps
+              the bar audience (isOwner || isExpertViewer, `SlipRail.tsx:1684`) and shows in BOTH views; ToolsTray
+              keeps its own owner-and-list gate INSIDE the row. */}
+          {/* UI brief 1 (commit 3b, review): Ask takes the bar's EXACT audience - owner or expert viewer AND
+              `slipView !== "map"` (the bar's mount gate on main, `SlipView.tsx:3261`). Ask did not show in the
+              map before this PR and does not now. Layout only. */}
+          {isOwner && data.trip && slipView !== "map" ? (
+            <div className="flex flex-wrap items-center gap-2" data-testid="slip-tools-row">
+              {isOwner && slipView === "list" ? (
+              <ToolsTray
+                tripId={tripId}
+                group={experienceGroup}
+                occasionSlug={occasion?.slug ?? null}
+                planEvents={planEvents}
+                isHidden={occasionIsHidden}
+                /* B-11 (ruled 2026-11-09): the party sheet's roster, owner-only. The CALLER owns the
+                   gate, so the tray stays a tool registry; a guest plan passes nothing and the sheet
+                   draws today's count view with no names and no controls. */
+                partyRoster={isOwner && data.trip ? <SlipPartyRoster trip={data.trip} tripId={tripId} isOwner={isOwner} /> : null}
+                whereToStay={
+                  anchorSurface.trayChooser
+                    ? renderAnchorPanel("chooser")
+                    : anchorSurface.trayChange
+                      ? renderAnchorPanel("change")
+                      // B-9 (ruled 2026-11-09): the owner's lodging CTA says the approved words —
+                      // "Compare places to stay" (Wording approved — Leon). Owner-only by construction:
+                      // this tray is inside the `isOwner` gate and the option-set write is owner-gated
+                      // server-side too. A guest never sees it; their row is Browse on the Hotels tab.
+                      : <SlipAnchorCompareButton tripId={tripId} label="Compare places to stay" />
+                }
+                trip={{
+                  destination: data.trip.destination ?? null,
+                  startDate: (data.trip.startDate as any) ?? null,
+                  endDate: (data.trip.endDate as any) ?? null,
+                }}
+                openTool={openTool}
+                onOpenToolChange={setOpenTool}
+                flags={healthFlags}
+                doneTools={doneTools}
+                zoneLine={zoneLine}
+                facts={{
+                  datesConfirmed: (data.trip as any)?.datesConfirmed === true,
+                  travelers: (data.trip as any)?.travelers ?? null,
+                  stops: allActivities.length,
+                }}
+                onNeedDates={() => setTrayChip("dates")}
+                onNeedParty={askParty ? () => setTrayChip("who") : undefined}
+              />
+              ) : null}
+              <AskAiDrawer tripId={tripId} isOwner={isOwner} isExpertViewer={isExpertViewer} aiAction={aiAction} layout="row" />
+            </div>
           ) : null}
           {/* Smoke 9 S9-4: the optimizer LEADS the page (§8) — directly under the tools tray at every
               width. The rail renders its OptimizerLead into this slot (a portal; its state stays there). */}
@@ -2704,6 +2712,13 @@ export function SlipView({
               the only view control a fresh plan has. Its "Nothing added yet" sentence moved with the
               counts into the state board, so the placeholder and the segments can still never both
               draw: `SlipStatusStrip` returns null when every count is zero (§13). */}
+          <SlipActionRow
+            fee={optimizeFee}
+            showOptimize={isOwner}
+            showExpert={expertDoorLive}
+            onOptimize={() => optimizerSlot?.scrollIntoView({ behavior: "smooth", block: "center" })}
+            onExpert={() => openHandoffChooser({})}
+          />
           <div
             className="flex items-center justify-between gap-3 flex-wrap"
             data-testid="slip-viewbar"
@@ -2719,7 +2734,7 @@ export function SlipView({
                   aria-pressed={slipView === "list"}
                   data-testid="button-slip-view-list"
                 >
-                  Days
+                  Days only
                 </button>
                 {/* PLAN-1 Phase 3: Calendar holds its place on the toggle until its artifact lands (disabled; no view). */}
                 <button
@@ -2738,7 +2753,7 @@ export function SlipView({
                   aria-pressed={slipView === "map"}
                   data-testid="button-slip-view-map"
                 >
-                  {allActivities.length > 0 ? `Map · ${locatedActivities.length} of ${allActivities.length}` : "Map"}
+                  {allActivities.length > 0 ? `Map only · ${locatedActivities.length} of ${allActivities.length}` : "Map only"}
                 </button>
               </div>
               {slipView === "list" && daySlots.length > 1 ? (
@@ -2848,19 +2863,10 @@ export function SlipView({
       {/* LD 45 (5), KEPT (decision-maker, Oct 8, 2026): the done-for-you engagement, inline in the
           Handoff banner's slot above the day cards — owner only, only when one exists. */}
       <CoordinationCard tripId={tripId} isOwner={isOwner} />
-      {expertDoorLive && expertDoorState === "open" && data.trip ? (
-        <ExpertDoorCard
-          trip={{
-            id: tripId,
-            destination: data.trip.destination ?? "",
-            startDate: data.trip.startDate as any,
-            endDate: data.trip.endDate as any,
-            travelers: (data.trip as any).travelers ?? null,
-          }}
-          itemCount={allActivities.length}
-          onDismiss={() => setExpertDoorState("dismissed")}
-        />
-      ) : null}
+      {/* UI brief 1 (commit 1b, Leon Nov 18): the "How much help do you want?" CARD no longer renders on the
+          plan page. Since Lane A its request cannot be accepted, so the page sends every expert control to the
+          paid chooser instead. ExpertDoor.tsx has since been deleted (nothing imported it); the request route
+          is untouched. */}
       {/* Surface step 3: the ONE AnchorPanel — empty before the draft, ranked after it (R-y may
           collapse it to one line). Gone once the stay is decided (a stay, a comparison, a Skip). */}
       {/* ── THE EMPTY BOARD (slip conformance, boards rev 15; ledger
@@ -3008,7 +3014,7 @@ export function SlipView({
                       hook={data.expertHook}
                       teaser={day?.localTeaser ?? null}
                       inSeason={day?.inSeason ?? null}
-                      onAsk={() => setExpertDoorState("open")}
+                      onAsk={() => openHandoffChooser({})}
                     />
                   ) : null
                 }
@@ -3124,7 +3130,7 @@ export function SlipView({
                         !optionSets.some((st) => st.itineraryItemId === a.id)
                       }
                       replacingStay={currentStay && currentStay.id !== a.id ? currentStay.name : null}
-                      onOpenExpertDoor={() => setExpertDoorState("open")}
+                      onOpenExpertDoor={() => openHandoffChooser({})}
                       onFindHost={openFindHost}
                       savedQuestion={data.savedQuestions?.items[a.id] ?? null}
                       savedCity={data.savedQuestions?.cityName ?? null}
@@ -3204,23 +3210,9 @@ export function SlipView({
             );
           })}
       </div>
-      {/* Row P-7: one note under the last day — a drafted plan with no advisor, while an expert is live. */}
-      {getHelpNoteShown({ isOwner, itemCount: allActivities.length, expertsAvailable: slipExpertsAvailable, hasAdvisor }) ? (
-        <div
-          className="flex flex-wrap items-center justify-between gap-3 rounded-[14px] border border-[color:var(--slip-line)] bg-[color:var(--slip-card)] px-4 py-3"
-          data-testid="slip-get-help-note"
-        >
-          <span className="text-sm text-[color:var(--slip-ink)]">{EXPERT_DOOR_COPY.draftedNote}</span>
-          <button
-            type="button"
-            className="min-h-11 rounded-full border border-[color:var(--slip-line)] px-4 text-[13px] font-semibold text-[color:var(--slip-teal-ink)] hover:bg-[color:var(--slip-ground)]"
-            onClick={() => openHandoffChooser({})}
-            data-testid="slip-get-help-note-button"
-          >
-            {EXPERT_DOOR_COPY.getHelp}
-          </button>
-        </div>
-      ) : null}
+      {/* UI brief 1 (cleanup): the get-help NOTE is gone. It was a second door to the same chooser in the
+          same situation; the action row's expert button is the one general door. The per-day hook and the
+          stay row keep their contextual controls. */}
       {/* The Handoff board's footer — "When <name> is done" — under the days it is about. */}
       {isOwner ? <HandoffFooter tripId={tripId} isOwner={isOwner} /> : null}
       </>
@@ -3256,18 +3248,17 @@ export function SlipView({
       )}
         </div>
 
-        {/* THE ACTION RAIL IS GONE (ruling 3; ledger `2026-10-08-slip-main-rail`). Its pieces live in
-            the plan column (`SlipRail` above), the ⋯ plan menu in the header, and the bottom bar. */}
-        {data.trip && slipView !== "map" && (
-          <SlipBottomBar
-            trip={data.trip}
-            tripId={tripId}
-            isOwner={isOwner}
-            isExpertViewer={isExpertViewer}
-            isPrimary={cardReady}
-            activities={allActivities}
-          />
-        )}
+        {/* UI brief 1 (commit 3): Finalize sits IN FLOW at the foot of the column. Its audience and views
+            are the bar's own, unchanged: `(isOwner || isExpertViewer)` (`SlipRail.tsx:1684`) and "not the map
+            view" (the mount gate the bar carried here). The map keeps its Trip Card banner card. */}
+        {isOwner && data.trip && slipView !== "map" ? (
+          <div className="flex items-center justify-end border-t border-[color:var(--slip-line)] pt-4" data-testid="slip-foot">
+            <FinishCard trip={data.trip} isOwner={isOwner} isPrimary={cardReady} activities={allActivities} layout="bar" />
+          </div>
+        ) : null}
+        {/* THE FIXED BOTTOM BAR IS GONE (UI brief 1, commit 3): Ask is in the one tools row and Finalize in
+            the foot above, both with the audience the bar had. No spacer, no fixed element, nothing over the
+            foot. */}
       </div>
       </PlanRowLookProvider>
     </div>

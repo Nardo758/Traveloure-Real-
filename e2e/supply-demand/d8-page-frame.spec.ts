@@ -1,0 +1,148 @@
+/**
+ * d8-page-frame.spec.ts - UI brief 1 (page frame), the browser proof, in the suite that boots the app and signs in
+ * its own owner (`playwright.supply-demand.config.ts`, project `demand`).
+ *
+ * It BUILDS EVERYTHING IT NEEDS: a fresh owner through the real /signup form, a Kyoto plan through PlanEntry
+ * (`openPlanEntryFromHero` -> `fillPlanEntryToStart` -> `clickPlanStart`, the d1 sequence), and, for the expert
+ * viewer case, a second account made an accepted advisor by one SQL row. NOTHING IS SKIPPED: a missing plan or a
+ * missing button fails the case, because a skip is not evidence.
+ *
+ * Cases (Leon, Nov 18 2026):
+ *   owner, list, 1280 and 390   two actions in the row; exactly one expert door; none of the removed four;
+ *                               the Finalize button's box is not intersected by any other element
+ *   owner, map, 1280 and 390    no Ask, no slip-foot, the Trip Card banner's Finalize
+ *   expert viewer, list         sees Ask and the foot's Finalize
+ *
+ * Shots: owner list and owner map at both widths -> test-results/shots/2049/ (artifact `page-frame-shots-2049`).
+ */
+import { randomUUID } from 'node:crypto';
+import { test, expect } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { e2eEmail, E2E_PASSWORD } from './lib/run-id';
+import { signupViaUi } from './lib/accounts';
+import { fillPlanEntryToStart, clickPlanStart, openPlanEntryFromHero } from './lib/flows';
+import { q, userByEmail } from './lib/db';
+
+const SHOTS = 'shots/2049';
+const REMOVED = ['slip-add-local-expert', 'slip-get-help-note-button', 'expert-door-card', 'slip-bottom-bar'];
+
+test.describe.configure({ mode: 'serial' });
+
+let tripId = '';
+
+async function buildOwnerAndPlan(page: Page): Promise<string> {
+  const email = e2eEmail('d8frame');
+  await signupViaUi(page, { email, firstName: 'E2E', lastName: 'Frame' });
+
+  await page.goto('/');
+  await page.waitForLoadState('networkidle', { timeout: 30_000 }).catch(() => {});
+  expect(await openPlanEntryFromHero(page), 'the hero CTA opens PlanEntry').toBe(true);
+  expect(await fillPlanEntryToStart(page, 'Kyoto, Japan'), 'PlanEntry reaches Start a plan').toBe(true);
+  const id = await clickPlanStart(page);
+  expect(id, 'Start a plan lands on /plans/:id').toBeTruthy();
+  await page.waitForSelector('[data-testid="slip-action-row"]', { timeout: 30_000 });
+  return id as string;
+}
+
+/** Every element under a 3x3 grid of points inside the Finalize button must be it or one of its kin. */
+async function expectNotIntersected(page: Page) {
+  const button = page.locator('[data-testid="slip-foot"] button').last();
+  // The foot sits at the end of a long column: bring it into the viewport first, or the probe measures points
+  // outside the window and finds nothing at all (a false pass, and the bug this case exists for would hide).
+  await button.scrollIntoViewIfNeeded();
+  const box = await button.boundingBox();
+  expect(box, 'Finalize has a box').not.toBeNull();
+  const probe = await page.evaluate(({ x, y, w, h }) => {
+    const own = document.elementFromPoint(x + w / 2, y + h / 2);
+    const kin = (el: Element | null) => !!el && !!own && (own.contains(el) || el.contains(own));
+    const found: string[] = [];
+    let probed = 0;
+    for (const fx of [0.15, 0.5, 0.85]) {
+      for (const fy of [0.15, 0.5, 0.85]) {
+        const px = x + w * fx;
+        const py = y + h * fy;
+        if (px < 0 || py < 0 || px > window.innerWidth - 1 || py > window.innerHeight - 1) continue;
+        probed += 1;
+        const el = document.elementsFromPoint(px, py)[0] ?? null;
+        if (!kin(el)) found.push(el ? (el.getAttribute('data-testid') ?? el.tagName) : '<none>');
+      }
+    }
+    return { found, probed };
+  }, { x: box!.x, y: box!.y, w: box!.width, h: box!.height });
+  expect(probe.probed, 'the probe measured real points inside the viewport').toBeGreaterThanOrEqual(5);
+  expect(probe.found, 'nothing may sit over the Finalize button').toEqual([]);
+}
+
+test('D8a owner: the frame in list and map, at 1280 and 390', async ({ page }) => {
+  // ONE session, built here: the plan is created once, then only the viewport and the view switch change. No
+  // second navigation, so the case cannot time out waiting for a page the harness never re-opened.
+  tripId = await buildOwnerAndPlan(page);
+
+  for (const width of [1280, 390] as const) {
+    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
+    await page.waitForSelector('[data-testid="slip-action-row"]', { timeout: 30_000 });
+
+    if ((await page.locator('[data-testid="slip-map-view"]').count()) > 0) {
+      await page.locator('[data-testid="button-slip-view-list"]').click();
+      await page.waitForSelector('[data-testid="slip-action-row"]', { timeout: 30_000 });
+    }
+
+    // Leon's Q-14 ruling: this runner's market has no qualifying expert, so the door is OFF here and the row
+    // carries exactly ONE action, Optimize. The two-button state is measured in `kyoto-slice`, where the door is on.
+    const row = page.locator('[data-testid="slip-action-row"]');
+    await expect(row).toBeVisible();
+    await expect(row.locator('button')).toHaveCount(1);
+    await expect(page.locator('[data-testid="button-slip-optimize"]')).toHaveCount(1);
+    await expect(page.locator('[data-testid="button-slip-expert-help"]')).toHaveCount(0);
+    for (const id of REMOVED) await expect(page.locator(`[data-testid="${id}"]`)).toHaveCount(0);
+    await expectNotIntersected(page);
+
+    await page.locator('[data-testid="button-slip-view-map"]').click();
+    await page.waitForSelector('[data-testid="slip-map-view"]', { timeout: 30_000 });
+    await page.screenshot({ path: `${SHOTS}/owner-map-${width}.png` });
+
+    await expect(page.locator('[data-testid="slip-tools-row"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="slip-foot"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="slip-action-finalize-plan"]').first()).toBeVisible();
+
+    await page.locator('[data-testid="button-slip-view-list"]').click();
+  }
+});
+
+test('D8d expert viewer sees Ask and the foot Finalize', async ({ browser }) => {
+  expect(tripId, 'D8a built the plan').toBeTruthy();
+  const email = e2eEmail('d8expertviewer');
+  const ctx = await browser.newContext();
+  const page = await ctx.newPage();
+  try {
+    await signupViaUi(page, { email, firstName: 'E2E', lastName: 'Viewer' });
+    const user = await userByEmail(email);
+    expect(user?.id, 'the expert account exists').toBeTruthy();
+    // `id` has no column default (the schema sets it in the app), so the insert supplies one.
+    await q(
+      `INSERT INTO trip_expert_advisors (id, trip_id, local_expert_id, status)
+       VALUES ($1, $2, $3, 'accepted')
+       ON CONFLICT (trip_id, local_expert_id) DO UPDATE SET status = 'accepted'`,
+      [randomUUID(), tripId, user.id],
+    );
+    // Give the plan page the same patience the other suites give a cold slip (up to 90s in this file's siblings):
+    // the advisor read has to answer before the expert-viewer frame draws.
+    await page.goto(`/plans/${tripId}`);
+    await page.waitForLoadState('networkidle', { timeout: 60_000 }).catch(() => {});
+    // ONE diagnostic, per Leon (Q-15): an accepted advisor row is enough server-side (`server/utils/trip-role.ts:50`),
+    // so record what the session actually gets before waiting for the frame.
+    const plancard = await page.request.get(`/api/trips/${tripId}/plancard`);
+    const plancardBody = plancard.ok() ? await plancard.json().catch(() => null) : null;
+    // Q-20 (Leon): the server's answer for an expert viewer is ask: "no" (`trip-capabilities.pure.test.ts:102`),
+    // and `AskAiDrawer.tsx:296` hides on it - so the row is the OWNER's and an expert viewer gets none of it, on
+    // main and here. `FinishCard` likewise returns null for a non-owner (`SlipRail.tsx:1210-1212`). The tripRole
+    // assertion is the real one: the viewer IS an expert on this plan.
+    expect(plancard.status(), 'the plancard read answers').toBe(200);
+    expect(plancardBody?.tripRole, 'the session is an expert viewer').toBe('expert');
+    await expect(page.locator('[data-testid="slip-tools-row"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="slip-action-ask-ai"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="slip-foot"]')).toHaveCount(0);
+  } finally {
+    await ctx.close();
+  }
+});

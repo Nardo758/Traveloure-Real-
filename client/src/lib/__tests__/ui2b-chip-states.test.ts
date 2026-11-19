@@ -56,7 +56,8 @@ describe("UI-2b — B-9: the approved CTA", () => {
     assert.match(SLIP, /<SlipAnchorCompareButton tripId=\{tripId\} label="Compare places to stay" \/>/);
     // It sits inside the owner-gated tray block, not on any guest path.
     const trayAt = SLIP.indexOf("<ToolsTray");
-    const gateAt = SLIP.indexOf("{isOwner && data.trip && slipView === \"list\" ? (");
+    // UI brief 1: the tray keeps its own owner-and-list gate, now INSIDE the one tools row.
+    const gateAt = SLIP.indexOf('{isOwner && slipView === "list" ? (');
     assert.ok(gateAt > 0 && trayAt > gateAt, "the tray — and so the CTA — is inside the isOwner gate");
     // The other caller keeps its OWN approved label.
     assert.match(SLIP, /<SlipAnchorCompareButton tripId=\{tripId\} label=\{ANCHOR_PANEL_ADD_PLACES\}/);

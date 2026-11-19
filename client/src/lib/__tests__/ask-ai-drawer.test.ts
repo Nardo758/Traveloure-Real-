@@ -446,7 +446,10 @@ test("A8 — D16: the apply/pay controls are drawn from `visibility.canApply`, n
   assert.match(DRAWER, /canApply=\{visibility\.canApply\}/);
   assert.doesNotMatch(DRAWER, /isOwner\s*&&\s*<Button/);
   // And the rail mounts it for both viewer kinds, leaving the decision to the module.
-  assert.match(RAIL, /isExpertViewer=\{isExpertViewer\}/);
+  // UI brief 1: the slip's Ask moved from the rail's bar into SlipView's one tools row, so the mount that hands
+  // both viewer kinds to the module lives there now; the drawer still decides visibility.
+  const SLIP_VIEW = code(read("client/src/components/plancard/SlipView.tsx"));
+  assert.match(SLIP_VIEW, /isExpertViewer=\{isExpertViewer\}/);
 });
 
 test("A9 — the ONE copy home: the renderer spells no sentence of its own", () => {

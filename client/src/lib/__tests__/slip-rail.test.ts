@@ -333,14 +333,16 @@ describe("slip rail — four cards, and every rail kept a home", () => {
       return rail.slice(start, next >= 0 ? start + fn.length + next : undefined);
     };
     const menu = homeOf("export function SlipPlanMenu(");
-    const bar = homeOf("export function SlipBottomBar(");
+  const bar = ""; // UI brief 1 (commit 3): the fixed bar is deleted; Ask is in the tools row, Finalize in the foot.
     // Share card → the ⋯ plan menu; Build's Browse → the menu; feedback → the menu.
     for (const id of ["slip-action-share", "slip-action-pdf", "slip-action-calendar", "slip-browse-services"]) {
       assert.ok(menu.includes(`"${id}"`), `${id} lives in the ⋯ plan menu`);
     }
     // Finish card → the bottom bar's primary; Ask AI → its secondary.
-    assert.ok(bar.includes('layout="bar"'), "the bar uses the existing components' bar layout");
-    assert.ok(rail.includes('data-testid="slip-action-finalize-plan"'), "Finalize keeps its testid in the bar layout");
+  // UI brief 1 (commit 3): the bar is gone; the two actions keep their bar layouts in the tools row and the
+  // foot, which is what the slip-conformance inventory pins. This suite only asserts the bar is not there.
+  assert.ok(!rail.includes("<SlipBottomBar"), "the fixed bar must not come back");
+  assert.ok(rail.includes('data-testid="slip-action-finalize-plan"'), "Finalize keeps its testid in the foot");
     // Build's optimizer card stays portaled under the tray; the hire door is its "Local expert".
     assert.ok(rail.includes('testId="slip-action-optimize"'));
     assert.ok(rail.includes('localExpertTestId="slip-action-hire-expert"'), "the hire door is the card's Local expert");
@@ -351,7 +353,7 @@ describe("slip rail — four cards, and every rail kept a home", () => {
     assert.ok(rail.includes("<SlipOrganizeEventsRow"), "organize-into-events stays with the plan");
     // No rail container, no card grid, at any width (ruling 7).
     assert.ok(!rail.includes('data-testid="slip-rail"'), "the rail container is gone");
-    assert.ok(view.includes("<SlipPlanMenu") && view.includes("<SlipBottomBar"), "the view mounts both homes");
+  assert.ok(view.includes("<SlipPlanMenu") && view.includes('data-testid="slip-foot"'), "the view mounts both homes");
     // SURFACE STEP 2 (ledger `2026-10-03-surface-step2-tools-tray`): the logistics pieces and the
     // contract board are TOOLS on the slip's tray, each the SAME existing component in a sheet.
     assert.ok(!rail.includes("<SlipLogisticsSection"), "the logistics section left the rail");

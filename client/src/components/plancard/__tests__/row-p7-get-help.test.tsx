@@ -115,12 +115,11 @@ describe("P-7 Get help with this plan", () => {
     assert.equal(getHelpNoteShown({ ...yes, expertsAvailable: false }), false, "no live expert");
     assert.equal(getHelpNoteShown({ ...yes, hasAdvisor: true }), false, "an advisor is on the plan");
     assert.equal(getHelpNoteShown({ ...yes, isOwner: false }), false, "not the owner");
-    assert.match(
-      SLIP,
-      /getHelpNoteShown\(\{ isOwner, itemCount: allActivities\.length, expertsAvailable: slipExpertsAvailable, hasAdvisor \}\) \? \(\s*<div[^>]*data-testid="slip-get-help-note"/,
-    );
-    assert.match(SLIP, /\{EXPERT_DOOR_COPY\.draftedNote\}/);
-    assert.match(SLIP, /onClick=\{\(\) => openHandoffChooser\(\{\}\)\}\s+data-testid="slip-get-help-note-button"/);
+    // UI brief 1 (cleanup): the note is GONE from the slip. The predicate (`getHelpNoteShown`) still exists for
+    // any other surface that wants it, so its own cases above stay.
+    assert.doesNotMatch(SLIP, /data-testid="slip-get-help-note"/, "the note must not render on the slip");
+    assert.doesNotMatch(SLIP, /\{EXPERT_DOOR_COPY\.draftedNote\}/, "the drafted note must not render");
+    assert.doesNotMatch(SLIP, /data-testid="slip-get-help-note-button"/, "the note button is gone");
     assert.match(SLIP, /const slipExpertsAvailable = useExpertAvailability\(\{ city: isGuest \? null : data\?\.trip\?\.destination \?\? null \}\);/);
   });
 

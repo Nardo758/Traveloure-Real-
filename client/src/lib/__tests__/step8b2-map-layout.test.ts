@@ -256,8 +256,11 @@ test("M10: the two binding mount counts are unchanged; the band reuses the rail'
   assert.equal((rail.match(/<TripPassCard\b/g) ?? []).length, 1, "the one Trip Pass card (slip-rail S8)");
   assert.ok(!/<TripPassCard\b/.test(view), "the map band mounts no Trip Pass");
   assert.match(view, /import \{ FinishCard, SlipDraftAiRow, SlipRail, useSlipAiAction \} from "\.\/SlipRail";/);
-  assert.equal((view.match(/<FinishCard\b/g) ?? []).length, 1);
+  assert.equal((view.match(/<FinishCard\b/g) ?? []).length, 2, "the foot (list) + the banner (map): one per view");
   assert.equal((view.match(/<SlipDraftAiRow\b/g) ?? []).length, 1);
   // In map view the rail gives way to the map's rail, so exactly one of each renders per view.
-  assert.match(view, /\{data\.trip && slipView !== "map" && \(/);
+    // UI brief 1: the frame replaced the fixed bar with a foot block, so the guard is `isOwner &&
+    // data.trip && slipView !== "map" ? (` - the owner and the same view rule the bar used. The intent of this
+    // assertion is unchanged: one FinishCard per view and the band reuses the rail's own pieces.
+  assert.match(view, /\{isOwner && data\.trip && slipView !== "map" \? \(/);
 });

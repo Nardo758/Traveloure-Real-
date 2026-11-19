@@ -360,6 +360,16 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
           CI: 'true'
 
+      # UI brief 1: the two-button owner view at both widths (this run is the one where the expert door is ON).
+      - name: Upload the page-frame screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: page-frame-shots-2049-kyoto
+          path: shots/2049
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Upload report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4

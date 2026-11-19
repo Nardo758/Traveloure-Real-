@@ -157,6 +157,16 @@ jobs:
           NODE_ENV: production
           CI: 'true'
 
+      # UI brief 1: the four page-frame screenshots from d8-page-frame.spec.ts.
+      - name: Upload the page-frame screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: page-frame-shots-2049
+          path: shots/2049
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Upload evidence + findings
         if: always()
         uses: actions/upload-artifact@v4

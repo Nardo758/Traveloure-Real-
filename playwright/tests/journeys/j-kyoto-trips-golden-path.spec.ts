@@ -1686,58 +1686,43 @@ test.describe("7 · a local expert checks the plan", () => {
       )
       .toBe(true);
   });
-  test("§7 expert door — a plan from PlanEntry opens the expert door's help card", async ({ page }) => {
-    // E2 (rulings 1–2): the pop-up has no build chooser; a `local` start continues on the plan's expert
-    // door (`expertDoorHref`). The trip_created row records the door and the default finish.
-    await signedInTraveler(page, "door");
-    await openModalFromHero(page);
-    expect(await fillPlanEntryToStart(page, KYOTO, { occasionSlug: "travel", lenDays: 5 })).toBe(true);
-    let tripId: string | null = null;
-    const status = await actAndAwait(page, async () => { tripId = await clickPlanStart(page); }, { method: "POST", path: /^\/api\/trips$/ });
-    expect(ok2xx(status)).toBe(true);
-    expect(tripId).toBeTruthy();
-    await page.goto(`/plans/${tripId}?help=expert`);
-    await expect(testid(page, "expert-door-card")).toBeVisible({ timeout: 20_000 });
-    await expect(testid(page, "expert-door-card")).toContainText("How much help do you want?");
-    for (const level of ["check", "plan", "handle", "question"]) await expect(testid(page, `expert-door-level-${level}`)).toBeVisible();
-    const [row] = await rows<{ finish: string | null; door: string | null }>(
-      `SELECT properties->>'finish' AS finish, properties->>'door' AS door FROM funnel_events WHERE trip_id = $1 AND event_type = 'trip_created'`,
-      [tripId],
-    );
-    expect(row).toEqual({ finish: "myself", door: "hero" });
+  test("expert door - the ONE action row carries two actions, and the expert one opens the paid chooser", async ({ page }) => {
+    // UI brief 1 (Leon, Nov 18 2026): the request card left the plan page. In a market WITH a qualifying expert the
+    // row carries exactly two actions; the expert one opens the ONE HandoffChooser (`openHandoffChooser({})`).
+    await signedInTraveler(page, "door-row");
+    const tripId = await createTrip(page.request, "Kyoto frame", KYOTO);
+    await createItem(page.request, tripId, "Fushimi Inari", 1);
+    await page.goto(`/plans/${tripId}`);
+    const row = testid(page, "slip-action-row");
+    await expect(row).toBeVisible({ timeout: 20_000 });
+    await expect(row.locator("button")).toHaveCount(2);
+    await expect(testid(page, "button-slip-optimize")).toHaveCount(1);
+    await expect(testid(page, "button-slip-expert-help")).toHaveCount(1);
+    // The two screenshots the pack keeps: this run is the one where the door is ON.
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await row.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: "shots/2049/owner-list-1280.png" });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await row.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: "shots/2049/owner-list-390.png" });
+    await testid(page, "button-slip-expert-help").click();
+    await expect(testid(page, "handoff-chooser")).toBeVisible({ timeout: 20_000 });
   });
 
-  test("§7 expert door — dismissed, the card becomes 'Add a local expert' in the header and comes back", async ({ page }) => {
-    await signedInTraveler(page, "door-dismiss");
-    const tripId = await createTrip(page.request, "Kyoto door", KYOTO);
-    await page.goto(`/plans/${tripId}?help=expert`);
-    await expect(testid(page, "expert-door-card")).toBeVisible({ timeout: 20_000 });
-    await testid(page, "expert-door-dismiss").click();
-    await expect(testid(page, "expert-door-card")).toHaveCount(0);
-    await expect(testid(page, "slip-add-local-expert")).toHaveText("Add a local expert");
-    await page.reload();
-    await expect(testid(page, "slip-add-local-expert")).toBeVisible({ timeout: 20_000 });
-    await testid(page, "slip-add-local-expert").click();
-    await expect(testid(page, "expert-door-card")).toBeVisible();
-  });
-
-  test("§7 expert door — a market with no expert does not draw the door (D1), and records nothing", async ({ page }) => {
-    // PLAN-2 lane 3 / D1: the door is HIDDEN, never greyed, when the plan's market has no approved expert
-    // — the empty picker is no longer reachable from it. Jaipur has no fixture supply, so this is the
-    // no-supply case. What used to be proven here (the empty picker naming the city, and an
-    // `expert_interest` row) is recorded as ABSENT-by-rule: the assertion is that the deep link opens
-    // nothing and writes nothing.
-    await signedInTraveler(page, "door-empty");
+  test("expert door - a market with no qualifying expert draws no expert action (D1)", async ({ page }) => {
+    // The door's own gate, unchanged: no approved expert in the plan's market means no expert action at all, and
+    // nothing recorded (PLAN-2 lane 3 / D1 - hidden, never greyed).
+    await signedInTraveler(page, "door-empty-row");
     const tripId = await existingJaipurPlan(page.request, "Jaipur door");
     await createItem(page.request, tripId, "Amber Fort", 1);
-    await page.goto(`/plans/${tripId}?help=expert`);
-    await expect(testid(page, "slip-view-toggle")).toBeVisible({ timeout: 20_000 });
-    await expect(testid(page, "expert-door-card")).toHaveCount(0);
-    await expect(page.locator('[data-testid^="expert-door-band-"]')).toHaveCount(0);
-    // §13: no interest is recorded by a surface that never appeared.
+    await page.goto(`/plans/${tripId}`);
+    await expect(testid(page, "slip-action-row")).toBeVisible({ timeout: 20_000 });
+    await expect(testid(page, "button-slip-optimize")).toHaveCount(1);
+    await expect(testid(page, "button-slip-expert-help")).toHaveCount(0);
     expect((await doorRows(tripId, "expert_interest")).length).toBe(0);
     expect((await doorRows(tripId, "expert_help_level_chosen")).length).toBe(0);
   });
+
   test("§7 R-r — with no local live in the city, ⋯ Ask a local about this records the item and the question, charging nothing", async ({ page }) => {
     // Surface step 1 (ledger `2026-10-03-surface-step1-item-row`).
     await signedInTraveler(page, "ask-local");
@@ -1761,55 +1746,11 @@ test.describe("7 · a local expert checks the plan", () => {
     });
   });
 
-  test("§7 expert door — the picker shows only byline-gated experts who list the level", async ({ page }) => {
-    const gated = seedKyotoExpert("pick");
-    const ungated = seedKyotoExpert("nogate", { ungated: true });
-    await signedInTraveler(page, "door-pick");
-    const tripId = await createTrip(page.request, "Kyoto pick", KYOTO);
-    await createItem(page.request, tripId, "Yasaka Shrine", 1);
-    await page.goto(`/plans/${tripId}?help=expert`);
-    await expect(testid(page, "expert-door-card")).toBeVisible({ timeout: 20_000 });
-    // "Check my plan" lists the fixture's advisory offering; its band is its own price.
-    await expect(testid(page, "expert-door-band-check")).toContainText("$60");
-    await testid(page, "expert-door-level-check").click();
-    await expect(testid(page, `expert-picker-card-${gated.handle}`)).toBeVisible({ timeout: 20_000 });
-    await expect(testid(page, `expert-picker-card-${ungated.handle}`)).toHaveCount(0);
-    await expect(testid(page, `expert-picker-card-${gated.handle}`)).toContainText(gated.neighborhood);
-    await expect(testid(page, `expert-picker-request-${gated.serviceId}`)).toBeVisible();
-    // The same expert lists no planning offering, so "Plan it with me" never shows them.
-    const api = await (await page.request.get(`${BASE_URL}/api/trips/${tripId}/expert-help/picker?level=plan`)).json();
-    expect(api.experts.map((x: any) => x.handle)).not.toContain(gated.handle);
-    // No user id crosses the wire (LD 40).
-    const check = await (await page.request.get(`${BASE_URL}/api/trips/${tripId}/expert-help/picker?level=check`)).json();
-    expect(JSON.stringify(check)).not.toContain(gated.expertId);
-  });
-
-  test("§7 — a local expert checks the plan: Request attaches them through the storefront rail and the card hides", async ({ page }) => {
-    const expert = seedKyotoExpert("checks");
-    await signedInTraveler(page, "door-req");
-    const tripId = await createTrip(page.request, "Kyoto request", KYOTO);
-    await createItem(page.request, tripId, "Fushimi Inari", 1);
-    await page.goto(`/plans/${tripId}?help=expert`);
-    await testid(page, "expert-door-level-check").click();
-    const req = testid(page, `expert-picker-request-${expert.serviceId}`);
-    await expect(req).toBeVisible({ timeout: 20_000 });
-    const posted = await actAndAwait(page, () => req.click(), { method: "POST", path: /^\/api\/expert-booking-requests$/ });
-    expect(ok2xx(posted)).toBe(true);
-    // DB: the advisor row came from the ONE author (pending until the expert accepts, §12).
-    const [adv] = await rows<{ status: string }>(
-      `SELECT status FROM trip_expert_advisors WHERE trip_id = $1 AND local_expert_id = $2`,
-      [tripId, expert.expertId],
-    );
-    expect(adv?.status).toBe("pending");
-    await expect.poll(async () => (await rows<{ n: number }>(
-      `SELECT count(*)::int AS n FROM funnel_events WHERE trip_id = $1 AND event_type = 'expert_request_sent'`, [tripId])
-    )[0].n, { timeout: 10_000 }).toBe(1);
-    // DOM: with an expert attached neither the card nor the header control renders.
-    await page.reload();
-    await expect(testid(page, "slip-view-toggle")).toBeVisible({ timeout: 20_000 });
-    await expect(testid(page, "expert-door-card")).toHaveCount(0);
-    await expect(testid(page, "slip-add-local-expert")).toHaveCount(0);
-  });
+    // UI brief 1 (Leon, Nov 18 2026): the "How much help do you want?" card left the plan page, and with it the
+    // request picker this pair of tests drove (`?help=expert`, `expert-door-*`, `expert-picker-*` - the last of
+    // which exists nowhere in `client/` any more). The expert door now opens the paid HandoffChooser, whose own
+    // coverage is `handoff-chooser` in the handoff suites. Deleting these two cases rather than weakening them is
+    // logged as Q-8 in the pack's findings.md.
 });
 
 // ── §8 · a month later ────────────────────────────────────────────────────────────────────────
