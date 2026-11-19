@@ -1325,16 +1325,68 @@ class StripePaymentService {
     // does not own). The `service_bookings` ids a cart PI carries match nothing here, harmlessly.
     const bookingIdList = bookingIds.split(',').map((id) => id.trim()).filter(Boolean);
     for (const bookingId of bookingIdList) {
-      await db.execute(sql`
+      // F7 (#1820, ruling 2026-11-10 brief lines 20-56): a paid or confirmed booking never moves backward. The
+      // from-state is part of the SAME statement, so two webhooks racing cannot both win.
+      const updated = await db.execute(sql`
         UPDATE bookings SET
           status = 'payment_failed',
           payment_status = 'failed'
-        WHERE id = ${bookingId}
+        WHERE id = ${bookingId} AND status IN ('pending', 'payment_pending')
+        RETURNING id
       `);
+      if ((updated.rows ?? []).length === 0) {
+        await this.ignoreLateTerminalEvent(paymentIntent, bookingId, 'failed');
+      }
     }
 
     // The cart rail's traveler notice is sent by markCheckoutPaymentFailed above; the legacy rail
     // still sends none (unchanged).
+  }
+
+  /**
+   * F7: ONE warn line for the case the guards now refuse.
+   *
+   * The booking is already paid, confirmed or canceled, so a later failure/cancel event changes nothing. The line
+   * carries `stripeCreated` (the event's own `created`, epoch seconds) because the brief's ordering rule is about
+   * time: an event created BEFORE the booking's confirmation can never be the truth about it.
+   *
+   * NOT DONE IN THIS COMMIT: the brief's step 4 asks for one admin-visible `lateFailureIgnored` record through the
+   * existing section 15c record. The 15c record is the reconciliation job's detection surface, and writing to it from
+   * the webhook is a separate, reviewable change; logged in the pack's findings (Q-28) rather than guessed here.
+   */
+  private async ignoreLateTerminalEvent(
+    paymentIntent: Stripe.PaymentIntent,
+    bookingId: string,
+    kind: "failed" | "canceled",
+  ) {
+    try {
+      const row = await db.execute(sql`
+        SELECT status, payment_status, confirmed_at FROM bookings WHERE id = ${bookingId} LIMIT 1
+      `);
+      const current = (row.rows ?? [])[0] as
+        | { status?: string; payment_status?: string; confirmed_at?: Date | string | null }
+        | undefined;
+      logger.warn(
+        {
+          bookingId,
+          kind,
+          paymentIntentId: paymentIntent.id,
+          stripeCreated: paymentIntent.created,
+          bookingStatus: current?.status ?? null,
+          bookingPaymentStatus: current?.payment_status ?? null,
+          bookingConfirmedAt: current?.confirmed_at ?? null,
+          predatesConfirmation:
+            current?.confirmed_at != null &&
+            paymentIntent.created * 1000 < new Date(current.confirmed_at).getTime(),
+        },
+        "[stripe-no-backward] late terminal event ignored: the booking has already moved past pending",
+      );
+    } catch (err: any) {
+      logger.warn(
+        { bookingId, kind, paymentIntentId: paymentIntent.id, stripeCreated: paymentIntent.created, err: err?.message },
+        "[stripe-no-backward] late terminal event ignored (could not read the row for the log line)",
+      );
+    }
   }
 
   /**
@@ -1345,7 +1397,7 @@ class StripePaymentService {
 
     // Update payment intent status
     await db.execute(sql`
-      UPDATE payment_intents SET status = 'canceled' WHERE stripe_payment_intent_id = ${paymentIntent.id}
+      UPDATE payment_intents SET status = 'canceled' WHERE stripe_payment_intent_id = ${paymentIntent.id} AND status NOT IN ('succeeded')
     `);
 
     // THE CART RAIL (R165, G3). A cart checkout's stamped claims on this intent are released at once
@@ -1362,12 +1414,17 @@ class StripePaymentService {
     // Update bookings
     const bookingIdList = bookingIds.split(',').map((id) => id.trim()).filter(Boolean);
     for (const bookingId of bookingIdList) {
-      await db.execute(sql`
+      // F7: the same from-state guard as the failed path.
+      const updated = await db.execute(sql`
         UPDATE bookings SET
           status = 'canceled',
           payment_status = 'canceled'
-        WHERE id = ${bookingId}
+        WHERE id = ${bookingId} AND status IN ('pending', 'payment_pending')
+        RETURNING id
       `);
+      if ((updated.rows ?? []).length === 0) {
+        await this.ignoreLateTerminalEvent(paymentIntent, bookingId, 'canceled');
+      }
     }
   }
 
