@@ -15,6 +15,7 @@
  *
  * Shots: owner list and owner map at both widths -> test-results/shots/2049/ (artifact `page-frame-shots-2049`).
  */
+import { randomUUID } from 'node:crypto';
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { e2eEmail, E2E_PASSWORD } from './lib/run-id';
