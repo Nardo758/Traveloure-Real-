@@ -13,7 +13,12 @@ import crypto from "node:crypto";
 import type Stripe from "stripe";
 import { sql } from "drizzle-orm";
 import { db } from "../db";
+import StripeClient from "stripe";
 import { processStripeWebhookEvent } from "../routes/webhooks.routes";
+import { createPlatformStripeWebhookHandler } from "../routes/bookings";
+import { getStripeWebhookSecret } from "../utils/stripe-key";
+import express from "express";
+import type { AddressInfo } from "node:net";
 
 const RUN = crypto.randomUUID().slice(0, 8);
 const uid = () => crypto.randomUUID();
@@ -267,4 +272,100 @@ test("F8.11 if the admin-row insert fails, the payout and earnings roll back wit
     await db.execute(sql`DELETE FROM expert_earnings WHERE reference_id = ${"f8-rb-" + RUN}`).catch(() => {});
     await db.execute(sql`DELETE FROM expert_payouts WHERE id = ${rbPayout}`).catch(() => {});
   }
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// F8.12-F8.14: the ACCOUNT endpoint (Leon's dashboard read: `/api/bookings/webhooks/stripe` is the YOUR-ACCOUNT
+// endpoint, `/api/webhooks/stripe` is connected-accounts, and transfer.* are account events). Signed requests, the way
+// `platform-refund-webhook.signed.db.test.ts` does it.
+// ---------------------------------------------------------------------------------------------------------------
+const platformSecret = getStripeWebhookSecret("platform");
+
+async function postSigned(payload: string) {
+  const app = express();
+  app.use(express.json({ verify: (req: any, _res, buf) => { req.rawBody = buf; } }));
+  app.post("/webhooks/stripe", createPlatformStripeWebhookHandler());
+  const srv = app.listen(0);
+  await new Promise<void>((r) => srv.once("listening", () => r()));
+  const { port } = srv.address() as AddressInfo;
+  try {
+    const signature = new StripeClient(process.env.STRIPE_SECRET_KEY ?? "sk_test_dummy").webhooks.generateTestHeaderString({
+      payload,
+      secret: platformSecret!,
+    });
+    const res = await fetch(`http://127.0.0.1:${port}/webhooks/stripe`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "stripe-signature": signature },
+      body: payload,
+    });
+    return res;
+  } finally {
+    srv.close();
+  }
+}
+
+test("F8.12 a SIGNED transfer.reversed on the account endpoint fails the payout and returns earnings", { skip: !platformSecret && "no platform webhook secret in this environment" }, async () => {
+  const payout = uid();
+  const earning = uid();
+  await db.execute(sql`INSERT INTO expert_payouts (id, expert_id, amount, status) VALUES (${payout}, ${expertUser}, 10, 'completed')`);
+  await db.execute(sql`
+    INSERT INTO expert_earnings (id, expert_id, type, amount, status, payout_id, dispute_state, reference_id)
+    VALUES (${earning}, ${expertUser}, 'service_booking', 5, 'paid_out', ${payout}, 'none', ${"f8-http-" + RUN})
+  `);
+  const payload = JSON.stringify({
+    id: `evt_f8_http_${RUN}`,
+    object: "event",
+    type: "transfer.reversed",
+    created: Math.floor(Date.now() / 1000),
+    data: { object: { id: `tr_http_${RUN}`, reversed: true, metadata: { payoutId: payout, requesterType: "expert" } } },
+  });
+  const res = await postSigned(payload);
+  assert.equal(res.status, 200, "the account endpoint answers 200");
+  const [row] = (await db.execute(sql`SELECT status FROM expert_payouts WHERE id = ${payout}`)).rows as any[];
+  const [e] = (await db.execute(sql`SELECT status, payout_id FROM expert_earnings WHERE id = ${earning}`)).rows as any[];
+  assert.equal(row.status, "failed");
+  assert.equal(e.status, "releasable");
+  assert.equal(e.payout_id, null);
+  await db.execute(sql`DELETE FROM expert_earnings WHERE id = ${earning}`);
+  await db.execute(sql`DELETE FROM expert_payouts WHERE id = ${payout}`);
+});
+
+test("F8.13 the SAME event delivered to both handlers changes state once and writes one admin row", { skip: !platformSecret && "no platform webhook secret in this environment" }, async () => {
+  const payout = uid();
+  await db.execute(sql`INSERT INTO expert_payouts (id, expert_id, amount, status) VALUES (${payout}, ${expertUser}, 10, 'completed')`);
+  await db.execute(sql`
+    INSERT INTO expert_earnings (id, expert_id, type, amount, status, payout_id, dispute_state, reference_id)
+    VALUES (${uid()}, ${expertUser}, 'service_booking', 5, 'paid_out', ${payout}, 'none', ${"f8-dup-" + RUN})
+  `);
+  const event = {
+    id: `evt_f8_dup_${RUN}`,
+    object: "event",
+    type: "transfer.reversed",
+    created: Math.floor(Date.now() / 1000),
+    data: { object: { id: `tr_dup_${RUN}`, reversed: true, metadata: { payoutId: payout, requesterType: "expert" } } },
+  } as any;
+  const res = await postSigned(JSON.stringify(event));
+  assert.equal(res.status, 200);
+  await processStripeWebhookEvent(event); // the Connect handler's entry point, same event id
+  const [{ n }] = (await db.execute(sql`SELECT COUNT(*)::int AS n FROM admin_notifications WHERE metadata->>'payoutId' = ${payout}`)).rows as any[];
+  assert.equal(n, 1, "the 'connect' claim dedupes the double delivery by event id");
+  await db.execute(sql`DELETE FROM expert_earnings WHERE reference_id = ${"f8-dup-" + RUN}`);
+  await db.execute(sql`DELETE FROM expert_payouts WHERE id = ${payout}`);
+});
+
+test("F8.14 a SIGNED transfer.created on the account endpoint completes a processing payout", { skip: !platformSecret && "no platform webhook secret in this environment" }, async () => {
+  const payout = uid();
+  await db.execute(sql`INSERT INTO expert_payouts (id, expert_id, amount, status) VALUES (${payout}, ${expertUser}, 10, 'processing')`);
+  const payload = JSON.stringify({
+    id: `evt_f8_http_c_${RUN}`,
+    object: "event",
+    type: "transfer.created",
+    created: Math.floor(Date.now() / 1000),
+    data: { object: { id: `tr_http_c_${RUN}`, metadata: { payoutId: payout, requesterType: "expert" } } },
+  });
+  const res = await postSigned(payload);
+  assert.equal(res.status, 200, "the account endpoint answers 200");
+  const [row] = (await db.execute(sql`SELECT status FROM expert_payouts WHERE id = ${payout}`)).rows as any[];
+  assert.equal(row.status, "completed");
+  await db.execute(sql`DELETE FROM expert_payouts WHERE id = ${payout}`);
 });

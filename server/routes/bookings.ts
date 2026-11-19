@@ -622,6 +622,17 @@ export function createPlatformStripeWebhookHandler(actions: {
       return res.status(400).json({ error: 'Invalid webhook signature' });
     }
     try {
+      // F8 (#1243), Leon Nov 19 2026: TRANSFER EVENTS ARRIVE HERE, not on the Connect endpoint. A platform -> connected
+      // transfer is an object on the PLATFORM account, and `/api/webhooks/stripe` is a connected-accounts endpoint, so
+      // transfer.* can never reach it (dashboard read: live + sandbox). Route exactly these two types to the ONE
+      // implementation, `processStripeWebhookEvent` - no copy of its case - whose 'connect' claim dedupes a double
+      // delivery by event id.
+      if (event.type === "transfer.created" || event.type === "transfer.reversed") {
+        const { processStripeWebhookEvent } = await import("./webhooks.routes");
+        await processStripeWebhookEvent(event);
+        return res.json({ received: true });
+      }
+
       // Platform disputes and bank payouts have a separate consumer claim. Do not
       // use webhook_events.processed: the Connect rail legitimately sees the
       // same Stripe event ID for different work.

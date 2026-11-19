@@ -326,6 +326,10 @@ export async function processStripeWebhookEvent(event: Stripe.Event): Promise<vo
         break;
       }
 
+      // NOTE (F8, Leon Nov 19 2026): these cases are kept, but on the LIVE configuration this endpoint is a
+      // connected-accounts endpoint and transfer.* are ACCOUNT events - they are delivered to
+      // `/api/bookings/webhooks/stripe` (bookings.ts:584, which now routes transfer.created / transfer.reversed to
+      // this very function). They are here for the paths where this endpoint is subscribed as an account endpoint.
       case "transfer.created":
       case "transfer.paid": {
         const transfer = event.data.object as Stripe.Transfer;
