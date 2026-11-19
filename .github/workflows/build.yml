@@ -136,6 +136,17 @@ jobs:
           node-version: '20'
           cache: 'npm'
       - run: npm ci
+      # F12 (#2048) recurrence guard (Leon, Nov 19 2026): a package-lock.json regenerated on Windows silently drops
+      # `"dev": true` from the @esbuild/* entries, the install then dirties the tree, and publish-preflight refuses.
+      # If npm would write a different lockfile, the lockfile is not pure - fail here, not in the deploy.
+      - name: package-lock.json is exactly what npm would write
+        run: |
+          npm install --package-lock-only --ignore-scripts
+          if ! git diff --exit-code -- package-lock.json; then
+            echo "::error::package-lock.json is not what npm would write - it was regenerated on another platform (Windows drops \"dev\": true from the @esbuild/* entries). Regenerate on Linux or apply the intended diff; do not commit a Windows lockfile."
+            exit 1
+          fi
+
       - name: Production build (syntax/bundle gate — does NOT run tsc)
         run: npm run build
       # R322 (step 7a, R-bh): the Workstation's retired surfaces stay gone — the source (definitions,
