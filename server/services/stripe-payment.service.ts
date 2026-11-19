@@ -27,6 +27,11 @@ import { handleStripePaymentSuccess } from './stripe.service';
 import { kickLegacyConfirmationDelivery, persistLegacyBookingConfirmationEmail } from './email-outbox.service';
 import { trackFunnelEvent } from '../utils/funnelTracker';
 import { logger } from '../infrastructure/logger';
+import {
+  BOOKING_IS_NOT_PAID,
+  BOOKING_IS_PENDING,
+  STRIPE_TERMINAL_FROM_STATUSES,
+} from '../utils/booking-from-states';
 import { resolveSavedCardChargeId } from './saved-card-choice';
 import { mapStripePaymentMethod, savedMethodConfirmsOnClick, type SavedPaymentMethod } from '../../shared/saved-payment-method';
 import { createPaymentIntentPreservingKey } from './stripe-intent-key';
@@ -903,11 +908,11 @@ class StripePaymentService {
           break;
 
         case 'payment_intent.payment_failed':
-          await this.handlePaymentFailed(event.data.object as Stripe.PaymentIntent);
+          await this.handlePaymentFailed(event.data.object as Stripe.PaymentIntent, event);
           break;
 
         case 'payment_intent.canceled':
-          await this.handlePaymentCanceled(event.data.object as Stripe.PaymentIntent);
+          await this.handlePaymentCanceled(event.data.object as Stripe.PaymentIntent, event);
           break;
 
         case 'payment_intent.requires_action':
@@ -1303,7 +1308,7 @@ class StripePaymentService {
     }
   }
 
-  private async handlePaymentFailed(paymentIntent: Stripe.PaymentIntent) {
+  private async handlePaymentFailed(paymentIntent: Stripe.PaymentIntent, event: Stripe.Event) {
     const { bookingIds } = paymentIntent.metadata;
 
     // THE CART RAIL (ledger `2026-09-27-platform-payment-failed`, R161). A cart checkout's PI is a
@@ -1315,6 +1320,8 @@ class StripePaymentService {
     // written inline here). Runs for every PI: it no-ops on PIs no `service_bookings` row carries.
     const { markCheckoutPaymentFailed } = await import('./checkout-claim.service');
     await markCheckoutPaymentFailed({ paymentIntentId: paymentIntent.id, actor: 'platform_webhook' });
+    // The cart rail's own late-event trace (its guarded flip no-ops on a booking that is already past pending).
+    await this.recordLateCartEvent(event, paymentIntent, 'failed');
 
     if (!bookingIds) {
       this.logNonCartTerminalPayment(paymentIntent, 'failed');
@@ -1325,12 +1332,18 @@ class StripePaymentService {
     // does not own). The `service_bookings` ids a cart PI carries match nothing here, harmlessly.
     const bookingIdList = bookingIds.split(',').map((id) => id.trim()).filter(Boolean);
     for (const bookingId of bookingIdList) {
-      await db.execute(sql`
+      // F7 (#1820, ruling 2026-11-10 brief lines 20-56): a paid or confirmed booking never moves backward. The
+      // from-state is part of the SAME statement, so two webhooks racing cannot both win.
+      const updated = await db.execute(sql`
         UPDATE bookings SET
           status = 'payment_failed',
           payment_status = 'failed'
-        WHERE id = ${bookingId}
+        WHERE id = ${bookingId} AND ${BOOKING_IS_PENDING} AND ${BOOKING_IS_NOT_PAID}
+        RETURNING id
       `);
+      if ((updated.rows ?? []).length === 0) {
+        await this.ignoreLateTerminalEvent(event, paymentIntent, bookingId, 'legacy', 'failed');
+      }
     }
 
     // The cart rail's traveler notice is sent by markCheckoutPaymentFailed above; the legacy rail
@@ -1338,14 +1351,187 @@ class StripePaymentService {
   }
 
   /**
+   * F7: ONE warn line for the case the guards now refuse.
+   *
+   * The booking is already paid, confirmed or canceled, so a later failure/cancel event changes nothing. The line
+   * carries `stripeCreated` (the event's own `created`, epoch seconds) because the brief's ordering rule is about
+   * time: an event created BEFORE the booking's confirmation can never be the truth about it.
+   *
+   * NOT DONE IN THIS COMMIT: the brief's step 4 asks for one admin-visible `lateFailureIgnored` record through the
+   * existing section 15c record. The 15c record is the reconciliation job's detection surface, and writing to it from
+   * the webhook is a separate, reviewable change; logged in the pack's findings (Q-28) rather than guessed here.
+   */
+  /**
+   * F7: the ONE place a refused terminal event is reported.
+   *
+   * Leon's ruling (Nov 19 2026): log ONLY when the row exists and is paid or confirmed. An id that matches no row
+   * (a cart PI's `service_bookings` ids on the legacy rail) says nothing; a redelivery of an already-failed booking
+   * says nothing either. The line carries the EVENT's clock (`event.created`, ISO), never the PaymentIntent's, plus
+   * the event id, the booking, the rail and the event type.
+   *
+   * STEP 4 IS STOPPED, not guessed: the brief names `bookings.metadata` for the legacy rail, and that column does
+   * not exist in `shared/schema.ts` (`bookings`, line 9111). Leon's rule is "no new column", so the admin-visible
+   * record waits for a store that exists. The cart rail's `service_bookings.booking_details` does exist, and its
+   * record lands in the cart-path commit.
+   */
+  private async ignoreLateTerminalEvent(
+    event: Stripe.Event,
+    paymentIntent: Stripe.PaymentIntent,
+    bookingId: string,
+    rail: "legacy" | "cart",
+    kind: "failed" | "canceled",
+  ) {
+    try {
+      const row = await db.execute(sql`
+        SELECT status, payment_status, confirmed_at FROM bookings WHERE id = ${bookingId} LIMIT 1
+      `);
+      const current = (row.rows ?? [])[0] as
+        | { status?: string | null; payment_status?: string | null; confirmed_at?: Date | string | null }
+        | undefined;
+      // Nothing is said about an id that matches no row (the cart ids on the legacy rail).
+      if (!current) return;
+      const status = String(current.status ?? "");
+      const alreadyTerminal = ["payment_failed", "failed", "canceled", "cancelled"].includes(status);
+      const stillPending = (STRIPE_TERMINAL_FROM_STATUSES as readonly string[]).includes(status);
+      // Leon's rule (Nov 19 2026): record whenever the row exists, its status is OUTSIDE the pending set, and it is
+      // not already failed/cancelled. "Paid or confirmed" was too narrow - it misses completed and in-progress rows.
+      if (alreadyTerminal) return;
+      if (stillPending) return;
+      logger.warn(
+        {
+          eventId: event.id,
+          eventType: event.type,
+          bookingId,
+          rail,
+          kind,
+          paymentIntentId: paymentIntent.id,
+          stripeCreated: new Date(event.created * 1000).toISOString(),
+          bookingStatus: current.status ?? null,
+          bookingPaymentStatus: current.payment_status ?? null,
+          bookingConfirmedAt: current.confirmed_at ?? null,
+          predatesConfirmation:
+            current.confirmed_at != null &&
+            event.created * 1000 < new Date(current.confirmed_at).getTime(),
+        },
+        "[stripe-no-backward] late terminal event ignored: the booking has already moved past pending",
+      );
+      // Step 4: one admin-visible record, merged into the row's own jsonb column, deduplicated on the event id.
+      await this.recordLateFailureIgnored(event, bookingId, rail, kind);
+    } catch (err: any) {
+      logger.warn(
+        { eventId: event.id, eventType: event.type, bookingId, rail, kind, paymentIntentId: paymentIntent.id, err: err?.message },
+        "[stripe-no-backward] late terminal event ignored (could not read the row for the log line)",
+      );
+    }
+  }
+
+  /**
+   * F7 step 4 (Leon, Nov 19 2026): the admin-visible record, in the row's existing jsonb column - never a new column.
+   *
+   * `bookings.metadata` for the legacy rail, `service_bookings.booking_details` for the cart rail. The entry carries
+   * the event id, its type and the event's own `created` (ISO), and the write is deduplicated ON THE EVENT ID: a
+   * redelivered event updates nothing and appends nothing, which is what makes "one record" true under retries.
+   * `GET /api/admin/bookings/reconciliation-exceptions` lists them beside the reconciliation job's findings.
+   */
+  private async recordLateFailureIgnored(
+    event: Stripe.Event,
+    bookingId: string,
+    rail: "legacy" | "cart",
+    kind: "failed" | "canceled",
+  ) {
+    const stripeCreated = new Date(event.created * 1000).toISOString();
+    const recordedAt = new Date().toISOString();
+    const column = rail === "legacy" ? "bookings" : "service_bookings";
+    const field = rail === "legacy" ? "metadata" : "booking_details";
+    try {
+      // The JSON is built IN SQL with every parameter cast: jsonb_build_object cannot infer a type for a bare
+      // parameter (that was the warning the CI log carried - Q-34), so each one is `::text`.
+      await db.execute(sql`
+        UPDATE ${sql.raw(column)} SET ${sql.raw(field)} = jsonb_set(
+          COALESCE(${sql.raw(field)}, '{}'::jsonb),
+          '{lateFailureIgnored}',
+          COALESCE(${sql.raw(field)}->'lateFailureIgnored', '[]'::jsonb) || jsonb_build_array(
+            jsonb_build_object(
+              'eventId', ${event.id}::text,
+              'eventType', ${event.type}::text,
+              'kind', ${kind}::text,
+              'rail', ${rail}::text,
+              'stripeCreated', ${stripeCreated}::text,
+              'recordedAt', ${recordedAt}::text
+            )
+          )
+        )
+        WHERE id = ${bookingId}
+          AND NOT (
+            COALESCE(${sql.raw(field)}->'lateFailureIgnored', '[]'::jsonb)
+            @> jsonb_build_array(jsonb_build_object('eventId', ${event.id}::text))
+          )
+      `);
+    } catch (err: any) {
+      logger.warn(
+        { eventId: event.id, bookingId, rail, kind, err: err?.message },
+        "[stripe-no-backward] could not write the lateFailureIgnored record",
+      );
+    }
+  }
+
+  /**
+   * F7 (Leon, Nov 19 2026): the CART rail's late event.
+   *
+   * `markCheckoutPaymentFailed` and `releaseClaimsForCanceledIntent` are already guarded - they only flip and release
+   * `payment_pending` rows - so when a cart booking is already confirmed, a later failure/cancel matches ZERO rows and
+   * left no trace. This reads the row the event named and applies the same rule as the legacy path: the row exists,
+   * its status is outside the pending set, and it is not already failed/cancelled. Then it logs and records once.
+   */
+  private async recordLateCartEvent(
+    event: Stripe.Event,
+    paymentIntent: Stripe.PaymentIntent,
+    kind: "failed" | "canceled",
+  ) {
+    try {
+      // ONE PI CAN CARRY SEVERAL CART BOOKINGS (Leon, Nov 19 2026): a cart checkout stamps every claim's id on the
+      // same intent. Read them ALL and record on each row that is past the pending set and not already terminal.
+      const res = await db.execute(sql`
+        SELECT id, status FROM service_bookings WHERE stripe_payment_intent_id = ${paymentIntent.id}
+      `);
+      const rows = (res.rows ?? []) as Array<{ id?: string; status?: string | null }>;
+      for (const row of rows) {
+        if (!row?.id) continue;
+        const status = String(row.status ?? "");
+        if (["payment_failed", "failed", "canceled", "cancelled"].includes(status)) continue;
+        if ((STRIPE_TERMINAL_FROM_STATUSES as readonly string[]).includes(status)) continue;
+        logger.warn(
+          {
+            eventId: event.id,
+            eventType: event.type,
+            bookingId: row.id,
+            rail: "cart",
+            kind,
+            paymentIntentId: paymentIntent.id,
+            stripeCreated: new Date(event.created * 1000).toISOString(),
+            bookingStatus: status,
+          },
+          "[stripe-no-backward] late terminal event ignored: the cart booking has already moved past payment_pending",
+        );
+        await this.recordLateFailureIgnored(event, row.id, "cart", kind);
+      }
+    } catch (err: any) {
+      logger.warn(
+        { eventId: event.id, paymentIntentId: paymentIntent.id, err: err?.message },
+        "[stripe-no-backward] could not read the cart booking for a late event",
+      );
+    }
+  }
+
+  /**
    * Handle canceled payment
    */
-  private async handlePaymentCanceled(paymentIntent: Stripe.PaymentIntent) {
+  private async handlePaymentCanceled(paymentIntent: Stripe.PaymentIntent, event: Stripe.Event) {
     const { bookingIds } = paymentIntent.metadata;
 
     // Update payment intent status
     await db.execute(sql`
-      UPDATE payment_intents SET status = 'canceled' WHERE stripe_payment_intent_id = ${paymentIntent.id}
+      UPDATE payment_intents SET status = 'canceled' WHERE stripe_payment_intent_id = ${paymentIntent.id} AND status NOT IN ('succeeded')
     `);
 
     // THE CART RAIL (R165, G3). A cart checkout's stamped claims on this intent are released at once
@@ -1353,6 +1539,8 @@ class StripePaymentService {
     // stale-authorized sweep uses. No-ops on intents no `payment_pending` row carries.
     const { releaseClaimsForCanceledIntent } = await import('./checkout-claim.service');
     await releaseClaimsForCanceledIntent(paymentIntent.id);
+    // The same trace on the cancel side.
+    await this.recordLateCartEvent(event, paymentIntent, 'canceled');
 
     if (!bookingIds) {
       this.logNonCartTerminalPayment(paymentIntent, 'canceled');
@@ -1362,12 +1550,17 @@ class StripePaymentService {
     // Update bookings
     const bookingIdList = bookingIds.split(',').map((id) => id.trim()).filter(Boolean);
     for (const bookingId of bookingIdList) {
-      await db.execute(sql`
+      // F7: the same from-state guard as the failed path.
+      const updated = await db.execute(sql`
         UPDATE bookings SET
           status = 'canceled',
           payment_status = 'canceled'
-        WHERE id = ${bookingId}
+        WHERE id = ${bookingId} AND ${BOOKING_IS_PENDING} AND ${BOOKING_IS_NOT_PAID}
+        RETURNING id
       `);
+      if ((updated.rows ?? []).length === 0) {
+        await this.ignoreLateTerminalEvent(event, paymentIntent, bookingId, 'legacy', 'canceled');
+      }
     }
   }
 

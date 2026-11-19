@@ -142,6 +142,13 @@ jobs:
       # contains rows it has just created — was fixed IN THE SUITE: B4-b now
       # seeds and reads a RUN-UNIQUE city of its own. Do not reintroduce an
       # order dependency here.
+      # F7 (#1820): a paid or confirmed booking never moves backward on a Stripe event.
+      - name: stripe-no-backward (F7)
+        if: ${{ !cancelled() }}
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/stripe-no-backward.db.test.ts
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+
       - name: Canonical paid-booking confirmation regressions (node:test)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/canonical-booking-email.db.test.ts
       - name: Signup welcome outbox guards and concurrency (node:test)

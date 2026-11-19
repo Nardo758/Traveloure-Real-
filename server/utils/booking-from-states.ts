@@ -1,3 +1,5 @@
+import { sql } from "drizzle-orm";
+
 /**
  * `service_bookings` FROM-STATE ALLOW-LISTS — one home, §18b.
  *
@@ -438,3 +440,41 @@ export const STRIPE_DISPUTE_WON_RESTORE_FROM_STATUSES: readonly string[] = ["dis
  * The webhook's UPDATE carries this list in its WHERE clause, so the transition itself is the guard.
  */
 export const LEGACY_PREPAYMENT_STATUSES = ["pending_payment", "pending", "payment_failed"] as const;
+
+/**
+ * F7 (#1820): the set a TERMINAL STRIPE EVENT may move a booking out of - never a transition list.
+ *
+ * The two tables spell "awaiting payment" DIFFERENTLY, and a terminal event must be able to fail either one:
+ *   `bookings.status`         -> 'pending_payment' (the legacy rail; `legacy-payment-expiry.ts:21`, `admin.routes.ts:572`)
+ *   `service_bookings.status` -> 'payment_pending' (the cart rail; `checkout-claim.service.ts:77,832`)
+ * plus the plain 'pending' default a fresh row is born with. This file's own rule keeps `payment_pending` out of every
+ * OWNER/ARTIFACT/ACCEPTANCE list (a `payment_pending` row with no PaymentIntent is an unauthorized claim); a Stripe
+ * event is a different caller - it names the booking through the PI's metadata - so those rows must stay movable, and
+ * omitting the legacy spelling is exactly the regression the existing suite caught.
+ *
+ * The paid condition rides beside it: a row that already took money is never demoted by a later event.
+ */
+export const STRIPE_TERMINAL_FROM_STATUSES = [
+  // The legacy `bookings` rail's pending state (server/automations/bookings/legacy-payment-expiry.ts:21,
+  // server/routes/admin.routes.ts:572). A real failed payment arrives for THESE rows.
+  "pending_payment",
+  // The cart rail's authorized claim (server/services/checkout-claim.service.ts:77,832).
+  "payment_pending",
+  // The plain default a row is born with (`bookings.status` default 'pending').
+  "pending",
+] as const;
+
+/** `status IN (...)` built FROM the one list above, so the set is named once and only once. */
+export const BOOKING_IS_PENDING = sql`status IN (${sql.join(STRIPE_TERMINAL_FROM_STATUSES.map((s) => sql`${s}`), sql`, `)})`;
+
+/** A row that already took money is never demoted by a later event. */
+/**
+ * Phase 0 record (Leon, Nov 19 2026): the set above was NOT written from memory. Every status value written to
+ * `bookings.status` / `service_bookings.status` in `server/` was scanned, and the terminal-event question asked of
+ * each: `pending_payment` (legacy awaiting payment) MOVES; `payment_pending` (cart authorized claim) MOVES; `pending`
+ * (the column default) MOVES; `confirmed`, `succeeded`, `deposit_paid`, `purchased`, `in_planning`,
+ * `awaiting_acceptance`, `revision_requested`, `needs_review`, `expired`, `refunded`, `cancelled`/`canceled`,
+ * `failed`/`payment_failed`, `delivered`, `completed`, `disputed` DO NOT - a later failure or cancel says nothing
+ * true about any of them. The list is in the PR body with file:line for each write.
+ */
+export const BOOKING_IS_NOT_PAID = sql`COALESCE(payment_status, '') NOT IN ('paid', 'succeeded')`;

@@ -1499,7 +1499,7 @@ export async function markCheckoutPaymentFailed(opts: {
   // The payment_intents ledger row, where one exists (not every PI flow writes one). Non-fatal.
   try {
     await db.execute(sql`
-      UPDATE payment_intents SET status = 'failed' WHERE stripe_payment_intent_id = ${paymentIntentId}
+      UPDATE payment_intents SET status = 'failed' WHERE stripe_payment_intent_id = ${paymentIntentId} AND status NOT IN ('succeeded')
     `);
   } catch (err: any) {
     logger.warn({ paymentIntentId, actor, err: err?.message }, "[payment-failed] payment_intents update failed (non-fatal)");
