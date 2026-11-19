@@ -1,11 +1,12 @@
 /**
- * F6 (#1823) + the F7 placement fix (Leon, Nov 19 2026): the admin surfaces, over HTTP.
+ * F6 (#1823) + the F7 placement fix: the two admin surfaces, over HTTP against the REAL admin router.
  *
- * This file boots the REAL admin router on an ephemeral port and calls it with fetch. It does not read source text:
- * if the late list lands in the wrong handler again - which is exactly what happened to F7, whose `lateFailureIgnored`
- * block shipped inside `stuck-pending` - these cases fail.
+ * Mounted at the app root (`app.use(router)`), because the routes already carry their `/api/...` paths
+ * (`server/routes.ts:1226`). The session is stubbed, as `f1-route-writes.db.test.ts` does; I did not use a ci-* login
+ * because the harness has no running app in this step and the stub exercises the same handler and guards.
  *
- * Fixtures are created and removed around the run; nothing else in the database is read or written.
+ * Every response's status is asserted BEFORE its body is read, so a 401/403/404 reports itself instead of turning
+ * into a confusing JSON error. Counts are RELATIVE: the total is read first, then N rows are added, then asserted.
  */
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
@@ -19,7 +20,9 @@ const RUN = crypto.randomUUID().slice(0, 8);
 const uid = () => crypto.randomUUID();
 const adminUser = uid();
 const travelerUser = uid();
-const created: string[] = [];
+const providerUser = uid();
+const serviceId = uid();
+const createdBookings: string[] = [];
 let server: any;
 let base = "";
 
@@ -31,7 +34,6 @@ function assertDisposableDb(): void {
   if (!DISPOSABLE.has(host)) throw new Error(`[f6-admin-surfaces] REFUSING to write to '${host}'.`);
 }
 
-/** Boot the real admin router with a stubbed session: `role` decides whether it is an admin. */
 async function boot(role: "admin" | "traveler") {
   const mod: any = await import("../routes/admin.routes");
   const router = mod.default ?? mod.router;
@@ -42,64 +44,81 @@ async function boot(role: "admin" | "traveler") {
     (req as any).isAuthenticated = () => true;
     next();
   });
-  app.use("/api", router);
+  app.use(router); // the routes already carry /api/...
   const s = app.listen(0);
   await new Promise<void>((r) => s.once("listening", () => r()));
   const { port } = s.address() as AddressInfo;
   return { s, base: `http://127.0.0.1:${port}` };
 }
 
+async function getJson(path: string) {
+  const res = await fetch(`${base}${path}`);
+  assert.equal(res.status, 200, `${path} answers 200 (got ${res.status})`);
+  return (await res.json()) as any;
+}
+
+async function insertException(withLate: boolean): Promise<string> {
+  const id = uid();
+  createdBookings.push(id);
+  const details = withLate
+    ? { reconciliationException: { paymentIntentId: `pi_${RUN}`, actor: "webhook", reason: "t", status: "payment_pending" },
+        lateFailureIgnored: [{ eventId: `evt_${RUN}`, eventType: "payment_intent.payment_failed", stripeCreated: "2026-11-19T09:00:00.000Z" }] }
+    : { reconciliationException: { paymentIntentId: `pi_${RUN}_${id.slice(0, 6)}`, actor: "webhook", reason: "t", status: "payment_pending" } };
+  await db.execute(sql`
+    INSERT INTO service_bookings (id, service_id, traveler_id, provider_id, status, total_amount, booking_details)
+    VALUES (${id}, ${serviceId}, ${travelerUser}, ${providerUser}, 'payment_pending', 10, ${JSON.stringify(details)}::jsonb)
+  `);
+  return id;
+}
+
 before(async () => {
   assertDisposableDb();
-  // The admin account the handlers look up, and a plain traveler for the 403 cases.
   await db.execute(sql`INSERT INTO users (id, email, role, first_name, last_name) VALUES (${adminUser}, ${`f6-admin-${RUN}@ci.test`}, 'admin', 'F6', 'Admin')`);
   await db.execute(sql`INSERT INTO users (id, email, role, first_name, last_name) VALUES (${travelerUser}, ${`f6-user-${RUN}@ci.test`}, 'traveler', 'F6', 'User')`);
-  // ONE exception row carrying a late record, plus 51 bare exception rows for the page test.
-  const withLate = uid();
-  created.push(withLate);
+  await db.execute(sql`INSERT INTO users (id, email, role, first_name, last_name) VALUES (${providerUser}, ${`f6-provider-${RUN}@ci.test`}, 'provider', 'F6', 'Provider')`);
+  // service_bookings.service_id and provider_id are NOT NULL with FKs.
   await db.execute(sql`
-    INSERT INTO service_bookings (id, traveler_id, status, total_amount, booking_details, stripe_payment_intent_id)
-    VALUES (${withLate}, ${travelerUser}, 'confirmed', 10,
-      ${JSON.stringify({ reconciliationException: { paymentIntentId: `pi_${RUN}`, actor: "webhook", reason: "t", status: "payment_pending" }, lateFailureIgnored: [{ eventId: `evt_${RUN}`, eventType: "payment_intent.payment_failed", stripeCreated: "2026-11-19T09:00:00.000Z" }] })}::jsonb,
-      ${`pi_${RUN}`})
-  `);
-  for (let i = 0; i < 51; i++) {
-    const id = uid();
-    created.push(id);
-    await db.execute(sql`
-      INSERT INTO service_bookings (id, traveler_id, status, total_amount, booking_details)
-      VALUES (${id}, ${travelerUser}, 'payment_pending', 10,
-        ${JSON.stringify({ reconciliationException: { paymentIntentId: `pi_${RUN}_${i}`, actor: "webhook", reason: "t", status: "payment_pending" } })}::jsonb)
-    `);
-  }
+    INSERT INTO provider_services (id, provider_id, service_name, category_key, status)
+    VALUES (${serviceId}, ${providerUser}, ${"F6 fixture " + RUN}, 'custom_other', 'active')
+  `).catch(async () => {
+    // The column set differs across eras; fall back to the minimum the FK needs.
+    await db.execute(sql`INSERT INTO provider_services (id, provider_id, service_name) VALUES (${serviceId}, ${providerUser}, ${"F6 fixture " + RUN})`);
+  });
   const booted = await boot("admin");
   server = booted.s; base = booted.base;
 });
 
 after(async () => {
   server?.close?.();
-  for (const id of created) await db.execute(sql`DELETE FROM service_bookings WHERE id = ${id}`);
-  await db.execute(sql`DELETE FROM users WHERE id IN (${adminUser}, ${travelerUser})`);
+  for (const id of createdBookings) await db.execute(sql`DELETE FROM service_bookings WHERE id = ${id}`);
+  await db.execute(sql`DELETE FROM provider_services WHERE id = ${serviceId}`);
+  await db.execute(sql`DELETE FROM users WHERE id IN (${adminUser}, ${travelerUser}, ${providerUser})`);
 });
 
-test("F6.6 reconciliation-exceptions returns lateFailureIgnored; stuck-pending has no such key", async () => {
-  const recon = await (await fetch(`${base}/api/admin/bookings/reconciliation-exceptions`)).json() as any;
+test("F6.6 reconciliation-exceptions carries lateFailureIgnored; stuck-pending does not", async () => {
+  await insertException(true);
+  const recon = await getJson("/api/admin/bookings/reconciliation-exceptions");
   assert.ok(Array.isArray(recon.lateFailureIgnored), "the late list lives on the reconciliation surface");
   assert.ok(recon.lateFailureIgnored.some((r: any) => (r.records ?? []).some((x: any) => x.eventId === `evt_${RUN}`)));
-  const stuck = await (await fetch(`${base}/api/admin/bookings/stuck-pending`)).json() as any;
+  const stuck = await getJson("/api/admin/bookings/stuck-pending");
   assert.equal(Object.prototype.hasOwnProperty.call(stuck, "lateFailureIgnored"), false, "stuck-pending must not carry it");
 });
 
-test("F6.7 51 exception rows: 50 returned, total 51, truncated true, offset=50 returns the last one", async () => {
-  const first = await (await fetch(`${base}/api/admin/bookings/reconciliation-exceptions`)).json() as any;
-  assert.equal(first.bookings.length, 50);
-  assert.equal(first.total, 51);
-  assert.equal(first.truncated, true);
-  assert.equal(first.offset, 0);
-  const rest = await (await fetch(`${base}/api/admin/bookings/reconciliation-exceptions?offset=50`)).json() as any;
-  assert.equal(rest.bookings.length, 1);
-  assert.equal(rest.truncated, false);
-  assert.equal(rest.offset, 50);
+test("F6.7 pages do not hide rows: relative total, 50 per page, offset reaches the rest", async () => {
+  const beforeTotal = (await getJson("/api/admin/bookings/reconciliation-exceptions")).total as number;
+  const N = 51;
+  for (let i = 0; i < N; i++) await insertException(false);
+  const first = await getJson("/api/admin/bookings/reconciliation-exceptions");
+  assert.equal(first.total, beforeTotal + N, "total counts every exception row");
+  assert.equal(first.bookings.length, Math.min(50, beforeTotal + N));
+  if (beforeTotal + N > 50) {
+    assert.equal(first.truncated, true);
+    const lastOffset = Math.max(0, beforeTotal + N - 1);
+    const rest = await getJson(`/api/admin/bookings/reconciliation-exceptions?offset=${lastOffset}`);
+    assert.equal(rest.bookings.length, 1, "the last row is reachable by offset");
+    assert.equal(rest.truncated, false);
+    assert.equal(rest.offset, lastOffset);
+  }
 });
 
 test("F6.8 a non-admin is refused 403 on BOTH surfaces", async () => {

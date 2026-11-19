@@ -1398,8 +1398,7 @@ async function recordReconciliationException(
   reason: string,
   result: PaymentPromotionResult,
 ): Promise<void> {
-  // F6: the message reads the payment's REFUND STATE from Stripe before it says anything about a refund. The reader
-  // fails safe, so an unreadable answer reads `needs_manual_refund` and never `refunded`.
+  // F6: the message reads the payment's REFUND STATE from Stripe before it says anything about a refund.
   const refund = await readPaymentRefundState(paymentIntentId);
   logger.error(
     { bookingId: row.id, paymentIntentId, actor, reason, status: row.status, refundState: refund.state },
@@ -1502,7 +1501,7 @@ export async function markCheckoutPaymentFailed(opts: {
   // The payment_intents ledger row, where one exists (not every PI flow writes one). Non-fatal.
   try {
     await db.execute(sql`
-      UPDATE payment_intents SET status = 'failed' WHERE stripe_payment_intent_id = ${paymentIntentId}
+      UPDATE payment_intents SET status = 'failed' WHERE stripe_payment_intent_id = ${paymentIntentId} AND status NOT IN ('succeeded')
     `);
   } catch (err: any) {
     logger.warn({ paymentIntentId, actor, err: err?.message }, "[payment-failed] payment_intents update failed (non-fatal)");
@@ -1987,12 +1986,9 @@ export interface LateSuccessRefundOptions {
 }
 
 /**
- * F6 (#1823, brief of record 2026-11-10 lines 155-190): ONE reader for a payment's refund state, Stripe first.
- *
- * Three states and no fourth: `refunded` (succeeded and fully refunded), `needs_manual_refund` (succeeded and not
- * fully refunded, OR Stripe could not be read - an unreadable answer fails SAFE and never claims a refund), and
- * `not_charged` (never succeeded: nothing moved, so this is not a refund case and keeps today's dismiss handling).
- * It writes nothing, changes no status and issues no refund.
+ * F6 (#1823): ONE reader for a payment's refund state, Stripe first. Three states and no fourth: `refunded`
+ * (succeeded and fully refunded), `needs_manual_refund` (succeeded and not fully refunded, OR Stripe could not be read -
+ * an unreadable answer fails SAFE and never claims a refund), `not_charged` (never succeeded: nothing moved).
  */
 export type PaymentRefundState = "refunded" | "needs_manual_refund" | "not_charged";
 
@@ -2003,7 +1999,6 @@ export const PAYMENT_REFUND_STATE_MESSAGES = {
 } as const;
 
 export interface PaymentRefundStateDeps {
-  /** The Stripe read; injected so the test can stub every branch without a network. */
   retrievePaymentIntent?: (id: string) => Promise<any>;
 }
 
