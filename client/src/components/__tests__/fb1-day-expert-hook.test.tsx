@@ -90,7 +90,7 @@ describe("placement", () => {
     const slip = read("client/src/components/plancard/SlipView.tsx");
     assert.match(slip, /hook=\{\s*isOwner && data\.expertHook && slot\.dayNum != null \? \(\s*<DayExpertHook/);
     assert.match(slip, /localTeaser=\{isOwner && data\.expertHook \? null : day\?\.localTeaser \?\? null\}/);
-    assert.match(slip, /onAsk=\{\(\) => setExpertDoorState\("open"\)\}/);
+  assert.match(slip, /onAsk=\{\(\) => openHandoffChooser\(\{\}\)\}/);
   });
   it("S2 not on the Trip Card, and not sent on its read", () => {
     assert.ok(!read("client/src/components/plancard/TripCardDays.tsx").includes("DayExpertHook"));
