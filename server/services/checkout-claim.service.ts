@@ -1997,7 +1997,7 @@ export interface LateSuccessRefundOptions {
 export type PaymentRefundState = "refunded" | "needs_manual_refund" | "not_charged";
 
 export const PAYMENT_REFUND_STATE_MESSAGES = {
-  refunded: "Refunded automatically. Stripe shows this payment fully refunded. No action needed.",
+  refunded: "Refunded. Stripe shows this payment fully refunded. No action needed.",
   needs_manual_refund: "Needs a manual refund. Check this payment in Stripe and refund it.",
   not_charged: null,
 } as const;

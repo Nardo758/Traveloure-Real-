@@ -596,6 +596,8 @@ router.get("/api/admin/bookings/balance-overdue", isAuthenticated, async (req, r
   if (!user || !isAdminRole(user.role)) {
     return res.status(403).json({ message: "Admin access required" });
   }
+  // `offset` pages the list; the cap is a page size, not a ceiling (F6).
+  const offset = Math.max(0, Math.min(10_000, Number.parseInt(String((req.query as any).offset ?? "0"), 10) || 0));
   try {
     const result = await db.execute(sql`
       SELECT
@@ -695,6 +697,8 @@ router.get("/api/admin/bookings/reconciliation-exceptions", isAuthenticated, asy
     return res.status(403).json({ message: "Admin access required" });
   }
   try {
+  // F6 (Leon, Nov 19 2026): `offset` pages the list; the 50-row cap is a PAGE SIZE, not a ceiling.
+  const offset = Math.max(0, Math.min(10_000, Number.parseInt(String((req.query as any).offset ?? "0"), 10) || 0));
     const result = await db.execute(sql`
       SELECT
         sb.id,
@@ -714,8 +718,14 @@ router.get("/api/admin/bookings/reconciliation-exceptions", isAuthenticated, asy
       LEFT JOIN provider_services ps ON ps.id = sb.service_id
       WHERE sb.booking_details ? 'reconciliationException'
       ORDER BY sb.updated_at DESC
-      LIMIT 50
+      LIMIT 50 OFFSET ${offset}
     `);
+    // F6 (Leon, Nov 19 2026): the cap must never HIDE rows. The total comes from the same WHERE, and `offset` pages
+    // through the rest, so 51 exceptions are 50 + a reachable 1, never 50 and silence.
+    const totalRes = await db.execute(sql`
+      SELECT COUNT(*)::int AS total FROM service_bookings WHERE booking_details ? 'reconciliationException'
+    `);
+    const total = Number((totalRes.rows ?? [])[0]?.total ?? 0);
     // F6 (#1823): the refund state is read from Stripe PER ROW at request time, over a page capped at 50 rows, so one
     // request costs at most fifty reads. It is never cached and never guessed from the local row.
     const { readPaymentRefundState } = await import("../services/checkout-claim.service");
@@ -728,6 +738,9 @@ router.get("/api/admin/bookings/reconciliation-exceptions", isAuthenticated, asy
     res.json({
       bookings: withRefund,
       count: withRefund.length,
+      total,
+      offset,
+      truncated: offset + withRefund.length < total,
       note:
         "A payment signal arrived for a booking that could not be promoted (the row was NOT resurrected). " +
         "Each row carries the refund state read from Stripe for its payment.",
