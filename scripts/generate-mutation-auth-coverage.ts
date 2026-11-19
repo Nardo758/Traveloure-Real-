@@ -180,7 +180,14 @@ if (rows.filter((row) => handlerFixtureExclusions.has(row.key)).length !== 29) t
 const report = {
   schemaVersion: 1, generatedBy: "scripts/generate-mutation-auth-coverage.ts",
   manifest: "generated/security/mutation-auth-manifest.json", manifestSha256,
-  evidence: { path: path.relative(root, evidencePath), state: evidenceState || "fresh", timestamp: evidence?.timestamp ?? null },
+  // Q-30 (Leon, Nov 19 2026): the report is committed and byte-compared in CI, so the path must not carry the OS
+  // separator. On Windows `path.relative` writes `generated\security\...`, on Linux `generated/security/...`, and the
+  // two never match. Forward slashes, always.
+  evidence: {
+    path: path.relative(root, evidencePath).split(path.sep).join("/"),
+    state: evidenceState || "fresh",
+    timestamp: evidence?.timestamp ?? null,
+  },
   totals: { ...overall, remaining: overall.total - overall.tested, categories },
   endpoints: rows,
 };

@@ -125,3 +125,24 @@ test("F4: a matching hash does not trip the gate (it can still fail on file fres
   const text = `${result.stderr}${result.stdout}`;
   assert.doesNotMatch(text, /evidence manifest SHA-256 is stale/, "a fresh hash must not be blamed");
 });
+
+
+/**
+ * Q-30 (Leon, Nov 19 2026): the report is committed and byte-compared, so it must not carry an OS-separator path.
+ * The committed file once said `generated\security\...` while CI produced `generated/security/...`, and the check
+ * failed only on the runner. This is the fixture that fails if a Windows separator ever gets written again.
+ */
+test("F4/Q-30: the generated report carries no backslash path", () => {
+  const manifest = fs.readFileSync(path.join(process.cwd(), "generated/security/mutation-auth-manifest.json"));
+  const manifestSha256 = crypto.createHash("sha256").update(manifest).digest("hex");
+  const coverage = generateWithEvidence({
+    schemaVersion: 1,
+    manifestSha256,
+    timestamp: "2026-11-19T00:00:00.000Z",
+    suites: [],
+  });
+  const json = JSON.stringify(coverage);
+  assert.ok(!json.includes("\\"), "the report must not contain a backslash");
+  assert.equal(coverage.evidence.path.split("/").length > 1, true, "the evidence path is forward-slashed");
+  assert.doesNotMatch(coverage.evidence.path, /\\/);
+});

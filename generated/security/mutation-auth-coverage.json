@@ -4,7 +4,7 @@
   "manifest": "generated/security/mutation-auth-manifest.json",
   "manifestSha256": "5f4bb4d5f17dedd61b1d9ca667f50e06f61b8eb98990d661dad1a0c2ee306366",
   "evidence": {
-    "path": "generated\\security\\mutation-auth-evidence.json",
+    "path": "generated/security/mutation-auth-evidence.json",
     "state": "fresh",
     "timestamp": "2026-11-19T04:10:47.700Z"
   },
