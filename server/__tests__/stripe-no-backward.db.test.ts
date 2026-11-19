@@ -189,3 +189,14 @@ test("F7.9 the same for a canceled event on a confirmed CART booking", async () 
   assert.equal(row.status, "confirmed");
   assert.equal((row.booking_details?.lateFailureIgnored ?? []).length, 1);
 });
+
+test("F7.10 a legacy booking in 'pending_payment' still fails, and writes NO late record", async () => {
+  // The legacy rail's own pending spelling (legacy-payment-expiry.ts:21, admin.routes.ts:572). `stripe-non-cart-
+  // terminal-webhooks.db.test.ts` is the suite that caught its absence from the set.
+  await db.execute(sql`UPDATE bookings SET status='pending_payment', payment_status='processing', metadata='{}'::jsonb WHERE id = ${bookingId}`);
+  const pi = intent(piId, bookingId);
+  await service.handlePaymentFailed(pi, eventFor("payment_intent.payment_failed", pi));
+  const row = await bookingRow();
+  assert.equal(row.status, "payment_failed");
+  assert.deepEqual(row.metadata?.lateFailureIgnored ?? [], [], "no late record for a booking that was still pending");
+});

@@ -444,15 +444,25 @@ export const LEGACY_PREPAYMENT_STATUSES = ["pending_payment", "pending", "paymen
 /**
  * F7 (#1820): the set a TERMINAL STRIPE EVENT may move a booking out of - never a transition list.
  *
- * This file's own rule (see the header) keeps `payment_pending` out of every owner/artifact/acceptance list, because
- * a `payment_pending` row with no PaymentIntent is an unauthorized provisional claim. A Stripe failure or cancel
- * event is a different caller: it names the booking through the PaymentIntent's own metadata, so the row it touches
- * is the row that PI claimed. Excluding `payment_pending` here would leave exactly those rows unable to fail, which
- * is the state #1820 exists to prevent.
+ * The two tables spell "awaiting payment" DIFFERENTLY, and a terminal event must be able to fail either one:
+ *   `bookings.status`         -> 'pending_payment' (the legacy rail; `legacy-payment-expiry.ts:21`, `admin.routes.ts:572`)
+ *   `service_bookings.status` -> 'payment_pending' (the cart rail; `checkout-claim.service.ts:77,832`)
+ * plus the plain 'pending' default a fresh row is born with. This file's own rule keeps `payment_pending` out of every
+ * OWNER/ARTIFACT/ACCEPTANCE list (a `payment_pending` row with no PaymentIntent is an unauthorized claim); a Stripe
+ * event is a different caller - it names the booking through the PI's metadata - so those rows must stay movable, and
+ * omitting the legacy spelling is exactly the regression the existing suite caught.
  *
  * The paid condition rides beside it: a row that already took money is never demoted by a later event.
  */
-export const STRIPE_TERMINAL_FROM_STATUSES = ["pending", "payment_pending"] as const;
+export const STRIPE_TERMINAL_FROM_STATUSES = [
+  // The legacy `bookings` rail's pending state (server/automations/bookings/legacy-payment-expiry.ts:21,
+  // server/routes/admin.routes.ts:572). A real failed payment arrives for THESE rows.
+  "pending_payment",
+  // The cart rail's authorized claim (server/services/checkout-claim.service.ts:77,832).
+  "payment_pending",
+  // The plain default a row is born with (`bookings.status` default 'pending').
+  "pending",
+] as const;
 
 /** `status IN (...)` built FROM the one list above, so the set is named once and only once. */
 export const BOOKING_IS_PENDING = sql`status IN (${sql.join(STRIPE_TERMINAL_FROM_STATUSES.map((s) => sql`${s}`), sql`, `)})`;
