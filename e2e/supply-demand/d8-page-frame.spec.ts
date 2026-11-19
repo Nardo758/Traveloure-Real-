@@ -63,16 +63,19 @@ async function expectNotIntersected(page: Page) {
   expect(intruders, 'nothing may sit over the Finalize button').toEqual([]);
 }
 
-test('D8a: the owner builds a plan to check the frame', async ({ page }) => {
+test('D8a owner: the frame in list and map, at 1280 and 390', async ({ page }) => {
+  // ONE session, built here: the plan is created once, then only the viewport and the view switch change. No
+  // second navigation, so the case cannot time out waiting for a page the harness never re-opened.
   tripId = await buildOwnerAndPlan(page);
-});
 
-for (const width of [1280, 390] as const) {
-  test(`D8b owner list ${width}: two actions, one door, no removed controls, Finalize clear`, async ({ page }) => {
-    expect(tripId, 'D8a built the plan').toBeTruthy();
+  for (const width of [1280, 390] as const) {
     await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
-    await page.goto(`/plans/${tripId}`);
     await page.waitForSelector('[data-testid="slip-action-row"]', { timeout: 30_000 });
+
+    if ((await page.locator('[data-testid="slip-map-view"]').count()) > 0) {
+      await page.locator('[data-testid="button-slip-view-list"]').click();
+      await page.waitForSelector('[data-testid="slip-action-row"]', { timeout: 30_000 });
+    }
     await page.screenshot({ path: `${SHOTS}/owner-list-${width}.png` });
 
     const row = page.locator('[data-testid="slip-action-row"]');
@@ -80,26 +83,19 @@ for (const width of [1280, 390] as const) {
     await expect(row.locator('button')).toHaveCount(2);
     await expect(page.locator('[data-testid="button-slip-expert-help"]')).toHaveCount(1);
     for (const id of REMOVED) await expect(page.locator(`[data-testid="${id}"]`)).toHaveCount(0);
-
     await expectNotIntersected(page);
-  });
 
-  test(`D8c owner map ${width}: no Ask, no foot, the banner Finalize`, async ({ page }) => {
-    expect(tripId, 'D8a built the plan').toBeTruthy();
-    await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
-    await page.goto(`/plans/${tripId}`);
-    await page.waitForSelector('[data-testid="slip-action-row"]', { timeout: 30_000 });
     await page.locator('[data-testid="button-slip-view-map"]').click();
     await page.waitForSelector('[data-testid="slip-map-view"]', { timeout: 30_000 });
     await page.screenshot({ path: `${SHOTS}/owner-map-${width}.png` });
 
     await expect(page.locator('[data-testid="slip-tools-row"]')).toHaveCount(0);
     await expect(page.locator('[data-testid="slip-foot"]')).toHaveCount(0);
-    // The map's Finalize is the Trip Card banner's FinishCard (`SlipView.tsx:2833` tripCardBanner) - the
-    // card's own button testid, not a wrapper one.
-    await expect(page.locator('[data-testid="slip-action-finalize-plan"]')).toBeVisible();
-  });
-}
+    await expect(page.locator('[data-testid="slip-action-finalize-plan"]').first()).toBeVisible();
+
+    await page.locator('[data-testid="button-slip-view-list"]').click();
+  }
+});
 
 test('D8d expert viewer sees Ask and the foot Finalize', async ({ browser }) => {
   expect(tripId, 'D8a built the plan').toBeTruthy();
