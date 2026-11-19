@@ -146,7 +146,9 @@ jobs:
       # F6 (#1823) + the F7 placement fix: the two admin surfaces, over HTTP against the real router.
       - name: f6 admin surfaces (reconciliation + stuck-pending)
         if: ${{ !cancelled() }}
-        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/f6-admin-surfaces.db.test.ts
+        # F6's reader lives in services/__tests__; the same step carries it, so the new file is wired (the ratchet
+        # asks for a workflow, not an allowlist entry).
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/f6-admin-surfaces.db.test.ts server/services/__tests__/payment-refund-state.test.ts
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
 
