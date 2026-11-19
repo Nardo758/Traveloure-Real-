@@ -468,4 +468,13 @@ export const STRIPE_TERMINAL_FROM_STATUSES = [
 export const BOOKING_IS_PENDING = sql`status IN (${sql.join(STRIPE_TERMINAL_FROM_STATUSES.map((s) => sql`${s}`), sql`, `)})`;
 
 /** A row that already took money is never demoted by a later event. */
+/**
+ * Phase 0 record (Leon, Nov 19 2026): the set above was NOT written from memory. Every status value written to
+ * `bookings.status` / `service_bookings.status` in `server/` was scanned, and the terminal-event question asked of
+ * each: `pending_payment` (legacy awaiting payment) MOVES; `payment_pending` (cart authorized claim) MOVES; `pending`
+ * (the column default) MOVES; `confirmed`, `succeeded`, `deposit_paid`, `purchased`, `in_planning`,
+ * `awaiting_acceptance`, `revision_requested`, `needs_review`, `expired`, `refunded`, `cancelled`/`canceled`,
+ * `failed`/`payment_failed`, `delivered`, `completed`, `disputed` DO NOT - a later failure or cancel says nothing
+ * true about any of them. The list is in the PR body with file:line for each write.
+ */
 export const BOOKING_IS_NOT_PAID = sql`COALESCE(payment_status, '') NOT IN ('paid', 'succeeded')`;
