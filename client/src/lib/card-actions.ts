@@ -2,8 +2,8 @@
  * WHAT A CARD OFFERS (F1; Leon, Nov 19) - the engine's answer, shaped for a card's action row.
  *
  * `resolveActions` is the one author of which of Add, Ask an expert and Details a card draws, and in what order.
- * Book and Hire are drawn by `PlanActions` under its own rule (open mode; Hire needs the area's answer) and lead
- * the row when they draw - see the note on `CARD_ROW_ORDER`.
+ * Book and Hire are drawn by `PlanActions`, which owns their words and Hire's area answer, and lead the row when
+ * they draw. Their mode rule is the engine's: open mode, signed in or not (Leon, Nov 19).
  *
  * PURE: no React.
  */
@@ -12,14 +12,7 @@ import { resolveActions, type ActionContext, type ActionKey, type ContentItem, t
 /** The slots a card row can draw, in order. `book` is the Book-or-Hire slot. */
 export type CardActionSlot = "book" | "add" | "ask_expert" | "details";
 
-/**
- * Book or Hire first when it draws, then the engine's ruled order (Add, Ask an expert, Details).
- *
- * OPEN RULING (reported with F1): the engine as merged hides Book from a signed-out visitor in open mode
- * (`bookAllowed` requires `signedIn`); main draws it for them (`planActionsVisible`, pinned by cap2-phase3 P7a).
- * F1 changes neither: the slot is offered whenever the card has a booking intent and `PlanActions` decides,
- * exactly as on main. One line here changes once Leon rules.
- */
+/** Book or Hire first when it draws, then the engine's ruled order (Add, Ask an expert, Details). */
 const CARD_ROW_ORDER: readonly CardActionSlot[] = ["book", "add", "ask_expert", "details"];
 
 export interface CardContentInput {

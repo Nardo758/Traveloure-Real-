@@ -83,26 +83,23 @@ describe("F1 - card actions from the action engine", () => {
     }
   });
 
-  it("T2 the engine hands no priced action to a guest or a waitlist viewer", () => {
+  it("T2 the engine hands no priced action to a waitlist viewer, signed in or not", () => {
     const types: ContentItemType[] = ["gem", "event", "city_event", "listing", "affiliate_product", "hotel", "activity", "expert", "viator", "deal", "recommendation"];
     for (const type of types) {
       for (const [modeName, who] of Object.entries(MODES)) {
-        if (modeName === "open signed-in") continue;
+        // Ruled (Leon, Nov 19): open mode draws Book for a signed-out visitor too; the sign-in gate is on the press.
+        if (who.mode === "open") continue;
         for (const density of ["compact", "full"] as const) {
           const item = cardContentItem({ ...base, type, bookable: true, detailHref: "/x" });
           const got = resolveActions(item, { ...who, surface: "card", density });
           const all = [...(got.primary ? [got.primary] : []), ...got.secondary];
-          if (who.signedIn === false || who.mode === "waitlist") {
-            // `hire` on a partner row is the one priced primary the engine allows a signed-out visitor in OPEN
-            // mode; a card row never draws it from the engine (no `hire` slot), so it is out of F1's reach.
-            const priced = all.filter((a) => a.priced && !(a.key === "hire" && who.mode === "open"));
-            assert.deepEqual(priced.map((a) => a.key), [], `${type} / ${modeName} / ${density}`);
-          }
+          assert.deepEqual(all.filter((a) => a.priced).map((a) => a.key), [], `${type} / ${modeName} / ${density}`);
         }
       }
     }
-    // The row itself: Book and Hire are PlanActions outputs, hidden in waitlist mode by its own rule (T4).
-    assert.ok(read("client/src/lib/card-actions.ts").includes("OPEN RULING"), "the open-mode signed-out Book question is written down where the rule lives");
+    // Open mode, signed out: Book is offered (the ruling), and the rendered card draws it (T4).
+    const openGuest = resolveActions(cardContentItem({ ...base, bookable: true, detailHref: "/x" }), { mode: "open", signedIn: false, surface: "card", density: "full" });
+    assert.equal(openGuest.primary?.key, "book");
   });
 
   it("T3 the chooser's options", () => {

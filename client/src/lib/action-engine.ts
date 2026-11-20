@@ -146,12 +146,12 @@ export function pricedAllowed(ctx: ActionContext): boolean {
 /**
  * Book / Hire / Request / Book on partner: open mode only, never on the plan surface.
  *
- * The spec's table has a line saying an open-mode guest MAY see the control. Leon's standing rule is
- * stricter - no priced control on the guest path at all - and the stricter rule wins here, so `signedIn` is
- * required. Noted under Assumptions in the PR.
+ * RULED (Leon, Nov 19, 2026): a signed-out visitor in open mode SEES Book; the press asks them to sign in
+ * (the existing gate). That is what main has always drawn (`planActionsVisible`) and what the spec's table
+ * says. "No priced control on the guest path" is the WAITLIST guest rail, which `pricedAllowed` already covers.
  */
 export function bookAllowed(item: ContentItem, ctx: ActionContext): boolean {
-  return item.bookable && pricedAllowed(ctx) && ctx.signedIn === true && ctx.surface !== "plan";
+  return item.bookable && pricedAllowed(ctx) && ctx.surface !== "plan";
 }
 
 /**
