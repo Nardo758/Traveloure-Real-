@@ -359,6 +359,7 @@ jobs:
             playwright/tests/slip-trip-card-link.spec.ts \
             playwright/tests/discover-tabs.spec.ts \
             playwright/tests/f1-ask-chooser.spec.ts \
+            playwright/tests/a1-day-columns.spec.ts \
             playwright/tests/earn-captures.spec.ts; do
             if [ ! -f "$f" ]; then
               echo "::error file=.github/workflows/dev-server-gates.yml::Spec file not found: $f"
@@ -533,6 +534,30 @@ jobs:
           path: playwright/f1-captures/
           retention-days: 14
           if-no-files-found: warn
+      - name: "a1-day-columns: the desktop days board and the phone day cards, with screenshots"
+        # A1 (Leon, Nov 20): the first browser proof of the days board. A fresh traveler and plan in this job's
+        # own database; no secret, no deploy. A failure here fails the job: it is a behavioural check.
+        id: a1_day_columns
+        if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
+        run: npx playwright test a1-day-columns --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          CI: 'true'
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      - name: Keep the a1-day-columns reports
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p reports/a1-day-columns
+          [ -d playwright-report ] && mv playwright-report reports/a1-day-columns/html || true
+          [ -d playwright-json ] && mv playwright-json reports/a1-day-columns/json || true
+      - name: Upload the A1 screenshots
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: a1-captures-${{ github.sha }}
+          path: playwright/a1-captures/
+          retention-days: 14
+          if-no-files-found: warn
       - name: "Earn-grammar captures (Lane 2, screenshots — never fails the job)"
         id: earn_captures
         if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
@@ -610,6 +635,13 @@ jobs:
         with:
           name: playwright-json-f1-ask-chooser
           path: reports/f1-ask-chooser/json/
+          if-no-files-found: ignore
+      - name: Upload a1-day-columns Playwright JSON report (the spec-arming gate reads playwright-json*)
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-json-a1-day-columns
+          path: reports/a1-day-columns/json/
           if-no-files-found: ignore
       - name: Upload earn-captures Playwright JSON report (the spec-arming gate reads playwright-json*)
         if: ${{ !cancelled() }}
