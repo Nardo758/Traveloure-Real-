@@ -23,6 +23,7 @@ import {
   nextRange,
   rangeSummary,
   validateRange,
+  monthGridShowsDay,
 } from "../plan-dates-range";
 
 describe("R1 validateRange", () => {
@@ -130,4 +131,29 @@ describe("R6 copy", () => {
   it("the refusal is the approved sentence", () => {
     assert.equal(LEAVE_BEFORE_ARRIVE_MESSAGE, "Leave date can't be before your arrive date.");
   });
+});
+
+// The calendar follows the start date (Leon, Nov 20, 2026): which days are on screen for a shown month.
+// December 2026 starts on a Tuesday and ends on a Thursday, so its grid runs Sun Nov 29 - Sat Jan 2.
+it("monthGridShowsDay: the shown month's own days and the neighbours that fill its first and last weeks", () => {
+  for (const day of ["2026-12-01", "2026-12-31", "2026-11-29", "2026-11-30", "2027-01-02"]) {
+    assert.equal(monthGridShowsDay(2026, 11, day), true, day);
+  }
+  for (const day of ["2026-11-28", "2026-11-21", "2027-01-03", "2026-10-31"]) {
+    assert.equal(monthGridShowsDay(2026, 11, day), false, day);
+  }
+});
+
+it("monthGridShowsDay: a month that starts on Sunday and ends on Saturday shows no neighbour", () => {
+  // February 2026: Sun Feb 1 - Sat Feb 28.
+  assert.equal(monthGridShowsDay(2026, 1, "2026-02-01"), true);
+  assert.equal(monthGridShowsDay(2026, 1, "2026-02-28"), true);
+  assert.equal(monthGridShowsDay(2026, 1, "2026-01-31"), false);
+  assert.equal(monthGridShowsDay(2026, 1, "2026-03-01"), false);
+});
+
+it("monthGridShowsDay: no readable day means nothing to follow", () => {
+  assert.equal(monthGridShowsDay(2026, 11, null), true);
+  assert.equal(monthGridShowsDay(2026, 11, ""), true);
+  assert.equal(monthGridShowsDay(2026, 11, "not-a-day"), true);
 });
