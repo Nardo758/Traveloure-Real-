@@ -95,6 +95,7 @@ import { showsStayBook, showsStayCancel, useStayBooking } from "@/lib/stay-booki
 import { PlacePhoto, usePlacePhotos } from "@/components/plan/PlacePhoto";
 import { legsCheckedLine, navigateHref, readyMadeSourceLine } from "@/lib/trip-card";
 import { DayBlock } from "@/components/plan/DayBlock";
+import { useMinWidth } from "@/hooks/use-min-width";
 import { PlanRowLookProvider } from "@/components/plan/row-look";
 import {
   GETTING_THERE_TOOL,
@@ -209,6 +210,12 @@ import {
   tintPillStyle,
 } from "./slip-tokens";
 import { useTravelerDoors } from "@/hooks/use-traveler-doors";
+
+/**
+ * A1: the desktop days board - one column per day, side by side; up to four share the row and a fifth makes it
+ * scroll sideways (each column's own minimum is `DAY_COLUMN_CLASS` in DayBlock).
+ */
+const DAY_COLUMNS_ROW_CLASS = "flex items-start gap-3 overflow-x-auto pb-2";
 
 // ── DTO shape (the plancard route response — PlanCardData plus the blocks the slip reads) ──
 
@@ -2260,6 +2267,8 @@ export function SlipView({
 }) {
   // Flag-gated tools (Getting there) render only while their `/api/health` switch is on.
   const healthFlags = useHealthFlags();
+  // A1: the days board needs a desktop-width viewport (false on the server and the first render: the phone shape).
+  const desktopWidth = useMinWidth(1024);
   // E9: the party panel asks what the editor's Who step asks. The row comes from the VIEW MODEL above
   // (`occasion`, one cache entry, no second fetch) and is passed to the panel at both mounts - the header's
   // and this tray's. A guest plan has no view-model row (it cannot read /api/trips/:id), so the guest page
@@ -2376,6 +2385,9 @@ export function SlipView({
   const defaultOpenIdx = defaultOpenDayIndex(daySlots.map((slot) => slot.groups.flatMap((g) => g.items).length));
   const dayIsOpen = (key: string, idx: number, items: readonly { id: string }[]) =>
     dayOpen[key] ?? slipDayOpenByDefault({ index: idx, defaultIndex: defaultOpenIdx, items, highlightItemId });
+  // A1 (Leon, Nov 20, 2026): on a desktop-width list view with more than one day, the days are side-by-side columns,
+  // every one open, and "Expand all" has nothing to do. The phone keeps one collapsible card per day.
+  const dayColumns = desktopWidth && slipView === "list" && daySlots.length > 1;
   const allDaysOpen =
     daySlots.length > 0 && daySlots.every((slot, idx) => dayIsOpen(slot.key, idx, slot.groups.flatMap((g) => g.items)));
   const setAllDaysOpen = (open: boolean) =>
@@ -2405,7 +2417,7 @@ export function SlipView({
     <div
       /* Ruling 7: one centered column, at most 680px wide, at every width; the map view keeps its
          wide layout (map view unchanged). */
-      className={`${SLIP_SURFACE_CLASS} ${slipView === "map" ? "max-w-6xl" : "max-w-[680px]"} mx-auto space-y-5`}
+      className={`${SLIP_SURFACE_CLASS} ${slipView === "map" || dayColumns ? "max-w-6xl" : "max-w-[680px]"} mx-auto space-y-5`}
       {...slipTokensAttr(readSlipTokensMode())}
       data-testid={`slip-view-${planTripId}`}
       /* A1: the group is an internal key (R127) — a data attribute for tests, never display text. */
@@ -2756,7 +2768,7 @@ export function SlipView({
                   {allActivities.length > 0 ? `Map only · ${locatedActivities.length} of ${allActivities.length}` : "Map only"}
                 </button>
               </div>
-              {slipView === "list" && daySlots.length > 1 ? (
+              {slipView === "list" && daySlots.length > 1 && !dayColumns ? (
                 <button
                   type="button"
                   className="h-9 px-3 text-[13px] font-medium text-[color:var(--slip-navy)] hover:underline"
@@ -2939,6 +2951,7 @@ export function SlipView({
             </div>
           ) : null}
           <FixedPlanBar tripId={tripId} view={fixedPlan} />
+          <div className={dayColumns ? DAY_COLUMNS_ROW_CLASS : undefined} data-day-layout={dayColumns ? "columns" : "stack"}>
           {daySlots.map((slot, slotIdx) => {
             const slotItems = slot.groups.flatMap((g) => g.items);
             // Step 2 addendum: an AI arrival on day 1 / departure on the last day IS the travel row —
@@ -2999,6 +3012,7 @@ export function SlipView({
                 ]
                   .filter(Boolean)
                   .join(" · ") || null}
+                column={dayColumns}
                 open={dayIsOpen(slot.key, slotIdx, slotItems)}
                 onOpenChange={(o) => setDayOpen((m) => ({ ...m, [slot.key]: o }))}
                 feasibility={day?.feasibility ?? null}
@@ -3209,6 +3223,7 @@ export function SlipView({
               </DayBlock>
             );
           })}
+          </div>
       </div>
       {/* UI brief 1 (cleanup): the get-help NOTE is gone. It was a second door to the same chooser in the
           same situation; the action row's expert button is the one general door. The per-day hook and the
