@@ -137,7 +137,10 @@ test("8b-2 — start page → modal → the map opens on Browse with the trip's 
   // QA round 3 PR 1 (Leon, Nov 11, 2026): a confirmed plan draws all four of its days (major 8), and the list opens the
   // first day holding an item — here Day 2, the only day with a stop — never the empty Day 1.
   for (const n of [1, 2, 3, 4]) await expect(testid(page, `slip-day-${n}`)).toBeVisible({ timeout: 15_000 });
-  await expect(testid(page, "slip-day-body-2"), "Day 2 opens by default").toBeVisible();
-  await expect(testid(page, "slip-day-body-1"), "the empty Day 1 stays closed").toHaveCount(0);
+  // TEST EDIT (A1; Leon, Nov 20, 2026): at this desktop width the four days are always-open columns, so the empty
+  // Day 1 is open too. "The first day holding an item opens by default" is still the phone's rule (unit-tested).
+  await expect(page.locator('[data-day-layout="columns"]')).toBeVisible();
+  await expect(testid(page, "slip-day-body-2"), "Day 2 is an open column").toBeVisible();
+  await expect(testid(page, "slip-day-body-1"), "the empty Day 1 is an open column too").toBeVisible();
   expect(await appears(page.getByText(listingName).first(), 15_000), "the list view shows the added listing").toBe(true);
 });

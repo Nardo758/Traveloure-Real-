@@ -88,9 +88,12 @@ async function openPlanMenu(page: Page): Promise<void> {
 
 // ── 1 · placement ─────────────────────────────────────────────────────────────────────────────
 
-test("A1: one centered column at most 680px wide, no rail, and the bottom bar under it (rulings 3 and 7)", async ({
+test("A1: one centered column (680px; a multi-day plan's desktop days board up to 1,152), no rail, and the bottom bar under it (rulings 3 and 7)", async ({
   page,
 }) => {
+  // A1 day columns (Leon, Nov 20, 2026 - sanctioned edit): "the plan page stays at most 680 wide except the
+  // map and the multi-day desktop days board (up to 1,152)". This plan has five days, so at desktop width it
+  // is the days board; below the board's breakpoint the same plan is back inside 680.
   // Main-rail (decision-maker, Oct 8, 2026 — sanctioned rewrite; ledger `2026-10-08-slip-main-rail`).
   // This was "the rail is a fixed right column at lg"; rulings 3 and 7 replace that layout.
   const tripId = await registerAndCreateTrip(page, "layout");
@@ -101,7 +104,14 @@ test("A1: one centered column at most 680px wide, no rail, and the bottom bar un
   await expect(page.getByTestId("slip-rail")).toHaveCount(0);
   const column = await page.getByTestId(`slip-view-${tripId}`).boundingBox();
   expect(column, "the slip column has a box").toBeTruthy();
-  expect(Math.round(column!.width)).toBeLessThanOrEqual(680);
+  await expect(page.locator('[data-day-layout="columns"]')).toHaveCount(1);
+  expect(Math.round(column!.width)).toBeLessThanOrEqual(1152);
+  await page.setViewportSize({ width: 1000, height: 1000 });
+  await expect(page.locator('[data-day-layout="stack"]')).toHaveCount(1);
+  const narrow = await page.getByTestId(`slip-view-${tripId}`).boundingBox();
+  expect(Math.round(narrow!.width)).toBeLessThanOrEqual(680);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await expect(page.locator('[data-day-layout="columns"]')).toHaveCount(1);
   // The bar's two actions, in the board's order: Ask AI (secondary), Finalize (primary).
   // The frame's two blocks, not the bar: Ask in the one tools row, Finalize in the foot below the days.
   const toolsRow = page.getByTestId("slip-tools-row");

@@ -603,7 +603,10 @@ test.describe("2 · where are you staying", () => {
     // Smoke 8 item 5: the departure row is the last row inside the last day, ABOVE its add control.
     // TEST EDIT (QA round 3 major 8, Leon, Nov 11, 2026): this fixture's dates are confirmed, so the plan draws every
     // day of its window and the last day is no longer day 1. The list opens its first day only; open the last one.
-    await page.locator('[data-testid^="slip-day-toggle-"]').last().click();
+    // TEST EDIT (A1; Leon, Nov 20, 2026): at this desktop width the days are always-open columns, so the last day
+    // is already open and there is no header toggle to press.
+    await expect(page.locator('[data-day-layout="columns"]')).toBeVisible();
+    await expect(page.locator('[data-testid^="slip-day-toggle-"]')).toHaveCount(0);
     const departure = testid(page, "slip-travel-anchor-departure");
     await expect(departure).toBeVisible();
     const order = await departure.evaluate((dep) => {
@@ -1001,8 +1004,9 @@ test.describe("4 · free draft around the set", () => {
     expect(ok2xx(skip), `skip answered ${skip}`).toBe(true);
     await page.reload();
     await expect(testid(page, "slip-header")).toBeVisible({ timeout: 20_000 });
-    // Surface step 1: only the first day opens by default; day 2 is opened by its header.
-    await testid(page, "slip-day-toggle-2").click();
+    // TEST EDIT (A1; Leon, Nov 20, 2026): at this desktop width every day is an always-open column, so day 2's stop
+    // shows without pressing its header (which is no longer a toggle).
+    await expect(testid(page, "slip-day-toggle-2")).toHaveCount(0);
     await expect(page.getByText("Stop on day 2")).toBeVisible({ timeout: 20_000 });
     await expect(testid(page, "where-to-stay-panel")).toHaveCount(0);
     await expect(testid(page, "anchor-panel-collapsed")).toHaveCount(0);
