@@ -177,7 +177,9 @@ describe("F1 - card actions from the action engine", () => {
     }
     assert.equal((feed.match(/layout="primary"/g) ?? []).length, 4, "the four compact tiles keep their ONE primary (R755)");
     assert.doesNotMatch(feed, /density="compact"[\s\S]{0,200}<CardActions|<CardActions[^>]*compact/, "no compact tile draws the row");
-    assert.equal((feed.match(/<MoreInfoSheet\b[^>]*\bask=\{\{|<MoreInfoSheet\b[\s\S]{0,160}?\bask=\{\{/g) ?? []).length, 6, "every sheet a tile opens carries the ask");
+    const sheets = feed.split("<MoreInfoSheet").slice(1).map((chunk) => chunk.slice(0, chunk.indexOf("/>")));
+    assert.equal(sheets.length, 6);
+    for (const sheet of sheets) assert.match(sheet, /\bask=\{\{/, "every sheet a tile opens carries the ask");
     for (const [file, src] of [["city-feed-card.tsx", feed], ["discover.tsx", read("client/src/pages/discover.tsx")]] as const) {
       const code = src.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, "");
       assert.doesNotMatch(code, /`Ask \$\{|Ask this expert|Ask the local|>\s*Ask an expert\s*</, `${file}: no Ask label of its own`);
