@@ -108,6 +108,8 @@ import { SavedTripsSection } from "@/components/dashboard/SavedTripsSection";
 import { WishlistSection } from "@/components/dashboard/WishlistSection";
 import { ADDED_TO_CART_TITLE, ADDED_TO_PLAN_TITLE, ADD_TO_PLAN_FAILED_TITLE } from "@/lib/plan-vocabulary";
 import { PlanActions, usePlanActionsVisible } from "@/components/plan/PlanActions";
+import { CardActions } from "@/components/plan/CardActions";
+import { cardContentItem } from "@/lib/card-actions";
 import { planActionFromBuyAction } from "@/lib/plan-actions";
 import { refreshSavedRefs, savedRefKey } from "@/lib/saved-refs";
 import { decideAddTarget, GUEST_CART_SAVED_NOTE, listingPlanItemBody } from "@/lib/add-target";
@@ -685,41 +687,53 @@ export function ServiceCard({
             >
               {messageOnly ? "Not open for booking" : actionsVisible.book || actionsVisible.hire ? "Book on Traveloure" : null}
             </div>
+            {/* F1 (Leon, Nov 19): the row is the action engine's answer for this listing - Book or Hire, Add,
+                "Ask an expert" (the chooser), Details - in its order. Message is the listing owner's own
+                thread and stays the card's. */}
             <div className="grid grid-cols-2 gap-2">
-              {messageOnly ? (
-                messageAvailable ? (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="border-[var(--earn-border)] text-[color:var(--earn-ink)]"
-                    onClick={() =>
-                      askExpert({
-                        serviceId: service.id,
-                        subject: service.serviceName,
-                        returnTo: detailHref,
-                        fallbackName: providerName,
-                      })
-                    }
-                    data-testid={`button-service-message-${service.id}`}
-                  >
-                    Message
-                  </Button>
-                ) : null
-              ) : (
-                <PlanActions {...actionsProps} order={["book", "hire", "save"]} />
-              )}
+              {messageOnly && messageAvailable ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="border-[var(--earn-border)] text-[color:var(--earn-ink)]"
+                  onClick={() =>
+                    askExpert({
+                      serviceId: service.id,
+                      subject: service.serviceName,
+                      returnTo: detailHref,
+                      fallbackName: providerName,
+                    })
+                  }
+                  data-testid={`button-service-message-${service.id}`}
+                >
+                  Message
+                </Button>
+              ) : null}
+              <CardActions
+                item={cardContentItem({
+                  type: "listing",
+                  id: service.id,
+                  title: service.serviceName,
+                  city: service.location,
+                  placeable: !!actionsProps.save,
+                  bookable: !!(actionsProps.book || actionsProps.hire),
+                  hasExpert: expertAvailable,
+                  detailHref,
+                })}
+                book={<PlanActions {...actionsProps} save={null} order={["book", "hire"]} />}
+                add={<PlanActions {...actionsProps} book={null} hire={null} order={["save"]} />}
+                ask={{
+                  testId: `button-service-ask-${service.id}`,
+                  subject: service.serviceName,
+                  returnTo: detailHref,
+                  className: cn(buttonVariants({ size: "sm", variant: "outline" }), "border-[var(--earn-border)] text-[color:var(--earn-ink)]"),
+                }}
+                details={{
+                  testId: `button-service-details-${service.id}`,
+                  className: cn(buttonVariants({ size: "sm", variant: "outline" }), "border-[var(--earn-border)] text-[color:var(--earn-ink)]"),
+                }}
+              />
             </div>
-            {expertAvailable && (
-              <button
-                type="button"
-                className="text-[12px] text-[color:var(--earn-muted)] hover:text-[color:var(--earn-ink)] mt-2 transition-colors"
-                onClick={() =>
-                  navigateTo(`/services?showExperts=true&destination=${encodeURIComponent(location)}`)
-                }
-              >
-                Ask an expert
-              </button>
-            )}
           </div>
         </div>
       </div>

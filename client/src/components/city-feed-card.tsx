@@ -5,6 +5,9 @@ import { useImpressionTracker } from "@/hooks/use-impression-tracker";
 import { useQuery } from "@tanstack/react-query";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { PlanActions } from "@/components/plan/PlanActions";
+import { CardActions } from "@/components/plan/CardActions";
+import type { AskExpertButtonProps } from "@/components/ask-expert-button";
+import { cardContentItem } from "@/lib/card-actions";
 import { feedSaveIntent } from "@/lib/plan-actions";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { eventDrawerWhen } from "@/lib/event-drawer";
@@ -24,7 +27,6 @@ import { useBrowseSaveToPlan } from "@/lib/browse-save";
 import { compactCredit } from "@/lib/gem-photo-credit";
 import { useBookingActionsShown } from "@/lib/signup-mode";
 import { WAITLIST_COPY } from "@/lib/waitlist-copy";
-import { useAskExpert } from "@/lib/use-ask-expert";
 import type { BentoCompactActionState } from "@/lib/bento-action-state";
 import { isReferencePhoto } from "@/lib/photo-provenance";
 import { ReferencePhotoChip } from "@/components/ui/reference-photo-chip";
@@ -600,6 +602,11 @@ interface MoreInfoSheetProps {
    */
   /** CAP-2 Phase 3: the drawer's save, rendered by PlanActions ("Save to plan" / "Saved to plan"). */
   action?: { placeable: boolean; savedKey: string | null; onAdd?: () => void; disabled?: boolean; city?: string | null; dayNumber?: number | null } | null;
+  /**
+   * F1 (Leon, Nov 19): "Ask an expert" on the sheet a tile opens. A compact tile draws one action (R755), so
+   * the ask lives here. Drawn only while the city has an expert to ask.
+   */
+  ask?: { city: string; subject: string; direct?: AskExpertButtonProps["direct"] } | null;
 }
 
 // C3 / R4 (cosmetic-public-surfaces dispatch): at desktop widths the details sheet opened as a
@@ -745,8 +752,11 @@ export function EventSheetBody({ data, action }: { data: any; action?: MoreInfoS
   );
 }
 
-function MoreInfoSheet({ open, onClose, cardType, data, saveItem, action }: MoreInfoSheetProps) {
+function MoreInfoSheet({ open, onClose, cardType, data, saveItem, action, ask }: MoreInfoSheetProps) {
   const isDesktopPanel = useIsDesktopPanel();
+  const askAvailable = useExpertAvailability({ city: ask?.city ?? null });
+  // F4: the event sheet's body draws its own add (`EventSheetBody`); a gem's or a place's is drawn in the row above it.
+  const sheetAdd = cardType !== "event" && action?.onAdd ? action : null;
   // Thin gem detail (2026-08-29 Replit-audit ruling 3): the sheet renders the
   // ruled TEASER set only. Address, the locals-vs-tourists popularity ratio,
   // the "goes mainstream" forecast and the discovery status were REMOVED —
@@ -983,6 +993,46 @@ function MoreInfoSheet({ open, onClose, cardType, data, saveItem, action }: More
         <SheetHeader className="mb-2">
           <SheetTitle className="text-left text-[17px] leading-snug pr-8">{titleMap[cardType]}</SheetTitle>
         </SheetHeader>
+        {ask ? (
+          <div className="flex gap-1.5 pb-1 flex-wrap items-center">
+            <CardActions
+              surface="sheet"
+              item={cardContentItem({
+                type: cardType === "gem" ? "gem" : cardType === "event" ? "event" : "activity",
+                id: String(data?.id ?? ""),
+                title: ask.subject,
+                city: ask.city,
+                // F4: a gem's or a place's sheet offers the add, like the event sheet (whose own body draws it).
+                placeable: sheetAdd?.placeable === true,
+                bookable: false,
+                hasExpert: askAvailable,
+              })}
+              add={
+                sheetAdd ? (
+                  <PlanActions
+                    site="bento"
+                    city={sheetAdd.city ?? ask.city}
+                    save={{
+                      placeable: sheetAdd.placeable,
+                      savedKey: sheetAdd.savedKey,
+                      dayNumber: sheetAdd.dayNumber ?? null,
+                      disabled: sheetAdd.disabled,
+                      testId: `btn-add-${cardType}-sheet-${data?.id ?? ""}`,
+                      className: "inline-flex h-7 items-center rounded-md border border-border px-3 text-xs font-semibold",
+                      onClick: sheetAdd.onAdd,
+                    }}
+                  />
+                ) : null
+              }
+              ask={{
+                testId: `btn-ask-sheet-${cardType}-${data?.id ?? ""}`,
+                subject: ask.subject,
+                direct: ask.direct ?? null,
+                className: cn(buttonVariants({ size: "sm", variant: "outline" }), "h-7 text-xs px-2.5"),
+              }}
+            />
+          </div>
+        ) : null}
         {cardType === "gem" && renderGemContent()}
         {cardType === "event" && renderEventContent()}
         {cardType === "vendor-service" && renderVendorServiceContent()}
@@ -1032,7 +1082,6 @@ export function CityFeedCardGem({
   const [imgLoaded, setImgLoaded] = useState(false);
   const [imgFailed, setImgFailed] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
-  const askExpert = useAskExpert();
   // SH-1 item 11: Ask draws only when the server says this city has an expert to ask.
   const expertAvailable = useExpertAvailability({ city });
   // An official source with no stored image is text-only. A stock search would invent a photo.
@@ -1215,60 +1264,70 @@ export function CityFeedCardGem({
           the link (it opens the details sheet). */}
       {!compact && (
         <div className="flex gap-1.5 pt-0.5 flex-wrap items-center">
-          {/* CAP-2 Phase 3: Book (open mode only) and Save through PlanActions. The gem's book goes to a platform
-              listing whose booking mode the tile does not carry, so it says "Check availability". */}
-          <PlanActions
-            site="bento"
-            city={city}
-            order={["book", "save"]}
-            book={resolvedBookability !== "info_only" && bookHref ? {
-              variant: "availability",
-              href: bookHref,
-              testId: `btn-book-gem-${gem.id}`,
-              className: cn(buttonVariants({ size: "sm" }), "h-7 text-xs px-3"),
-              style: BOOK_BTN_STYLE,
-              onClick: () => {
-                const impId = getImpressionId();
-                fetch("/api/affiliates/track", {
-                  method: "POST",
-                  keepalive: true,
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ partner: "discover", destination: city, contentType: "gem", contentId: String(gem.id), impressionId: impId }),
-                }).catch(() => {});
-              },
-            } : null}
-            save={{
-              ...gemSave,
-              testId: `btn-add-gem-${gem.id}`,
-              className: cn(buttonVariants({ size: "sm" }), "h-7 text-xs px-3"),
-              style: ADD_BTN_STYLE,
-              icon: <Plus className="w-3 h-3 mr-1" />,
-              onClick: () => onAdd?.(gemAddPayload()),
+          {/* F1 (Leon, Nov 19): the row is the action engine's answer - Book, Add, "Ask an expert", Details, in its
+              order. Book (open mode only) and the add are still PlanActions outputs; the gem's book goes to a
+              platform listing whose booking mode the tile does not carry, so it says "Check availability". */}
+          <CardActions
+            item={cardContentItem({
+              type: "gem",
+              id: gem.id,
+              title: gem.placeName,
+              city,
+              placeable: gemSave.placeable,
+              bookable: resolvedBookability !== "info_only" && !!bookHref,
+              hasExpert: expertAvailable,
+              detailSheet: true,
+            })}
+            book={
+              <PlanActions
+                site="bento"
+                city={city}
+                order={["book"]}
+                book={resolvedBookability !== "info_only" && bookHref ? {
+                  variant: "availability",
+                  href: bookHref,
+                  testId: `btn-book-gem-${gem.id}`,
+                  className: cn(buttonVariants({ size: "sm" }), "h-7 text-xs px-3"),
+                  style: BOOK_BTN_STYLE,
+                  onClick: () => {
+                    const impId = getImpressionId();
+                    fetch("/api/affiliates/track", {
+                      method: "POST",
+                      keepalive: true,
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ partner: "discover", destination: city, contentType: "gem", contentId: String(gem.id), impressionId: impId }),
+                    }).catch(() => {});
+                  },
+                } : null}
+              />
+            }
+            add={
+              <PlanActions
+                site="bento"
+                city={city}
+                order={["save"]}
+                save={{
+                  ...gemSave,
+                  testId: `btn-add-gem-${gem.id}`,
+                  className: cn(buttonVariants({ size: "sm" }), "h-7 text-xs px-3"),
+                  style: ADD_BTN_STYLE,
+                  icon: <Plus className="w-3 h-3 mr-1" />,
+                  onClick: () => onAdd?.(gemAddPayload()),
+                }}
+              />
+            }
+            ask={{
+              testId: `btn-ask-gem-${gem.id}`,
+              subject: gem.placeName,
+              className: cn(buttonVariants({ size: "sm", variant: "outline" }), "h-7 text-xs px-2.5"),
+              // A gem with a curator names ONE expert: the press goes straight to them (no chooser).
+              // LD 40 lane 2: still id-addressed - `gem.curatedBy` carries no handle.
+              direct: gemCurator(gem)?.id
+                ? { expertId: gemCurator(gem)!.id, fallbackName: gemCuratorFullName(gem), fallbackAvatar: gemCurator(gem)?.profileImageUrl ?? null }
+                : null,
             }}
+            details={{ testId: `btn-details-gem-${gem.id}`, className: cn(buttonVariants({ size: "sm", variant: "outline" }), "h-7 text-xs px-2.5"), onClick: () => setSheetOpen(true) }}
           />
-          {expertAvailable && (
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 text-xs px-2.5"
-              onClick={(e) => {
-                e.stopPropagation();
-                askExpert({
-                  city,
-                  subject: gem.placeName,
-                  // LD 40 lane 2: still id-addressed — `gem.curatedBy` carries no handle, so this
-                  // card holds no address the start rail accepts. The fix is a field on the feed
-                  // payload (server), not a second client rail.
-                  expertId: gemCurator(gem)?.id ?? null,
-                  fallbackName: gemCuratorFullName(gem),
-                  fallbackAvatar: gemCurator(gem)?.profileImageUrl ?? null,
-                });
-              }}
-              data-testid={`btn-ask-gem-${gem.id}`}
-            >
-              {gemCuratorShortName(gem) ? `Ask ${gemCuratorShortName(gem)}` : "Ask an expert"}
-            </Button>
-          )}
         </div>
       )}
     </div>
@@ -1362,7 +1421,7 @@ export function CityFeedCardGem({
             </div>
           </div>
         </div>
-        <MoreInfoSheet open={sheetOpen} onClose={() => setSheetOpen(false)} cardType="gem" data={gem} saveItem={gemSaveItem} />
+        <MoreInfoSheet open={sheetOpen} onClose={() => setSheetOpen(false)} cardType="gem" data={gem} saveItem={gemSaveItem} action={{ ...gemSave, city, onAdd: onAdd ? () => onAdd(gemAddPayload()) : undefined }} ask={{ city, subject: gem.placeName, direct: gemCurator(gem)?.id ? { expertId: gemCurator(gem)!.id, fallbackName: gemCuratorFullName(gem), fallbackAvatar: gemCurator(gem)?.profileImageUrl ?? null } : null }} />
       </>
     );
   }
@@ -1383,7 +1442,7 @@ export function CityFeedCardGem({
         {photoArea}
         {cardBody}
       </div>
-      <MoreInfoSheet open={sheetOpen} onClose={() => setSheetOpen(false)} cardType="gem" data={gem} saveItem={gemSaveItem} />
+      <MoreInfoSheet open={sheetOpen} onClose={() => setSheetOpen(false)} cardType="gem" data={gem} saveItem={gemSaveItem} action={{ ...gemSave, city, onAdd: onAdd ? () => onAdd(gemAddPayload()) : undefined }} ask={{ city, subject: gem.placeName, direct: gemCurator(gem)?.id ? { expertId: gemCurator(gem)!.id, fallbackName: gemCuratorFullName(gem), fallbackAvatar: gemCurator(gem)?.profileImageUrl ?? null } : null }} />
     </>
   );
 }
@@ -1409,7 +1468,6 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd: onAddProp
   const onAdd = browseSave.wrapAdd(onAddProp);
   const [imgLoaded, setImgLoaded] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
-  const askExpert = useAskExpert();
   // SH-1 item 11: Ask draws only when the server says this city has an expert to ask.
   const expertAvailable = useExpertAvailability({ city });
   const dbImageUrl = event.image || event.imageUrl || null;
@@ -1555,7 +1613,7 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd: onAddProp
             )}
           </div>
         </div>
-        <MoreInfoSheet open={sheetOpen} onClose={() => setSheetOpen(false)} cardType="event" data={event} action={sheetAction} />
+        <MoreInfoSheet open={sheetOpen} onClose={() => setSheetOpen(false)} cardType="event" data={event} action={sheetAction} ask={{ city, subject: eventName }} />
       </>
     );
   }
@@ -1651,32 +1709,25 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd: onAddProp
                 onResult={(ok) => setPriceOpenFailed(!ok)}
               />
             )}
-            <PlanActions
-              site="bento"
-              city={city}
-              save={{
-                ...eventSave,
-                testId: `btn-add-event-${event.id}`,
-                className: cn(buttonVariants({ size: "sm" }), "h-7 text-xs px-3"),
-                style: ADD_BTN_STYLE,
-                icon: <Plus className="w-3 h-3 mr-1" />,
-                onClick: () => onAdd?.(eventAddPayload()),
-              }}
+            <CardActions
+              item={cardContentItem({ type: "event", id: event.id, title: eventName, city, placeable: eventSave.placeable, bookable: false, hasExpert: expertAvailable, detailSheet: true })}
+              add={
+                <PlanActions
+                  site="bento"
+                  city={city}
+                  save={{
+                    ...eventSave,
+                    testId: `btn-add-event-${event.id}`,
+                    className: cn(buttonVariants({ size: "sm" }), "h-7 text-xs px-3"),
+                    style: ADD_BTN_STYLE,
+                    icon: <Plus className="w-3 h-3 mr-1" />,
+                    onClick: () => onAdd?.(eventAddPayload()),
+                  }}
+                />
+              }
+              ask={{ testId: `btn-ask-event-${event.id}`, subject: eventName, className: cn(buttonVariants({ size: "sm", variant: "outline" }), "h-7 text-xs px-2.5") }}
+              details={{ testId: `btn-details-event-${event.id}`, className: cn(buttonVariants({ size: "sm", variant: "outline" }), "h-7 text-xs px-2.5"), onClick: () => setSheetOpen(true) }}
             />
-            {expertAvailable && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 text-xs px-2.5"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  askExpert({ city, subject: eventName });
-                }}
-                data-testid={`btn-ask-event-${event.id}`}
-              >
-                Ask an expert
-              </Button>
-            )}
           </div>
           {partnerCommissionShown(!!priceToken, purchasesAllowed) && (
             <p className="text-[11px] text-muted-foreground break-words" data-testid={`event-partner-commission-${event.id}`}>{PARTNER_COMMISSION_NOTE}</p>
@@ -1684,7 +1735,7 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd: onAddProp
           {priceOpenFailed && <p className="text-[11px] text-destructive">Couldn't open the partner's page. Try again in a moment.</p>}
         </div>
       </div>
-      <MoreInfoSheet open={sheetOpen} onClose={() => setSheetOpen(false)} cardType="event" data={event} action={sheetAction} />
+      <MoreInfoSheet open={sheetOpen} onClose={() => setSheetOpen(false)} cardType="event" data={event} action={sheetAction} ask={{ city, subject: eventName }} />
     </>
   );
 }
@@ -1739,7 +1790,6 @@ export function CityFeedCardVendorService({ service, city, className, cardPositi
   const browseSave = useBrowseSaveToPlan();
   const onAdd = browseSave.wrapAdd(onAddProp);
   const [imgLoaded, setImgLoaded] = useState(false);
-  const askExpert = useAskExpert();
   // SH-1 item 11: Ask draws only when the server says this city has an expert to ask.
   const expertAvailable = useExpertAvailability({ city });
   const imageUrl = service.serviceImage || service.vendorPhoto || null;
@@ -1971,10 +2021,22 @@ export function CityFeedCardVendorService({ service, city, className, cardPositi
                 detail page (date/time picker → cart → the audited /api/checkout rail);
                 it never hops off-site (§16). info_only shows no Book at all. */}
             {/* CAP-2 Phase 3: Book (open mode only) and Save through PlanActions. */}
-            <PlanActions
-              site="bento"
-              city={city}
-              order={["book", "save"]}
+            <CardActions
+              item={cardContentItem({
+                type: "listing",
+                id: service.id,
+                title: service.serviceName,
+                city,
+                placeable: !!onAdd && svcSave.placeable,
+                bookable: resolvedBookability !== "info_only",
+                hasExpert: expertAvailable,
+                detailHref: `/services/${service.id}`,
+              })}
+              book={
+                <PlanActions
+                  site="bento"
+                  city={city}
+                  order={["book"]}
               book={resolvedBookability !== "info_only" ? {
               variant: "availability",
               testId: `btn-book-svc-${service.id}`,
@@ -1982,6 +2044,13 @@ export function CityFeedCardVendorService({ service, city, className, cardPositi
               style: BOOK_BTN_STYLE,
               onClick: () => { window.location.href = `/services/${service.id}`; },
               } : null}
+                />
+              }
+              add={
+                <PlanActions
+                  site="bento"
+                  city={city}
+                  order={["save"]}
               save={onAdd ? {
               ...svcSave,
               testId: `btn-add-svc-${service.id}`,
@@ -1990,6 +2059,10 @@ export function CityFeedCardVendorService({ service, city, className, cardPositi
               icon: <Plus className="w-3 h-3 mr-1" />,
               onClick: () => onAdd?.(svcAddPayload()),
               } : null}
+                />
+              }
+              ask={{ testId: `btn-ask-svc-${service.id}`, subject: service.serviceName, className: cn(buttonVariants({ size: "sm", variant: "outline" }), "h-7 text-xs px-2.5") }}
+              details={{ testId: `btn-details-svc-${service.id}`, className: cn(buttonVariants({ size: "sm", variant: "outline" }), "h-7 text-xs px-2.5") }}
             />
             {externalUrl && (
               <Button
@@ -2010,20 +2083,6 @@ export function CityFeedCardVendorService({ service, city, className, cardPositi
                 data-testid={`btn-website-svc-${service.id}`}
               >
                 <Globe className="w-3 h-3" />
-              </Button>
-            )}
-            {expertAvailable && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 text-xs px-2.5"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  askExpert({ city, subject: service.serviceName });
-                }}
-                data-testid={`btn-ask-svc-${service.id}`}
-              >
-                Ask an expert
               </Button>
             )}
           </div>
@@ -2067,7 +2126,6 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd: onA
     : item.highlights;
   const [imgLoaded, setImgLoaded] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
-  const askExpert = useAskExpert();
   // SH-1 item 11: Ask draws only when the server says this city has an expert to ask.
   const expertAvailable = useExpertAvailability({ city });
   const dbImageUrl = item.media?.[0]?.url || item.imageUrl || null;
@@ -2212,6 +2270,8 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd: onA
           open={sheetOpen}
           onClose={() => setSheetOpen(false)}
           cardType="supply"
+          action={{ ...supplySave, city, onAdd: onAdd ? () => onAdd(supplyAddPayload()) : undefined }}
+          ask={{ city, subject: itemName }}
           data={{
           ...item,
           ...(typeof item.name === "string" ? { name: cleanedName } : {}),
@@ -2322,32 +2382,25 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd: onA
             {/* Keep bookings on-site (F6): no external "Book" button on the card face.
                 Add to trip is the primary action; the outbound partner link lives inside
                 the details sheet (opened by the card itself) as a small secondary action. */}
-            <PlanActions
-              site="bento"
-              city={city}
-              save={{
-                ...supplySave,
-                testId: `btn-add-supply-${item.id}`,
-                className: cn(buttonVariants({ size: "sm" }), "h-7 text-xs px-3"),
-                style: ADD_BTN_STYLE,
-                icon: <Plus className="w-3 h-3 mr-1" />,
-                onClick: () => onAdd?.(supplyAddPayload()),
-              }}
+            <CardActions
+              item={cardContentItem({ type: isHotel ? "hotel" : "activity", id: String(item.id ?? ""), title: itemName, city, placeable: supplySave.placeable, bookable: false, hasExpert: expertAvailable, detailSheet: true })}
+              add={
+                <PlanActions
+                  site="bento"
+                  city={city}
+                  save={{
+                    ...supplySave,
+                    testId: `btn-add-supply-${item.id}`,
+                    className: cn(buttonVariants({ size: "sm" }), "h-7 text-xs px-3"),
+                    style: ADD_BTN_STYLE,
+                    icon: <Plus className="w-3 h-3 mr-1" />,
+                    onClick: () => onAdd?.(supplyAddPayload()),
+                  }}
+                />
+              }
+              ask={{ testId: `btn-ask-supply-${item.id}`, subject: itemName, className: cn(buttonVariants({ size: "sm", variant: "outline" }), "h-7 text-xs px-2.5") }}
+              details={{ testId: `btn-details-supply-${item.id}`, className: cn(buttonVariants({ size: "sm", variant: "outline" }), "h-7 text-xs px-2.5"), onClick: () => setSheetOpen(true) }}
             />
-            {expertAvailable && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 text-xs px-2.5"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  askExpert({ city, subject: itemName });
-                }}
-                data-testid={`btn-ask-supply-${item.id}`}
-              >
-                Ask an expert
-              </Button>
-            )}
           </div>
         </div>
       </div>
@@ -2355,6 +2408,8 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd: onA
         open={sheetOpen}
         onClose={() => setSheetOpen(false)}
         cardType="supply"
+        action={{ ...supplySave, city, onAdd: onAdd ? () => onAdd(supplyAddPayload()) : undefined }}
+        ask={{ city, subject: itemName }}
         data={{
           ...item,
           ...(typeof item.name === "string" ? { name: cleanedName } : {}),

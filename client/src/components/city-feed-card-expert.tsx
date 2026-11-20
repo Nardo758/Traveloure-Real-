@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { tileActionLabel } from "@/lib/bento-action-state";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { AskExpertButton } from "@/components/ask-expert-button";
 import { Info, Star, MapPin, UserCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useExpertAvailability } from "@/lib/expert-availability";
@@ -318,25 +319,16 @@ export function CityFeedCardExpert({ expert, city, className, cardPosition, dens
             View {expert.firstName || "Expert"}'s profile
           </Button>
           {expertAvailable && (
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 text-xs px-2.5"
-              onClick={(e) => {
-                e.stopPropagation();
-                askExpert({
-                    // Locked Decision 40 (lane 3): the HANDLE addresses this earner; the id is the
-                    // fallback only while the row has no claimed handle.
-                    handle: expert.handle ?? null,
-                    expertId: expert.handle ? null : expert.id,
-                    city,
-                    subject: expertCity || city,
-                  });
-              }}
-              data-testid={`btn-ask-expert-${expert.id}`}
-            >
-              Ask an expert
-            </Button>
+            <AskExpertButton
+              testId={`btn-ask-expert-${expert.id}`}
+              city={city}
+              subject={expertCity || city}
+              className={cn(buttonVariants({ size: "sm", variant: "outline" }), "h-7 text-xs px-2.5")}
+              // An expert's own card names ONE expert: the press goes straight to them (no chooser).
+              // Locked Decision 40 (lane 3): the HANDLE addresses this earner; the id is the fallback only
+              // while the row has no claimed handle.
+              direct={{ handle: expert.handle ?? null, expertId: expert.handle ? null : expert.id }}
+            />
           )}
         </div>
       </div>

@@ -1,4 +1,5 @@
 import { MapPin, Users, Bell, Check, Sparkles, Gem, MessageCircle, Info, Calendar } from "lucide-react";
+import { ASK_EXPERT_COPY } from "@/lib/ask-expert-copy";
 import { useBookingActionsShown } from "@/lib/signup-mode";
 import { Link } from "wouter";
 import { optimizeUnsplashUrl, unsplashResponsiveProps } from "@/lib/unsplash";
@@ -297,7 +298,7 @@ export function CityCard(props: CityCardProps) {
               data-testid={`source-experts-${cityName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")}`}
             >
               {expertsCount > 0 ? <Users className="h-3.5 w-3.5" /> : <MessageCircle className="h-3.5 w-3.5" />}
-              {expertsCount > 0 ? `${expertsCount} local experts` : "Ask a trip planner"}
+              {expertsCount > 0 ? `${expertsCount} local experts` : ASK_EXPERT_COPY.button}
             </Link>
           </div>
         )}
@@ -342,9 +343,8 @@ export function CityCard(props: CityCardProps) {
               onClick={(e) => { e.stopPropagation(); onAsk(); }}
               className="inline-flex items-center gap-1 text-[12px] font-semibold text-[var(--earn-teal-ink)] bg-[color:var(--earn-teal-wash)] hover:brightness-95 rounded-lg px-2.5 py-2 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--earn-teal)]"
               data-testid={testId ? `${testId}-ask` : undefined}
-              aria-label="Ask an expert"
             >
-              <MessageCircle className="w-3.5 h-3.5" />Ask
+              <MessageCircle className="w-3.5 h-3.5" />{ASK_EXPERT_COPY.button}
             </button>
           )}
         </div>

@@ -80,9 +80,9 @@ describe("row 302a — cards read tileActionLabel", () => {
     assert.equal(primaryText(render(<CityFeedCardSupply item={supply} kind="supply-hotel" city={CITY} density="compact" onAdd={() => {}} />)), "Add to plan");
     assert.equal(primaryText(render(<CityFeedCardVendorService service={service} city={CITY} density="compact" compactActionState="platform" onAdd={() => {}} />)), "Check availability");
     assert.equal(primaryText(render(<CityFeedCardVendorService service={service} city={CITY} density="compact" compactActionState="not-bookable" onAdd={() => {}} />)), "Add to plan");
-    assert.equal(primaryText(render(<CityFeedCardExpert expert={expert} city={CITY} density="compact" />, { expertAvailable: true })), "Ask this expert");
+    assert.equal(primaryText(render(<CityFeedCardExpert expert={expert} city={CITY} density="compact" />, { expertAvailable: true })), "Ask an expert");
     assert.equal(primaryText(render(<CityFeedCardExpert expert={expert} city={CITY} density="compact" />)), "View profile");
-    assert.equal(primaryText(render(<ExpertCard expert={expert} variant="anchor" />, { expertAvailable: true })), "Ask this expert");
+    assert.equal(primaryText(render(<ExpertCard expert={expert} variant="anchor" />, { expertAvailable: true })), "Ask an expert");
     assert.equal(primaryText(render(<ExpertCard expert={expert} variant="anchor" />)), "View profile");
     assert.equal(primaryText(render(<FeedEarnCard city={CITY} density="compact" />)), "Apply");
     const wanted = { kind: "wanted-slot" as const, id: "w1", data: { offeringLabel: "Local guide", offeringKey: "guide", neighborhoodName: "Gion", neighborhoodSlug: "gion", city: CITY, neighborhoodId: "gion" } };

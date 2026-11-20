@@ -97,11 +97,12 @@ test("rule 2b: an expert with nobody available offers View profile, not a bare D
   assert.equal(got.primary?.labelKey, "view_profile", "its own label key, same destination");
 });
 
-test("rule 1b: a bookable hotel is Book when open and signed in, and Add otherwise", () => {
+test("rule 1b: a bookable hotel is Book in open mode (signed in or not), and Add in waitlist mode", () => {
   const hotel = item({ type: "hotel", bookable: true, priced: true });
   assert.equal(resolveActions(hotel, card()).primary?.key, "book", "open + signed in");
   assert.equal(resolveActions(hotel, card({ mode: "waitlist", signedIn: false })).primary?.key, "add", "waitlist");
-  assert.equal(resolveActions(hotel, card({ signedIn: false, mode: "open" })).primary?.key, "add", "signed-out guest");
+  // Ruled (Leon, Nov 19): a signed-out visitor in open mode sees Book; the press asks them to sign in.
+  assert.equal(resolveActions(hotel, card({ signedIn: false, mode: "open" })).primary?.key, "book", "signed-out visitor, open mode");
 });
 
 test("rule 3b: the heart is signed-in only, and a waitlist guest's write is Add", () => {
@@ -138,9 +139,12 @@ test("R755: a compact bento tile draws exactly one action and no secondaries", (
   assert.equal(got.itemMenu, undefined, "the 4+1 menu belongs to the plan surface only");
 });
 
-test("guardrail 1+2: no priced or provider-submitting control on the guest path", () => {
+test("guardrail 1+2: no priced or provider-submitting control in waitlist mode, signed in or not", () => {
   const bookable = item({ type: "listing", bookable: true, priced: true });
-  for (const ctx of [card({ mode: "waitlist" }), card({ signedIn: false }), { mode: "open" as const, signedIn: false, surface: "card" as const }]) {
+  // Ruled (Leon, Nov 19): the guest path this guards is the WAITLIST rail. Open mode draws Book for a signed-out
+  // visitor too (rule 1b); the sign-in gate is on the press.
+  assert.equal(bookAllowed(bookable, { mode: "open", signedIn: false, surface: "card" }), true);
+  for (const ctx of [card({ mode: "waitlist" }), card({ mode: "waitlist", signedIn: false })]) {
     const got = resolveActions(bookable, ctx);
     const keys = [got.primary?.key, ...got.secondary.map((a) => a.key)];
     assert.ok(!keys.includes("book"), "no Book");

@@ -242,7 +242,7 @@ describe("row 302b — one primary action per bento kind", () => {
     assertOnePrimary(ask, "expert ask");
     assert.match(ask, /data-testid="btn-ask-expert-ex-1"/);
     assert.equal(ask.includes("btn-contact-expert-"), false);
-    assert.ok(text(ask).includes("Ask this expert"), "row 302a label");
+    assert.ok(text(ask).includes("Ask an expert"), "row 302a label");
 
     const view = render(<CityFeedCardExpert expert={expert} city={CITY} density="compact" />);
     assertOnePrimary(view, "expert view");
@@ -255,7 +255,7 @@ describe("row 302b — one primary action per bento kind", () => {
     const plan = render(<ExpertCard expert={expert} variant="anchor" />, { expertAvailable: true });
     assertOnePrimary(plan, "anchor plan");
     assert.match(plan, /data-testid="button-plan-with-expert"/);
-    assert.ok(text(plan).includes("Ask this expert"), "row 302a label");
+    assert.ok(text(plan).includes("Ask an expert"), "row 302a label");
     assert.equal(text(plan).includes("Plan with"), false);
     assert.equal(plan.includes("button-view-profile"), false);
 
