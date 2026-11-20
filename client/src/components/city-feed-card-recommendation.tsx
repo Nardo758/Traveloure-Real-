@@ -29,7 +29,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useGemPhoto } from "@/hooks/use-gem-photo";
 import { useExpertAvailability } from "@/lib/expert-availability";
-import { useAskExpert } from "@/lib/use-ask-expert";
+import { AskExpertButton } from "@/components/ask-expert-button";
 import type { BentoCompactActionState } from "@/lib/bento-action-state";
 
 export interface RecommendationCandidate {
@@ -130,7 +130,6 @@ export function CityFeedCardRecommendation({
   // Why-recommended disclosure modal — opened by the CARD itself (family
   // grammar: the card is the link; no "More info" text link).
   const [infoOpen, setInfoOpen] = useState(false);
-  const askExpert = useAskExpert();
   // SH-1 item 11: the Ask CTA draws only when the server says this city has an expert to ask.
   const expertAvailable = useExpertAvailability({ city });
   const name = resolveRecommendationName(candidate);
@@ -246,18 +245,7 @@ export function CityFeedCardRecommendation({
       <div className="flex gap-1.5 pt-0.5 flex-wrap">
         {recActions({ testId: `btn-book-rec-${position}`, className: cn(buttonVariants({ size: "sm" }), "h-7 text-xs px-3") })}
         {expertAvailable && (
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-7 text-xs px-2.5"
-            onClick={(e) => {
-              e.stopPropagation();
-              askExpert({ city, subject: name });
-            }}
-            data-testid={`btn-ask-rec-${position}`}
-          >
-            Ask an expert
-          </Button>
+          <AskExpertButton testId={`btn-ask-rec-${position}`} city={city} subject={name} className={cn(buttonVariants({ size: "sm", variant: "outline" }), "h-7 text-xs px-2.5")} />
         )}
 
         {/* "Why recommended" disclosure modal — opened by clicking the card

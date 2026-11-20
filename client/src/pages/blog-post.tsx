@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ASK_EXPERT_COPY } from "@/lib/ask-expert-copy";
 import { Link, useLocation, useRoute } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSignupMode } from "@/lib/signup-mode";
@@ -197,7 +198,7 @@ function AskTheLocal({ post }: { post: PublicBlogPost }) {
     <section className="mt-8 rounded-lg border p-5" data-testid="section-blog-ask-local">
       <p className="font-medium">Have a question for {post.byline!.displayName}?</p>
       <Button className="mt-3" onClick={ask} disabled={pending} data-testid="button-blog-ask-local">
-        <MessageCircle className="w-4 h-4 mr-2" /> Ask the local
+        <MessageCircle className="w-4 h-4 mr-2" /> {ASK_EXPERT_COPY.button}
       </Button>
       {failed && (
         <p className="mt-2 text-sm text-muted-foreground" data-testid="text-blog-ask-failed">
