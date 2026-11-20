@@ -117,3 +117,20 @@ export function rangeSummary(range: DayRange): string | null {
   if (a.slice(0, 7) === b.slice(0, 7)) return `${short(a)}–${Number(b.slice(8, 10))}`;
   return `${short(a)} – ${short(b)}`;
 }
+
+/**
+ * True when `day`'s cell is on screen while the calendar shows `year`/`monthIndex` (0-11): the month's own days
+ * plus the neighbouring months' days that fill its first and last weeks (weeks start on Sunday, as drawn).
+ * The calendar uses it to follow a start date that something OTHER than a tap moved off screen - a tap can
+ * only land on a cell that is already drawn. An unreadable day is "shown": nothing to follow.
+ */
+export function monthGridShowsDay(year: number, monthIndex: number, day: string | null | undefined): boolean {
+  if (dayNumber(day) == null) return true;
+  const [y, m, d] = String(day).split("-").map(Number);
+  const at = Date.UTC(y, m - 1, d);
+  const first = new Date(Date.UTC(year, monthIndex, 1));
+  const last = new Date(Date.UTC(year, monthIndex + 1, 0));
+  const gridStart = first.getTime() - first.getUTCDay() * 86_400_000;
+  const gridEnd = last.getTime() + (6 - last.getUTCDay()) * 86_400_000;
+  return at >= gridStart && at <= gridEnd;
+}
