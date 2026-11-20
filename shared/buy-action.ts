@@ -286,6 +286,13 @@ function landOnPlan(row: BuyActionRow, buyer: BuyActionBuyer): BuyLanding {
  * WHAT a listing row is, from its own stated facts — first match wins, most specific first.
  * The composite shapes (bundle, stay) outrank the category, the category outranks the method.
  */
+/**
+ * F3 (Leon, Nov 19): the add's ONE wording. "Add to plan" is the approved add label on every surface (Nov 10;
+ * the client's `ADD_COPY.addToPlan`, pinned equal by `f3-add-wording.test.ts`). The Nov 6 "Save to plan" stays
+ * only on the in-plan waitlist stand-ins that were approved with it.
+ */
+export const ADD_TO_PLAN_LABEL = "Add to plan";
+
 export function listingSubject(row: BuyActionRow): BuySubject | undefined {
   if (row.productShape === "bundle") return "bundle";
   if (isStay({ productShape: row.productShape, pricingUnit: row.pricingUnit })) return "stay";
@@ -447,7 +454,7 @@ function resolveBuyActionTable(row: BuyActionRow, buyer: BuyActionBuyer): BuyAct
   // 10 · info-only listing: nothing to book, but it can still be planned around.
   if (row.bookability === "info_only") {
     return {
-      primary: { kind: "add_to_plan", label: "Save to plan" },
+      primary: { kind: "add_to_plan", label: ADD_TO_PLAN_LABEL },
       secondary: MESSAGE,
       ask: planAsks,
       landing: landOnPlan(row, buyer),
@@ -467,7 +474,7 @@ function resolveBuyActionTable(row: BuyActionRow, buyer: BuyActionBuyer): BuyAct
   if (row.priceType === "custom_quote") {
     return {
       primary: { kind: "request_quote", label: "Request a quote" },
-      secondary: { kind: "add_to_plan", label: "Save to plan" },
+      secondary: { kind: "add_to_plan", label: ADD_TO_PLAN_LABEL },
       ask: [...planAsks, "party"],
       landing: {
         store: "booking_request",
@@ -488,7 +495,7 @@ function resolveBuyActionTable(row: BuyActionRow, buyer: BuyActionBuyer): BuyAct
   if (requestMode || instantNoAvailability || instantNoPrice) {
     return {
       primary: { kind: "request_to_book", label: "Request to book" },
-      secondary: { kind: "add_to_plan", label: "Save to plan" },
+      secondary: { kind: "add_to_plan", label: ADD_TO_PLAN_LABEL },
       ask: [...planAsks, "party"],
       landing: {
         store: "booking_request",
@@ -510,7 +517,7 @@ function resolveBuyActionTable(row: BuyActionRow, buyer: BuyActionBuyer): BuyAct
   if (row.bookingMode === "instant" && scheduled && row.hasPublishedAvailability === true) {
     return {
       primary: { kind: "book", label: "Book" },
-      secondary: { kind: "add_to_plan", label: "Save to plan" },
+      secondary: { kind: "add_to_plan", label: ADD_TO_PLAN_LABEL },
       // A STAY picks a check-in -> check-out range, never a time slot.
       ask: [...planAsks, stay ? "dates" : "slot", "party"],
       landing: {
@@ -528,7 +535,7 @@ function resolveBuyActionTable(row: BuyActionRow, buyer: BuyActionBuyer): BuyAct
   if (row.bookingMode === "instant" && artifactOrAsync) {
     return {
       primary: { kind: "book", label: "Book" },
-      secondary: { kind: "add_to_plan", label: "Save to plan" },
+      secondary: { kind: "add_to_plan", label: ADD_TO_PLAN_LABEL },
       ask: planAsks,
       landing: { store: "checkout", timed: false, placeAnchored: false, forksFinal: false },
     };
@@ -542,7 +549,7 @@ function resolveBuyActionTable(row: BuyActionRow, buyer: BuyActionBuyer): BuyAct
   //      `instant` scheduled listing whose availability the payload could not state; and an
   //      unclassifiable row (no delivery method and no product shape).
   return {
-    primary: { kind: "add_to_plan", label: "Save to plan" },
+    primary: { kind: "add_to_plan", label: ADD_TO_PLAN_LABEL },
     secondary: MESSAGE,
     ask: planAsks,
     landing: landOnPlan(row, buyer),
