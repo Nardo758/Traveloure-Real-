@@ -498,14 +498,25 @@ export class ItineraryIntelligenceService {
     return this.updateItem(itemId, { backupPlanId: backupItemId });
   }
 
+  /**
+   * Writes `sort_order` for the listed stops of ONE day of ONE plan. An id that is not this plan's stop on
+   * that day is never written (Leon, Nov 20, 2026): the route refuses such a list outright, and this is the
+   * same rule for the callers that do not come through the route (an accepted `move` suggestion).
+   */
   async reorderItems(tripId: string, dayNumber: number, itemIds: string[]): Promise<ItineraryItem[]> {
+    const onDay = new Set(
+      (await db.select({ id: itineraryItems.id }).from(itineraryItems)
+        .where(and(eq(itineraryItems.tripId, tripId), eq(itineraryItems.dayNumber, dayNumber))))
+        .map((row) => row.id),
+    );
     const results: ItineraryItem[] = [];
-    
+
     for (let i = 0; i < itemIds.length; i++) {
+      if (!onDay.has(itemIds[i])) continue;
       const updated = await this.updateItem(itemIds[i], { sortOrder: i });
       if (updated) results.push(updated);
     }
-    
+
     return results;
   }
 }
