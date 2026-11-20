@@ -1,5 +1,7 @@
 import { CANCELLATION_TIER_LABELS } from "@shared/cancellation-schedule";
-import { announceTripAdd } from "@/lib/plan-add-runner";
+import { announceTripAdd, runGuestAdd } from "@/lib/plan-add-runner";
+import { savedRefKey } from "@/lib/saved-refs";
+import { GUEST_PLAN_COPY } from "@shared/guest-plan-copy";
 import { useEffect, useRef, useState } from "react";
 import { BUY_NOW_CART_PATH } from "@/lib/cart-intent";
 import { stopsPlaced } from "@/lib/itinerary-wording";
@@ -72,7 +74,7 @@ import { syncActiveTripToContext } from "@/lib/trip-selection";
 // descriptor's (§18 rule 1 — a second opinion about which verb to show is how the page came to
 // offer purchases the server refuses). `addedTitle` stays: a toast is not a buy button.
 import { serviceDetailBuyRender, serviceDetailTrustPanel, withoutBookingActions } from "@/lib/service-buy-action";
-import { useBookingActionsShown } from "@/lib/signup-mode";
+import { useBookingActionsShown, useSignupMode } from "@/lib/signup-mode";
 import { useTrips } from "@/hooks/use-trips";
 import { isActivePlan } from "@/lib/add-target";
 import { ConciergeHireDialog, ConciergeListingDetails, type ConciergeTaskView } from "@/components/concierge-hire";
@@ -594,6 +596,7 @@ export default function ServiceDetailPage() {
   const [pendingAdd, setPendingAdd] = useState<{ kind: "service" | "room"; proceed: boolean; tripId: string } | null>(null);
   // Lane 2 (A-3 / A-28): the shared rule, read with the page's other hooks (before any early return).
   const bookingShown = useBookingActionsShown();
+  const { mode: signupMode } = useSignupMode();
   // RC-2 (ledger 2026-09-24-rc2-add-to-plan): a signed-in member with no single target is asked
   // WHICH plan (or to start one) — never handed a trip-less cart row. A picked plan is bound as the
   // current plan, and the add then re-enters `beginAdd` once `targetTripId` IS that plan, so the
@@ -603,6 +606,8 @@ export default function ServiceDetailPage() {
   const [pickForAdd, setPickForAdd] = useState<{ kind: "service" | "room"; proceed: boolean } | null>(null);
   const [resumeAdd, setResumeAdd] = useState<{ kind: "service" | "room"; proceed: boolean; tripId: string } | null>(null);
   const [heldAdd, setHeldAdd] = useState<{ kind: "service" | "room"; proceed: boolean } | null>(null);
+  // F3: a waitlist guest's add is in flight (declared here, above the loading returns; used by `addForGuest`).
+  const [guestAdding, setGuestAdding] = useState(false);
   const startPlanThenAdd = useStartPlanThenAdd();
   // `beginAdd` is declared below the page's loading returns, so the effect reaches it by ref.
   const beginAddRef = useRef<((kind: "service" | "room", proceed: boolean) => void) | null>(null);
@@ -1166,6 +1171,25 @@ export default function ServiceDetailPage() {
       add,
     );
 
+  // F3 (Leon, Nov 19): a waitlist guest's add on this page is a real guest-plan write through the one add
+  // runner - the same write the /services card makes for the same listing - never a sign-in wall. The ref names
+  // the listing row; the resolver reads its name and point.
+  const addForGuest = async () => {
+    const city = (service.location ?? "").trim();
+    if (!city || city === "Unknown" || guestAdding) {
+      // No city to start the plan in: say nothing was saved rather than claim one.
+      if (!guestAdding) toast({ variant: "destructive", title: GUEST_PLAN_COPY.saveFailed });
+      return;
+    }
+    setGuestAdding(true);
+    try {
+      const ref = { kind: "listing" as const, source_id: String(service.id), city };
+      await runGuestAdd({ key: savedRefKey(ref), ref, city, chosenDate: null });
+    } finally {
+      setGuestAdding(false);
+    }
+  };
+
   /**
    * THE ONE DOOR for both of this page's plan writes (the service add, and the room rung's night
    * range). Two lanes landed a guard on these same four buttons — the location-mismatch confirm
@@ -1192,7 +1216,9 @@ export default function ServiceDetailPage() {
    */
   const beginAdd = (kind: "service" | "room", proceed: boolean) => {
     if (!user) {
-      openSignInModal();
+      // The plain add of the listing itself. A room, or an add that proceeds to checkout, keeps the sign-in door.
+      if (signupMode === "waitlist" && kind === "service" && !proceed) void addForGuest();
+      else openSignInModal();
       return;
     }
     // The open-plan list has not answered. Hold the click; the effect above re-enters this door.
