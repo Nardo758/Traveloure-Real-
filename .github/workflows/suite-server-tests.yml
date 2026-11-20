@@ -152,6 +152,13 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
 
+      # F8 (#1243): a reversed Connect transfer returns earnings to payable.
+      - name: f8 transfer reversal
+        if: ${{ !cancelled() }}
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/f8-transfer-reversal.db.test.ts
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+
       - name: stripe-no-backward (F7)
         if: ${{ !cancelled() }}
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/stripe-no-backward.db.test.ts
