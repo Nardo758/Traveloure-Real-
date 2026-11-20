@@ -755,6 +755,8 @@ export function EventSheetBody({ data, action }: { data: any; action?: MoreInfoS
 function MoreInfoSheet({ open, onClose, cardType, data, saveItem, action, ask }: MoreInfoSheetProps) {
   const isDesktopPanel = useIsDesktopPanel();
   const askAvailable = useExpertAvailability({ city: ask?.city ?? null });
+  // F4: the event sheet's body draws its own add (`EventSheetBody`); a gem's or a place's is drawn in the row above it.
+  const sheetAdd = cardType !== "event" && action?.onAdd ? action : null;
   // Thin gem detail (2026-08-29 Replit-audit ruling 3): the sheet renders the
   // ruled TEASER set only. Address, the locals-vs-tourists popularity ratio,
   // the "goes mainstream" forecast and the discovery status were REMOVED —
@@ -992,10 +994,36 @@ function MoreInfoSheet({ open, onClose, cardType, data, saveItem, action, ask }:
           <SheetTitle className="text-left text-[17px] leading-snug pr-8">{titleMap[cardType]}</SheetTitle>
         </SheetHeader>
         {ask ? (
-          <div className="flex gap-1.5 pb-1">
+          <div className="flex gap-1.5 pb-1 flex-wrap items-center">
             <CardActions
               surface="sheet"
-              item={cardContentItem({ type: cardType === "gem" ? "gem" : cardType === "event" ? "event" : "activity", id: String(data?.id ?? ""), title: ask.subject, city: ask.city, placeable: false, bookable: false, hasExpert: askAvailable })}
+              item={cardContentItem({
+                type: cardType === "gem" ? "gem" : cardType === "event" ? "event" : "activity",
+                id: String(data?.id ?? ""),
+                title: ask.subject,
+                city: ask.city,
+                // F4: a gem's or a place's sheet offers the add, like the event sheet (whose own body draws it).
+                placeable: sheetAdd?.placeable === true,
+                bookable: false,
+                hasExpert: askAvailable,
+              })}
+              add={
+                sheetAdd ? (
+                  <PlanActions
+                    site="bento"
+                    city={sheetAdd.city ?? ask.city}
+                    save={{
+                      placeable: sheetAdd.placeable,
+                      savedKey: sheetAdd.savedKey,
+                      dayNumber: sheetAdd.dayNumber ?? null,
+                      disabled: sheetAdd.disabled,
+                      testId: `btn-add-${cardType}-sheet-${data?.id ?? ""}`,
+                      className: "inline-flex h-7 items-center rounded-md border border-border px-3 text-xs font-semibold",
+                      onClick: sheetAdd.onAdd,
+                    }}
+                  />
+                ) : null
+              }
               ask={{
                 testId: `btn-ask-sheet-${cardType}-${data?.id ?? ""}`,
                 subject: ask.subject,
@@ -1393,7 +1421,7 @@ export function CityFeedCardGem({
             </div>
           </div>
         </div>
-        <MoreInfoSheet open={sheetOpen} onClose={() => setSheetOpen(false)} cardType="gem" data={gem} saveItem={gemSaveItem} ask={{ city, subject: gem.placeName, direct: gemCurator(gem)?.id ? { expertId: gemCurator(gem)!.id, fallbackName: gemCuratorFullName(gem), fallbackAvatar: gemCurator(gem)?.profileImageUrl ?? null } : null }} />
+        <MoreInfoSheet open={sheetOpen} onClose={() => setSheetOpen(false)} cardType="gem" data={gem} saveItem={gemSaveItem} action={{ ...gemSave, city, onAdd: onAdd ? () => onAdd(gemAddPayload()) : undefined }} ask={{ city, subject: gem.placeName, direct: gemCurator(gem)?.id ? { expertId: gemCurator(gem)!.id, fallbackName: gemCuratorFullName(gem), fallbackAvatar: gemCurator(gem)?.profileImageUrl ?? null } : null }} />
       </>
     );
   }
@@ -1414,7 +1442,7 @@ export function CityFeedCardGem({
         {photoArea}
         {cardBody}
       </div>
-      <MoreInfoSheet open={sheetOpen} onClose={() => setSheetOpen(false)} cardType="gem" data={gem} saveItem={gemSaveItem} ask={{ city, subject: gem.placeName, direct: gemCurator(gem)?.id ? { expertId: gemCurator(gem)!.id, fallbackName: gemCuratorFullName(gem), fallbackAvatar: gemCurator(gem)?.profileImageUrl ?? null } : null }} />
+      <MoreInfoSheet open={sheetOpen} onClose={() => setSheetOpen(false)} cardType="gem" data={gem} saveItem={gemSaveItem} action={{ ...gemSave, city, onAdd: onAdd ? () => onAdd(gemAddPayload()) : undefined }} ask={{ city, subject: gem.placeName, direct: gemCurator(gem)?.id ? { expertId: gemCurator(gem)!.id, fallbackName: gemCuratorFullName(gem), fallbackAvatar: gemCurator(gem)?.profileImageUrl ?? null } : null }} />
     </>
   );
 }
@@ -2242,6 +2270,7 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd: onA
           open={sheetOpen}
           onClose={() => setSheetOpen(false)}
           cardType="supply"
+          action={{ ...supplySave, city, onAdd: onAdd ? () => onAdd(supplyAddPayload()) : undefined }}
           ask={{ city, subject: itemName }}
           data={{
           ...item,
@@ -2379,6 +2408,7 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd: onA
         open={sheetOpen}
         onClose={() => setSheetOpen(false)}
         cardType="supply"
+        action={{ ...supplySave, city, onAdd: onAdd ? () => onAdd(supplyAddPayload()) : undefined }}
         ask={{ city, subject: itemName }}
         data={{
           ...item,
