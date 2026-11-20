@@ -91,10 +91,12 @@ test("C2 Ask an expert opens the chooser with the three approved options", async
   await expect(options).toHaveText(["Ask a local", "Ask a trip planner", "Ask an event planner"]);
   await expect(page.getByTestId("button-service-ask-svc-f1"), "the card behind is unchanged").toHaveCount(1);
   expect(new URL(page.url()).pathname, "no navigation and no sign-in wall before a choice").toBe("/services");
+  await page.waitForTimeout(500); // let the dialog's open animation finish before the picture
   await page.screenshot({ path: path.join(OUT_DIR, "ask-chooser-1280.png") });
 
   await page.setViewportSize(PHONE);
   await expect(chooser).toBeVisible();
+  await page.waitForTimeout(500); // let the dialog's open animation finish before the picture
   await page.screenshot({ path: path.join(OUT_DIR, "ask-chooser-390.png") });
 });
 
