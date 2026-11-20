@@ -65,6 +65,11 @@ export interface ContentItem {
   hasExpert: boolean;
   /** In-app path. */
   detailHref: string | null;
+  /**
+   * F1 (Leon, Nov 19): the card's Details is its OWN in-app detail sheet, not a page - a city-feed gem, event or
+   * place. Details draws for either; only a `detailHref` gives the action an `href`.
+   */
+  detailSheet?: boolean;
   officialUrl: string | null;
   /** null = not an official-source row. */
   publicOk: boolean | null;
@@ -166,7 +171,14 @@ export type AskChoiceKind = (typeof ASK_CHOICES)[number]["kind"];
  * opens the chooser above, then the chosen rail (and, for a guest, the existing sign-in gate after the tap).
  */
 export function askExpertAllowed(item: ContentItem, ctx: ActionContext): boolean {
-  return item.hasExpert === true && item.type === "expert";
+  // F1 (Leon, Nov 19): every card whose city has an expert offers the ask, not only an expert's own card
+  // (spec section 4: "Shows when: hasExpert").
+  return item.hasExpert === true;
+}
+
+/** Details has somewhere in-app to go: the item's page, or the card's own detail sheet. */
+export function detailsAllowed(item: ContentItem): boolean {
+  return !!item.detailHref || item.detailSheet === true;
 }
 
 export function saveAllowed(item: ContentItem, ctx: ActionContext): boolean {
@@ -209,12 +221,12 @@ export function primaryKeyFor(item: ContentItem, ctx: ActionContext): ActionKey 
     case "event":
     case "city_event":
     case "activity":
-      return addAllowed(item, ctx) ? "add" : item.detailHref ? "details" : null;
+      return addAllowed(item, ctx) ? "add" : detailsAllowed(item) ? "details" : null;
     case "hotel":
     case "listing":
     case "affiliate_product":
       if (bookAllowed(item, ctx)) return "book";
-      return addAllowed(item, ctx) ? "add" : item.detailHref ? "details" : null;
+      return addAllowed(item, ctx) ? "add" : detailsAllowed(item) ? "details" : null;
     case "expert":
       // "Ask an expert", or View profile when nobody is available for the city. Both are Details-shaped when
       // there is no Ask: the labelKey differs, the destination does not.
@@ -258,7 +270,7 @@ export function resolveActions(item: ContentItem, ctx: ActionContext): ResolvedA
   const available: ActionKey[] = [];
   if (addAllowed(item, ctx)) available.push("add");
   if (askExpertAllowed(item, ctx)) available.push("ask_expert");
-  if (item.detailHref) available.push("details");
+  if (detailsAllowed(item)) available.push("details");
   if (bookAllowed(item, ctx)) available.push("book");
   if (saveAllowed(item, ctx)) available.push("save");
   if (shareAllowed(item, ctx)) available.push("share");

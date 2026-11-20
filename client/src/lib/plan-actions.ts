@@ -32,6 +32,8 @@ export const PLAN_ACTIONS_COPY = {
   savedToPlan: ADD_COPY.added,
   /** HELD */
   moreInfo: "More info",
+  /** F1 (Leon, Nov 19): the in-app Details action. "Details" is the approved word (LL, Nov 13; the stop menu's own). */
+  details: "Details",
   /** HELD — instant booking */
   book: "Book",
   /** HELD — existing words, request-mode listing or the booking-agent rail */
