@@ -47,7 +47,6 @@ describe("tileAction (row 302a)", () => {
   it("the label constants are the ruled words", () => {
     assert.deepEqual(TILE_ACTION_COPY, {
       getThisTrip: "Get this trip",
-      askThisExpert: "Ask this expert",
       viewProfile: "View profile",
       apply: "Apply",
     });
@@ -75,8 +74,8 @@ describe("tileAction (row 302a)", () => {
   });
 
   it("context picks the ask variant", () => {
-    assert.equal(tileActionLabel("expert", { canAsk: true }), "Ask this expert");
-    assert.equal(tileActionLabel("lead-expert", { canAsk: true }), "Ask this expert");
+    assert.equal(tileActionLabel("expert", { canAsk: true }), "Ask an expert");
+    assert.equal(tileActionLabel("lead-expert", { canAsk: true }), "Ask an expert");
   });
 
   it("package is Get this trip and goes to the ready-made detail page", () => {

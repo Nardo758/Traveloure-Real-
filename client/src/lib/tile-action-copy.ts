@@ -5,7 +5,6 @@
  */
 export const TILE_ACTION_COPY = {
   getThisTrip: "Get this trip",
-  askThisExpert: "Ask this expert",
   viewProfile: "View profile",
   apply: "Apply",
 } as const;

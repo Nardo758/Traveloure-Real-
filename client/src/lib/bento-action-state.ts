@@ -1,5 +1,6 @@
 import type { FeedItem } from "./feed-stream";
 import { TILE_ACTION_COPY } from "./tile-action-copy";
+import { ASK_EXPERT_COPY } from "./ask-expert-copy";
 
 /**
  * The compact Bento action grammar is intentionally decided from the composed
@@ -90,7 +91,7 @@ export function tileActionLabel(kind: FeedItem["kind"], ctx: TileActionContext =
       return TILE_ACTION_COPY.getThisTrip;
     case "expert":
     case "lead-expert":
-      return ctx.canAsk ? TILE_ACTION_COPY.askThisExpert : TILE_ACTION_COPY.viewProfile;
+      return ctx.canAsk ? ASK_EXPERT_COPY.button : TILE_ACTION_COPY.viewProfile;
     case "wanted-slot":
     case "earn-card":
       return TILE_ACTION_COPY.apply;
