@@ -83,6 +83,10 @@ async function legs(): Promise<any[]> {
   return (await db.execute(sql`SELECT * FROM transport_legs WHERE trip_id = ${PLAN} ORDER BY day_number, leg_order`)).rows as any[];
 }
 const close = (a: unknown, b: number) => Math.abs(Number(a) - b) < 1e-6;
+// The plan's one day, a month ahead of the run. It was the fixed date 2026-11-20, and the engine never routes a
+// day that is already over (P0 ruling 3) - so R1 went red for good the moment that day ended in Asia/Tokyo
+// (2026-11-20T15:00Z). A date relative to the run cannot expire.
+const PLAN_DATE = new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10);
 
 before(async () => {
   assertDisposableDb();
@@ -90,7 +94,7 @@ before(async () => {
     await db.execute(sql`INSERT INTO users (id, email, first_name, last_name, role) VALUES (${u}, ${`${u}@t.test`}, 'T', 'C', 'traveler')`);
   }
   await db.execute(sql`INSERT INTO trips (id, user_id, title, destination, market_slug, timezone, start_date, end_date, status, dates_confirmed_at)
-    VALUES (${PLAN}, ${owner}, 'TC3a', 'Kyoto, Japan', 'kyoto', 'Asia/Tokyo', '2026-11-20', '2026-11-20', 'draft', now())`);
+    VALUES (${PLAN}, ${owner}, 'TC3a', 'Kyoto, Japan', 'kyoto', 'Asia/Tokyo', ${PLAN_DATE}, ${PLAN_DATE}, 'draft', now())`);
   await db.execute(sql`INSERT INTO trip_entitlements (id, trip_id, plan_key, status, source) VALUES (${`${PLAN}-pass`}, ${PLAN}, 'trip_pass', 'active', 'manual')`);
   await item("a", 0, P(0, 0), "09:00", "10:00");
   await item("c", 1, P(0.06, 0.05), "13:00", "14:00");
