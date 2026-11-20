@@ -68,6 +68,60 @@ export interface OptimizerLeadProps {
   /** The "Local expert" button's testid. The slip passes `slip-action-hire-expert`: the board puts the
    *  slip's one handoff door here once the rail is gone (ledger `2026-10-08-slip-main-rail`). */
   localExpertTestId?: string;
+  /**
+   * Frame lift (Leon, Nov 19, 2026): `"none"` draws the card WITHOUT its own two buttons. The slip passes it
+   * because the page frame's action row is the one place Optimize is pressed and the one place the expert
+   * chooser opens; the row draws the Optimize control with `OptimizeAction` below. Every line of the card
+   * that is not a button stays. Board tone only; default `"inline"` (the versions page keeps its CTA).
+   */
+  actions?: "inline" | "none";
+}
+
+export interface OptimizeActionProps {
+  fee: OptimizationFeeQuote | null | undefined;
+  onClick: () => void;
+  testId?: string;
+  busy?: boolean;
+  disabledReason?: string | null;
+  ctaLabelOverride?: string | null;
+  drafted?: boolean;
+  className?: string;
+}
+
+/**
+ * Frame lift: THE Optimize control, as the page frame's action row draws it. It follows the card's own three
+ * rules and adds none: no draft yet -> disabled, with "Draft first" as its reason; Optimize unavailable
+ * (`optimizeUnavailable`) -> nothing is drawn (the card says why); otherwise the label is
+ * `optimizeBoardCtaLabel(fee)` unless a busy override is passed, disabled while busy or while
+ * `disabledReason` is set, with that reason as the title. The handler is the caller's.
+ */
+export function OptimizeAction({
+  fee,
+  onClick,
+  testId = "slip-action-optimize",
+  busy = false,
+  disabledReason,
+  ctaLabelOverride,
+  drafted = true,
+  className,
+}: OptimizeActionProps) {
+  if (!drafted) {
+    return (
+      <span title={LEAD_DRAFT_FIRST} className="inline-flex">
+        <button type="button" className={className} disabled data-testid={testId}>
+          {optimizeBoardCtaLabel(fee)}
+        </button>
+      </span>
+    );
+  }
+  if (optimizeUnavailable(fee)) return null;
+  return (
+    <span title={disabledReason ?? undefined} className="inline-flex">
+      <button type="button" className={className} onClick={onClick} disabled={!!disabledReason || busy} data-testid={testId}>
+        {ctaLabelOverride ?? optimizeBoardCtaLabel(fee)}
+      </button>
+    </span>
+  );
 }
 
 /** A Moment's zero line: LEAD_ZERO without "around where you stay" (§13). */
@@ -240,6 +294,7 @@ function BoardOptimizerLead({
   noStay = false,
   onLocalExpert = null,
   localExpertTestId = "optimizer-lead-local-expert",
+  actions = "inline",
 }: OptimizerLeadProps) {
   const cta = "flex h-12 flex-1 items-center justify-center gap-1.5 rounded-[var(--slip-radius-button)] bg-[color:var(--slip-primary)] px-4 text-[15px] font-semibold text-[color:var(--slip-primary-ink)] hover:brightness-95 disabled:opacity-60";
   const quiet = "text-xs leading-normal text-[color:var(--slip-on-navy-muted)]";
@@ -262,6 +317,7 @@ function BoardOptimizerLead({
         <p className="text-sm text-white" data-testid="optimizer-lead-draft-first">
           {LEAD_DRAFT_FIRST}
         </p>
+        {actions === "none" ? null : (
         <div className="flex gap-2.5">
           <span title={LEAD_DRAFT_FIRST} className="flex flex-1">
             <button type="button" className={cta} disabled data-testid={testId}>
@@ -271,6 +327,7 @@ function BoardOptimizerLead({
           </span>
           {secondary}
         </div>
+        )}
       </section>
     );
   }
@@ -340,6 +397,7 @@ function BoardOptimizerLead({
           {OPTIMIZE_UNAVAILABLE}
         </p>
       ) : null}
+      {actions === "none" ? null : (
       <div className="flex gap-2.5">
         {optimizeUnavailable(fee) ? null : (
         <span title={disabledReason ?? undefined} className="flex flex-1">
@@ -351,6 +409,7 @@ function BoardOptimizerLead({
         )}
         {secondary}
       </div>
+      )}
       {optimizeUnavailable(fee) || none || noStay ? null : (
         <p className={quiet} data-testid="optimizer-lead-versions">
           {LEAD_VERSIONS}
