@@ -93,7 +93,7 @@ import { stripePaymentService } from "../services/stripe-payment.service";
 import {
   itineraryItemIsMoneyCommitted,
 } from "../services/itinerary-rebuild-guard";
-import { ITEM_BOOKED_DELETE_ERROR } from "@shared/itinerary-item-money";
+import { ITEM_BOOKED_DELETE_ERROR, ITEM_BOOKED_MOVE_ERROR, bookedItemDayMoveRefused } from "@shared/itinerary-item-money";
 // The ONE writer and the ONE reader of a plan's ordered stops (migration 281, Locked Decision 34).
 // The mirror rule — position 0's name IS `trips.destination` — lives there, not here.
 import {
@@ -3256,6 +3256,11 @@ router.patch("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, asyn
       // advisor's edit becomes a suggestion at the point of write below, before and after approval.
       const existing = await storage.getItineraryItemByIdAndTrip(itemId, tripId);
       if (!existing) return res.status(404).json({ message: "Item not found in this trip" });
+      // A BOOKED STOP DOES NOT CHANGE DAY (Leon, Nov 20, 2026). Role-blind and before any write or filed
+      // suggestion, like the delete refusal below: the same one predicate, the Move sheet's own sentence.
+      if (bookedItemDayMoveRefused(existing, (req.body as any)?.dayNumber)) {
+        return res.status(409).json(ITEM_BOOKED_MOVE_ERROR);
+      }
       // Strip immutable/ownership fields to prevent mass-assignment. `origin` (D2, ratified Aug 7
       // 2026) is provenance stamped only at CREATE time — a PATCH must never let a client
       // retroactively rewrite it.
