@@ -21,7 +21,7 @@
  * 375px budget: seven 36px day cells + the calendar's 12px padding each side = 276px, inside the
  * 343px a phone gives after its 16px gutters. One month is shown at every width.
  */
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
@@ -30,6 +30,7 @@ import {
   LEAVE_BEFORE_ARRIVE_MESSAGE,
   dayNumber,
   dayFromNumber,
+  monthGridShowsDay,
   nextRange,
   rangeSummary,
   validateRange,
@@ -87,6 +88,15 @@ export function PlanDatesCalendar({
   const from = toLocalDate(value.start);
   const to = toLocalDate(value.end);
   const [month, setMonth] = useState<Date>(() => from ?? toLocalDate(min) ?? new Date());
+  // The calendar follows the start date (Leon, Nov 20, 2026). A tap can only move the start to a cell that is
+  // already drawn, but a host can move it from outside - plan entry's "days before" field pulls it back into
+  // the previous month - and the calendar then showed a month with no start in it. Keyed on the start alone,
+  // so paging the months by hand is never undone.
+  useEffect(() => {
+    const start = toLocalDate(value.start);
+    if (start && !monthGridShowsDay(month.getFullYear(), month.getMonth(), value.start)) setMonth(start);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value.start]);
 
   const disabled = useMemo(() => {
     const rules: Array<{ before: Date } | { after: Date }> = [];

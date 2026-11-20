@@ -164,3 +164,16 @@ describe("C8 one calendar on every dates surface", () => {
     assert.doesNotMatch(pop, /<Calendar\b|<PlanDatesCalendar/);
   });
 });
+
+describe("C9 the calendar follows a start date moved off screen (Leon, Nov 20, 2026)", () => {
+  const src = readFileSync(new URL("../plan/PlanDatesCalendar.tsx", import.meta.url), "utf8");
+
+  it("shows the start's month when its cell is not drawn, keyed on the start alone", () => {
+    assert.match(src, /if \(start && !monthGridShowsDay\(month\.getFullYear\(\), month\.getMonth\(\), value\.start\)\) setMonth\(start\);/);
+    assert.match(src, /\}, \[value\.start\]\);/);
+  });
+
+  it("paging by hand still owns the month: the picker's own month change is untouched", () => {
+    assert.match(src, /month=\{month\}\s*\n\s*onMonthChange=\{setMonth\}/);
+  });
+});
