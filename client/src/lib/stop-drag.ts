@@ -6,6 +6,9 @@
  * puts that day's stops in the dropped order. A drop inside the stop's own day is the reorder alone. No new
  * route. The reorder list is only ever the target day's own stops, which is what that route accepts.
  *
+ * On a phone (Leon, Nov 21, 2026; board R3_MovePhone) the same drag is a HOLD on the stop: onto a day chip of
+ * the strip above it moves the stop to that day, and onto a place among the shown day's stops reorders them.
+ *
  * "Drop here · Wed, after Tenryu-ji": "Wording approved - Leon" (Nov 20, 2026). A drop ahead of a day's first
  * stop has nothing to be "after" and reads the same line without that clause.
  */
@@ -24,6 +27,11 @@ export interface DragDay {
 export interface DropTarget {
   dayNumber: number;
   afterId: string | null;
+  /**
+   * Dropped on a DAY (the phone's day chip), not on a place in it: the stop moves to that day and the server
+   * seats it by its time, as the Move sheet's "Keep 14:30" does. `afterId` is not read.
+   */
+  byTime?: boolean;
 }
 
 /** "Wed"; a day with no date is the plan's own "Day 2" (never a guessed weekday). */
@@ -53,9 +61,11 @@ export interface DropPlan {
  */
 export function dropPlan(input: { itemId: string; fromDay: number; target: DropTarget | null; days: readonly DragDay[] }): DropPlan | null {
   const { itemId, fromDay, target } = input;
-  if (!target || target.afterId === itemId) return null;
+  if (!target) return null;
   const day = input.days.find((d) => d.dayNumber === target.dayNumber);
   if (!day) return null;
+  if (target.byTime) return target.dayNumber === fromDay ? null : { move: { dayNumber: target.dayNumber }, reorder: null };
+  if (target.afterId === itemId) return null;
   const current = day.items.map((i) => i.id);
   const rest = current.filter((id) => id !== itemId);
   const at = target.afterId == null ? 0 : rest.indexOf(target.afterId) + 1;
@@ -77,4 +87,13 @@ export function afterIdForRow(input: { rowId: string; dayItemIds: readonly strin
   if (!input.upperHalf) return input.rowId;
   const i = input.dayItemIds.indexOf(input.rowId);
   return i > 0 ? input.dayItemIds[i - 1] : null;
+}
+
+/** How long a finger rests on a stop before the hold becomes a drag, and how far it may drift meanwhile. */
+export const HOLD_DRAG_MS = 350;
+export const HOLD_DRAG_SLOP_PX = 8;
+
+/** True while a touch that has not yet become a drag is still a hold: it has not drifted past the slop. */
+export function holdStillHolding(start: { x: number; y: number }, now: { x: number; y: number }): boolean {
+  return Math.hypot(now.x - start.x, now.y - start.y) <= HOLD_DRAG_SLOP_PX;
 }

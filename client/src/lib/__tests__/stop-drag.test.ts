@@ -4,7 +4,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { afterIdForRow, dropDayName, dropHereLabel, dropPlan, type DragDay } from "../stop-drag";
+import { HOLD_DRAG_SLOP_PX, afterIdForRow, dropDayName, dropHereLabel, dropPlan, holdStillHolding, type DragDay } from "../stop-drag";
 
 const tue: DragDay = { dayNumber: 1, dateIso: "2026-12-08", items: [{ id: "fushimi", name: "Fushimi Inari Shrine" }, { id: "tofuku", name: "Tofuku-ji" }] };
 const wed: DragDay = { dayNumber: 2, dateIso: "2026-12-09", items: [{ id: "bamboo", name: "Arashiyama Bamboo Grove" }, { id: "tenryu", name: "Tenryu-ji" }] };
@@ -59,4 +59,22 @@ test("G8 the pointer's row: lower half lands after it, upper half after the stop
   assert.equal(afterIdForRow({ rowId: "tenryu", dayItemIds: ids, upperHalf: false }), "tenryu");
   assert.equal(afterIdForRow({ rowId: "tenryu", dayItemIds: ids, upperHalf: true }), "bamboo");
   assert.equal(afterIdForRow({ rowId: "bamboo", dayItemIds: ids, upperHalf: true }), null);
+});
+
+// Hold-to-drag on the phone (Leon, Nov 21, 2026; board R3_MovePhone).
+test("G9 onto a day chip: the stop moves to that day and the server seats it by its time - no reorder", () => {
+  assert.deepEqual(dropPlan({ itemId: "tofuku", fromDay: 1, target: { dayNumber: 2, afterId: null, byTime: true }, days }), { move: { dayNumber: 2 }, reorder: null });
+  assert.deepEqual(dropPlan({ itemId: "tofuku", fromDay: 1, target: { dayNumber: 3, afterId: null, byTime: true }, days }), { move: { dayNumber: 3 }, reorder: null });
+});
+
+test("G10 onto its own day's chip, or a day that is not in the plan, writes nothing", () => {
+  assert.equal(dropPlan({ itemId: "tofuku", fromDay: 1, target: { dayNumber: 1, afterId: null, byTime: true }, days }), null);
+  assert.equal(dropPlan({ itemId: "tofuku", fromDay: 1, target: { dayNumber: 9, afterId: null, byTime: true }, days }), null);
+});
+
+test("G11 a finger that drifts past the slop before the hold completes is a scroll", () => {
+  const start = { x: 100, y: 100 };
+  assert.equal(holdStillHolding(start, { x: 100 + HOLD_DRAG_SLOP_PX, y: 100 }), true);
+  assert.equal(holdStillHolding(start, { x: 103, y: 104 }), true);
+  assert.equal(holdStillHolding(start, { x: 100, y: 100 + HOLD_DRAG_SLOP_PX + 1 }), false);
 });
