@@ -3,9 +3,11 @@
  *
  * `StopDragProvider` holds what is being dragged and where it would land; a row draws its handle and reports
  * the pointer (`StopDragRow`), a day column takes the drop (`useDayDropZone`), and `StopDropSlot` draws the
- * dashed "Drop here" box at the landing place. Native drag and drop: desktop only, which is where the board
- * is. On the phone's day strip the same stop is dragged by HOLDING it (`useHoldDrag`): onto a day chip above,
- * or onto a place among the shown day's stops. The Move sheet stays the way to move a stop with no pointer.
+ * dashed "Drop here" box at the landing place. A mouse drags by the handle (native drag and drop); a finger
+ * drags by HOLDING the stop (`useHoldDrag`). Both work in every layout of the plan's days - the desktop
+ * board, the phone's strip (whose day chips are landing places too) and the stacked day cards - because the
+ * stop menu no longer reorders for the owner (A3; Leon, Nov 21, 2026). The Move sheet stays the way to move
+ * a stop with no pointer.
  *
  * The rules and the words are `lib/stop-drag.ts`'s; the writes are the caller's (`onDrop`).
  */
@@ -21,14 +23,16 @@ import { HOLD_DRAG_MS, afterIdForRow, dropHereLabel, dropPlan, holdStillHolding,
 interface Dragging {
   itemId: string;
   fromDay: number;
+  /** A booked stop: it may take a new place in its own day, never another day. */
+  ownDayOnly: boolean;
 }
 
 interface StopDragApi {
   days: readonly DragDay[];
   dragging: Dragging | null;
   target: DropTarget | null;
-  /** True on the phone's day strip: a stop is dragged by HOLDING it, and there is no mouse drag. */
-  hold: boolean;
+  /** What dropping at `target` would write, or null when it would change nothing or is not allowed. */
+  plan: DropPlan | null;
   start: (d: Dragging) => void;
   /** Null = the pointer is over nothing a stop can land on. */
   over: (t: DropTarget | null) => void;
@@ -44,7 +48,7 @@ export function useStopDrag(): StopDragApi | null {
 }
 
 /** `enabled` false (off the board, or not the owner) draws the children with no drag at all. */
-export function StopDragProvider({ enabled, hold = false, days, onDrop, children }: { enabled: boolean; hold?: boolean; days: readonly DragDay[]; onDrop: (itemId: string, plan: DropPlan) => void; children: ReactNode }) {
+export function StopDragProvider({ enabled, days, onDrop, children }: { enabled: boolean; days: readonly DragDay[]; onDrop: (itemId: string, plan: DropPlan) => void; children: ReactNode }) {
   const [dragging, setDragging] = useState<Dragging | null>(null);
   const [target, setTarget] = useState<DropTarget | null>(null);
   const over = useCallback((t: DropTarget | null) => {
@@ -54,14 +58,15 @@ export function StopDragProvider({ enabled, hold = false, days, onDrop, children
     setDragging(null);
     setTarget(null);
   }, []);
+  const plan = useMemo(
+    () => (dragging ? dropPlan({ itemId: dragging.itemId, fromDay: dragging.fromDay, ownDayOnly: dragging.ownDayOnly, target, days }) : null),
+    [dragging, target, days],
+  );
   const drop = useCallback(() => {
-    if (dragging) {
-      const plan = dropPlan({ itemId: dragging.itemId, fromDay: dragging.fromDay, target, days });
-      if (plan) onDrop(dragging.itemId, plan);
-    }
+    if (dragging && plan) onDrop(dragging.itemId, plan);
     end();
-  }, [dragging, target, days, onDrop, end]);
-  const api = useMemo<StopDragApi>(() => ({ days, dragging, target, hold, start: setDragging, over, end, drop }), [days, dragging, target, hold, over, end, drop]);
+  }, [dragging, plan, onDrop, end]);
+  const api = useMemo<StopDragApi>(() => ({ days, dragging, target, plan, start: setDragging, over, end, drop }), [days, dragging, target, plan, over, end, drop]);
   return <StopDragContext.Provider value={enabled ? api : null}>{children}</StopDragContext.Provider>;
 }
 
@@ -70,7 +75,7 @@ export function StopDropSlot({ dayNumber, afterId }: { dayNumber: number; afterI
   const drag = useStopDrag();
   if (!drag?.dragging || !drag.target || drag.target.byTime || drag.target.dayNumber !== dayNumber || drag.target.afterId !== afterId) return null;
   const day = drag.days.find((d) => d.dayNumber === dayNumber);
-  if (!day || !dropPlan({ itemId: drag.dragging.itemId, fromDay: drag.dragging.fromDay, target: drag.target, days: drag.days })) return null;
+  if (!day || !drag.plan) return null;
   return (
     <div
       className="my-2 rounded-xl border-2 border-dashed border-[color:var(--slip-navy)] bg-[color:var(--slip-wash)] px-2.5 py-3.5 text-center text-[12.5px] font-semibold text-[color:var(--slip-navy)]"
@@ -91,27 +96,26 @@ export function StopDropSlot({ dayNumber, afterId }: { dayNumber: number; afterI
  * A stop's row on the board: its handle (when it may be dragged), the row, and the landing box after it. Every
  * row reports the pointer, draggable or not, so a stop can be dropped after a stop that cannot itself move.
  */
-export function StopDragRow({ itemId, dayNumber, dayItemIds, draggable, children }: { itemId: string; dayNumber: number | null; dayItemIds: readonly string[]; draggable: boolean; children: ReactNode }) {
+export function StopDragRow({ itemId, dayNumber, dayItemIds, draggable, ownDayOnly = false, children }: { itemId: string; dayNumber: number | null; dayItemIds: readonly string[]; draggable: boolean; ownDayOnly?: boolean; children: ReactNode }) {
   const drag = useStopDrag();
   const rowRef = useRef<HTMLDivElement>(null);
-  useHoldDrag(rowRef, { enabled: !!drag?.hold && draggable && dayNumber != null, itemId, dayNumber });
+  useHoldDrag(rowRef, { enabled: !!drag && draggable && dayNumber != null, itemId, dayNumber, ownDayOnly });
   if (!drag || dayNumber == null) return <>{children}</>;
   const onDragOver = (e: DragEvent<HTMLDivElement>) => {
-    if (!drag.dragging || drag.hold) return;
+    if (!drag.dragging) return;
     e.preventDefault();
     e.stopPropagation();
     const box = e.currentTarget.getBoundingClientRect();
     drag.over({ dayNumber, afterId: afterIdForRow({ rowId: itemId, dayItemIds, upperHalf: e.clientY < box.top + box.height / 2 }) });
   };
-  const lifted = drag.hold && drag.dragging?.itemId === itemId;
+  const lifted = drag.dragging?.itemId === itemId;
   return (
     <>
       <div
         ref={rowRef}
-        className={`flex items-start gap-1 ${drag.hold && draggable ? "select-none [-webkit-touch-callout:none]" : ""} ${lifted ? "rounded-xl opacity-60 ring-2 ring-[color:var(--slip-navy)]" : ""}`}
+        // On a touch screen a held finger is a drag here, so the stop's text is not selectable by it.
+        className={`flex items-start gap-1 ${draggable ? "[-webkit-touch-callout:none] [@media(pointer:coarse)]:select-none" : ""} ${lifted ? "rounded-xl opacity-60 ring-2 ring-[color:var(--slip-navy)]" : ""}`}
         onDragOver={onDragOver}
-        // A held finger is a drag here, not the browser's long-press menu.
-        onContextMenu={drag.hold && draggable ? (e) => e.preventDefault() : undefined}
         data-drag-row={itemId}
         data-drag-day={dayNumber}
         data-testid={`stop-drag-row-${itemId}`}
@@ -119,15 +123,16 @@ export function StopDragRow({ itemId, dayNumber, dayItemIds, draggable, children
         {draggable ? (
           <span
             aria-hidden="true"
-            draggable={!drag.hold}
+            draggable
             onDragStart={(e) => {
               e.dataTransfer.effectAllowed = "move";
               e.dataTransfer.setData("text/plain", itemId);
               if (rowRef.current) e.dataTransfer.setDragImage(rowRef.current, 12, 12);
-              drag.start({ itemId, fromDay: dayNumber });
+              drag.start({ itemId, fromDay: dayNumber, ownDayOnly });
             }}
             onDragEnd={drag.end}
             className="mt-3 cursor-grab select-none font-mono text-sm leading-none tracking-[-2px] text-[color:var(--slip-muted)]"
+            data-drag-handle=""
             data-testid={`stop-drag-handle-${itemId}`}
           >
             ⋮⋮
@@ -141,8 +146,9 @@ export function StopDragRow({ itemId, dayNumber, dayItemIds, draggable, children
 }
 
 /**
- * What is under the finger: a day chip (`data-drop-day`), a place among the shown day's stops
- * (`data-drag-row`), the landing box itself (undefined = keep the place it marks), or nothing (null).
+ * What is under the finger: a day chip (`data-drop-day`), a place among a day's stops (`data-drag-row`), a
+ * day's own space (`data-drop-column`), the landing box itself (undefined = keep the place it marks), or
+ * nothing (null).
  */
 function holdTargetAt(x: number, y: number, days: readonly DragDay[]): DropTarget | null | undefined {
   const el = document.elementFromPoint(x, y);
@@ -151,7 +157,11 @@ function holdTargetAt(x: number, y: number, days: readonly DragDay[]): DropTarge
   const chip = el.closest<HTMLElement>("[data-drop-day]");
   if (chip) return { dayNumber: Number(chip.dataset.dropDay), afterId: null, byTime: true };
   const row = el.closest<HTMLElement>("[data-drag-row]");
-  if (!row) return null;
+  if (!row) {
+    // A day's own space (the board's column, a day card): after that day's last stop.
+    const column = el.closest<HTMLElement>("[data-drop-column]");
+    return column ? { dayNumber: Number(column.dataset.dropColumn), afterId: column.dataset.dropLast || null } : null;
+  }
   const dayNumber = Number(row.dataset.dragDay);
   const dayItemIds = days.find((d) => d.dayNumber === dayNumber)?.items.map((i) => i.id) ?? [];
   const box = row.getBoundingClientRect();
@@ -165,11 +175,11 @@ function holdTargetAt(x: number, y: number, days: readonly DragDay[]): DropTarge
  * and lifting the finger drops. Native listeners: React's own touch handlers are passive and cannot hold
  * the page still.
  */
-function useHoldDrag(rowRef: RefObject<HTMLDivElement>, opts: { enabled: boolean; itemId: string; dayNumber: number | null }) {
+function useHoldDrag(rowRef: RefObject<HTMLDivElement>, opts: { enabled: boolean; itemId: string; dayNumber: number | null; ownDayOnly: boolean }) {
   const drag = useStopDrag();
   const live = useRef(drag);
   live.current = drag;
-  const { enabled, itemId, dayNumber } = opts;
+  const { enabled, itemId, dayNumber, ownDayOnly } = opts;
   useEffect(() => {
     const el = rowRef.current;
     if (!enabled || !el || dayNumber == null) return;
@@ -180,14 +190,21 @@ function useHoldDrag(rowRef: RefObject<HTMLDivElement>, opts: { enabled: boolean
       if (timer) clearTimeout(timer);
       timer = null;
     };
+    // The handle is also a mouse-drag source. While a finger is down it is not, so a touch screen's own
+    // long-press drag never runs beside this one; nor does its long-press menu.
+    const handle = () => el.querySelector<HTMLElement>("[data-drag-handle]");
+    const onMenu = (e: Event) => {
+      if (startAt) e.preventDefault();
+    };
     const onStart = (e: TouchEvent) => {
       if (e.touches.length !== 1) return;
       startAt = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      handle()?.setAttribute("draggable", "false");
       cancelTimer();
       timer = setTimeout(() => {
         timer = null;
         active = true;
-        live.current?.start({ itemId, fromDay: dayNumber });
+        live.current?.start({ itemId, fromDay: dayNumber, ownDayOnly });
       }, HOLD_DRAG_MS);
     };
     const onMove = (e: TouchEvent) => {
@@ -204,6 +221,7 @@ function useHoldDrag(rowRef: RefObject<HTMLDivElement>, opts: { enabled: boolean
     const finish = (drop: boolean) => {
       cancelTimer();
       startAt = null;
+      handle()?.setAttribute("draggable", "true");
       if (!active) return;
       active = false;
       if (drop) live.current?.drop();
@@ -215,26 +233,36 @@ function useHoldDrag(rowRef: RefObject<HTMLDivElement>, opts: { enabled: boolean
     el.addEventListener("touchmove", onMove, { passive: false });
     el.addEventListener("touchend", onEnd);
     el.addEventListener("touchcancel", onCancel);
+    el.addEventListener("contextmenu", onMenu);
     return () => {
       cancelTimer();
+      el.removeEventListener("contextmenu", onMenu);
       el.removeEventListener("touchstart", onStart);
       el.removeEventListener("touchmove", onMove);
       el.removeEventListener("touchend", onEnd);
       el.removeEventListener("touchcancel", onCancel);
     };
-  }, [rowRef, enabled, itemId, dayNumber]);
+  }, [rowRef, enabled, itemId, dayNumber, ownDayOnly]);
 }
 
 /**
  * A day column as a drop zone. Over the column's own space (not a row) the stop lands after the day's last
  * stop; the drop itself is taken here for the whole column, rows included.
  */
-export function useDayDropZone(dayNumber: number | null, lastItemId: string | null): { onDragOver?: (e: DragEvent<HTMLElement>) => void; onDrop?: (e: DragEvent<HTMLElement>) => void } {
+export function useDayDropZone(
+  dayNumber: number | null,
+  lastItemId: string | null,
+): { onDragOver?: (e: DragEvent<HTMLElement>) => void; onDrop?: (e: DragEvent<HTMLElement>) => void; "data-drop-column"?: number; "data-drop-last"?: string; "data-drop-over"?: "true" } {
   const drag = useStopDrag();
   if (!drag || dayNumber == null) return {};
+  const over = !!drag.plan && !drag.target?.byTime && drag.target?.dayNumber === dayNumber;
   return {
+    // Read by the finger's hit test (`holdTargetAt`); the mouse uses the two handlers below.
+    "data-drop-column": dayNumber,
+    "data-drop-last": lastItemId ?? "",
+    "data-drop-over": over ? "true" : undefined,
     onDragOver: (e) => {
-      if (!drag.dragging || drag.hold) return;
+      if (!drag.dragging) return;
       e.preventDefault();
       drag.over({ dayNumber, afterId: lastItemId });
     },
