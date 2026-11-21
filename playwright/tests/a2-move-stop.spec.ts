@@ -126,12 +126,16 @@ test("B3 at 1280 a stop dragged by its handle onto another day lands after the s
 
   // Day 2 holds one stop (Arashiyama Bamboo Grove). Its row is found inside day 2's column.
   const dayTwoRow = page.getByTestId("slip-day-2").locator('[data-testid^="stop-drag-row-"]').first();
+
+  // A native drag: press on the handle, then move in steps so the browser raises dragstart and dragover.
+  // The board sits below the fold, and hovering the handle scrolls it into view - so the row is measured
+  // AFTER that hover. Measured before it (as this test first did), the point was where the row used to be,
+  // the pointer never reached a day column, and no landing box was drawn.
+  await dayTwoRow.scrollIntoViewIfNeeded();
+  await handle.hover();
   const box = await dayTwoRow.boundingBox();
   expect(box, "day 2's stop row has a box").toBeTruthy();
   const lowerHalf = { x: box!.x + box!.width / 2, y: box!.y + box!.height - 6 };
-
-  // A native drag: press on the handle, then move in steps so the browser raises dragstart and dragover.
-  await handle.hover();
   await page.mouse.down();
   await page.mouse.move(lowerHalf.x, lowerHalf.y - 40, { steps: 8 });
   await page.mouse.move(lowerHalf.x, lowerHalf.y, { steps: 4 });
