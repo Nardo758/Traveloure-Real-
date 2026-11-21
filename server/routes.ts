@@ -52,6 +52,7 @@ import { accommodationCategoryId, isPropertyProductShape } from "./utils/propert
 import { trackFunnelEvent } from "./utils/funnelTracker";
 import fs from "fs";
 import path from "path";
+import { REORDER_BODY_ERROR, reorderDayNumber, reorderRefused } from "@shared/itinerary-reorder";
 import { storage, ExpertApplicationExistsError, stampItemSourceClass, type BookingStatusNotification, type BookingStatusInTransaction } from "./storage";
 import { withOccasionLabels } from "./services/occasion-label.service";
 import { claimFreeDraft, promoteFreeDraft, releaseFreeDraft, freeDraftRefusalBody, FREE_DRAFT_REFUSAL_STATUS } from "./services/free-draft-cap.service";
@@ -13766,18 +13767,26 @@ ${bannedCopyPromptLine()}`;
       // grants; it only refuses the advisor branch once the assignment's plan is approved.
       const owned = await verifyTripOwnership(req.params.tripId, userId);
       const isAdvisor = owned ? false : await storage.isExpertAssignedToTripForWrite(req.params.tripId, userId);
-      const { dayNumber, itemIds } = req.body;
+      const { dayNumber: rawDay, itemIds } = req.body;
+      // ONLY THIS PLAN'S STOPS ON THE DAY SENT (Leon, Nov 20, 2026). Authorization above answers "may this
+      // person write THIS plan"; it says nothing about the ids in the body, and the write below is keyed on the
+      // id alone. So the list is checked against the plan's own day before either branch - the owner's write
+      // and the advisor's filed suggestion - and a refusal writes nothing.
+      const dayNumber = reorderDayNumber(rawDay);
+      const dayItemIds = dayNumber == null
+        ? []
+        : (await storage.getItineraryItems(req.params.tripId)).filter((i) => i.dayNumber === dayNumber).map((i) => i.id);
+      if (dayNumber == null || reorderRefused({ dayNumber, itemIds, dayItemIds })) {
+        return res.status(400).json({ message: REORDER_BODY_ERROR });
+      }
       // Step 7b (R323, R-n): an advisor's reorder on a traveler's plan is a `move` suggestion.
       if (isAdvisor) {
-        if (!Number.isInteger(Number(dayNumber)) || !Array.isArray(itemIds) || itemIds.length > 200) {
-          return res.status(400).json({ message: "Send a day and its stops in order" });
-        }
         const { fileExpertSuggestion } = await import("./services/expert-suggestions.service");
         const suggestion = await fileExpertSuggestion({
           tripId: req.params.tripId,
           expertId: userId,
           kind: "move",
-          payload: { dayNumber: Number(dayNumber), itemIds: itemIds.map(String) },
+          payload: { dayNumber, itemIds },
         });
         return res.status(202).json({ suggested: true, suggestion });
       }

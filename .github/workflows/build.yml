@@ -3631,6 +3631,12 @@ jobs:
       - name: query-userid-reads-guard · Booked-item delete refusal pin
         if: ${{ !cancelled() }}
         run: npx tsx --test server/__tests__/item-delete-booked-guard.test.ts
+      - name: query-userid-reads-guard · Reorder body rule pin (only this plan's stops on the day sent)
+        if: ${{ !cancelled() }}
+        run: npx tsx --test server/__tests__/reorder-body-rule.test.ts
+      - name: query-userid-reads-guard · Booked-item day-move refusal pin
+        if: ${{ !cancelled() }}
+        run: npx tsx --test server/__tests__/item-move-booked-guard.test.ts
       # 
       - name: ai-draft-eligibility-guard · AI-draft eligibility guard predicate self-test
         if: ${{ !cancelled() }}
