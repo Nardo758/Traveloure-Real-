@@ -44,6 +44,9 @@ test("S2 the sheet's parts: title, one option per day, keep/pick a time, one con
 
 test("S3 the stop's own day cannot be chosen, and confirm needs a body to send", () => {
   assert.match(sheet, /disabled=\{here \|\| pending\}/);
+  // It also LOOKS unavailable and says so to a screen reader (Leon, Nov 20, 2026: styling only).
+  assert.match(sheet, /aria-disabled=\{here \|\| undefined\}/);
+  assert.match(sheet, /\$\{here \? "cursor-not-allowed opacity-50" : ""\}/);
   assert.match(sheet, /disabled=\{!body \|\| pending\}/);
 });
 
