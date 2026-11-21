@@ -126,6 +126,24 @@ function disposition(endpoint: Endpoint, contexts: Map<string, Set<string>>, evi
   return { tested: false, reason: "Endpoint is outside the strict endpoint-level tested criteria." };
 }
 
+/**
+ * F4 (#1677, brief of record 2026-11-10 lines 197-206): THE STALE-HASH GATE.
+ *
+ * Until this lane, `--check` proved only that the two generated files were regenerated; it happily passed while
+ * the evidence artifact described a DIFFERENT manifest, which is why `0 of 753` sat in the report as "tested"
+ * numbers that no live audit supported. A green run must mean the evidence matches the manifest it is read
+ * against, so this is the one predicate both the CLI and the tests use.
+ */
+export function evidenceGate(state: string): { ok: boolean; message: string } {
+  if (!state || state === "fresh") return { ok: true, message: "" };
+  return {
+    ok: false,
+    message:
+      `evidence is ${state}. Regenerate it against the current manifest before trusting any number here: ` +
+      `npm run run:mutation-auth-live-audit && npm run generate:mutation-auth && npm run generate:mutation-auth-coverage`,
+  };
+}
+
 const manifestFile = path.join(root, "generated/security/mutation-auth-manifest.json");
 const manifestBytes = fs.readFileSync(manifestFile);
 const manifestSha256 = crypto.createHash("sha256").update(manifestBytes).digest("hex");
@@ -162,7 +180,14 @@ if (rows.filter((row) => handlerFixtureExclusions.has(row.key)).length !== 29) t
 const report = {
   schemaVersion: 1, generatedBy: "scripts/generate-mutation-auth-coverage.ts",
   manifest: "generated/security/mutation-auth-manifest.json", manifestSha256,
-  evidence: { path: path.relative(root, evidencePath), state: evidenceState || "fresh", timestamp: evidence?.timestamp ?? null },
+  // Q-30 (Leon, Nov 19 2026): the report is committed and byte-compared in CI, so the path must not carry the OS
+  // separator. On Windows `path.relative` writes `generated\security\...`, on Linux `generated/security/...`, and the
+  // two never match. Forward slashes, always.
+  evidence: {
+    path: path.relative(root, evidencePath).split(path.sep).join("/"),
+    state: evidenceState || "fresh",
+    timestamp: evidence?.timestamp ?? null,
+  },
   totals: { ...overall, remaining: overall.total - overall.tested, categories },
   endpoints: rows,
 };
@@ -189,6 +214,10 @@ const markdown = [
   ...rows.filter((row) => !row.tested).map((row) => `| ${row.key} | ${row.risk} | ${row.expectedBoundary} | ${row.source}:${row.line} | ${row.reason} |`),
   "",
 ].join("\n");
+if (check) {
+  const gate = evidenceGate(evidenceState);
+  if (!gate.ok) throw new Error(gate.message);
+}
 const outputs = [
   [path.join(outputDir, "mutation-auth-coverage.json"), `${JSON.stringify(report, null, 2)}\n`],
   [path.join(outputDir, "mutation-auth-coverage.md"), markdown],

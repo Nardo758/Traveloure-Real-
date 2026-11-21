@@ -82,3 +82,67 @@ test("ready-made authoring is promoted only by fresh author/non-author fixture e
   assert.equal(row.tested, true);
   assert.match(row.reason, /ready-made author\/non-author fixture evidence/);
 });
+/**
+ * F4's gate: `--check` must FAIL when the evidence artifact's manifest hash differs from the manifest's own.
+ *
+ * The fixture is the same shape the generator itself writes, with a hash that is not this manifest's - the exact
+ * condition the report used to describe in prose ("evidence manifest SHA-256 is stale") while the CI check passed.
+ */
+function runCheckWithEvidence(evidence: unknown) {
+  const root = process.cwd();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mutation-auth-gate-"));
+  const evidencePath = path.join(dir, "evidence.json");
+  fs.writeFileSync(evidencePath, JSON.stringify(evidence));
+  const result = spawnSync(process.execPath, ["--import", "tsx", "scripts/generate-mutation-auth-coverage.ts", "--check"], {
+    cwd: root,
+    env: { ...process.env, MUTATION_AUTH_EVIDENCE_PATH: evidencePath, MUTATION_AUTH_COVERAGE_OUTPUT_DIR: dir },
+    encoding: "utf8",
+  });
+  return result;
+}
+
+test("F4: a stale evidence hash FAILS the coverage check", () => {
+  const result = runCheckWithEvidence({
+    schemaVersion: 1,
+    manifestSha256: "0".repeat(64),
+    timestamp: "2025-01-01T00:00:00.000Z",
+    suites: [{ id: "payments", context: "payments-resource-owner", passed: true, skipped: false, endpointKeys: [] }],
+  });
+  assert.notEqual(result.status, 0, "the check must not pass on stale evidence");
+  assert.match(`${result.stderr}${result.stdout}`, /evidence manifest SHA-256 is stale/);
+  assert.match(`${result.stderr}${result.stdout}`, /run:mutation-auth-live-audit/);
+});
+
+test("F4: a matching hash does not trip the gate (it can still fail on file freshness only)", () => {
+  const manifest = fs.readFileSync(path.join(process.cwd(), "generated/security/mutation-auth-manifest.json"));
+  const manifestSha256 = crypto.createHash("sha256").update(manifest).digest("hex");
+  const result = runCheckWithEvidence({
+    schemaVersion: 1,
+    manifestSha256,
+    timestamp: "2026-11-18T00:00:00.000Z",
+    suites: [{ id: "payments", context: "payments-resource-owner", passed: true, skipped: false, endpointKeys: [] }],
+  });
+  const text = `${result.stderr}${result.stdout}`;
+  assert.doesNotMatch(text, /evidence manifest SHA-256 is stale/, "a fresh hash must not be blamed");
+});
+
+
+/**
+ * Q-30 (Leon, Nov 19 2026): the report is committed and byte-compared, so it must not carry an OS-separator path.
+ * The committed file once said `generated\security\...` while CI produced `generated/security/...`, and the check
+ * failed only on the runner. This is the fixture that fails if a Windows separator ever gets written again.
+ */
+test("F4/Q-30: the generated report carries no backslash path", () => {
+  const manifest = fs.readFileSync(path.join(process.cwd(), "generated/security/mutation-auth-manifest.json"));
+  const manifestSha256 = crypto.createHash("sha256").update(manifest).digest("hex");
+  const coverage = generateWithEvidence({
+    schemaVersion: 1,
+    manifestSha256,
+    timestamp: "2026-11-19T00:00:00.000Z",
+    suites: [],
+  });
+  const json = JSON.stringify(coverage);
+  assert.ok(!json.includes("\\"), "the report must not contain a backslash");
+  assert.equal(coverage.evidence.path.split("/").length > 1, true, "the evidence path is forward-slashed");
+  assert.doesNotMatch(coverage.evidence.path, /\\/);
+});

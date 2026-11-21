@@ -4,3 +4,5 @@
 # Do not set a merge driver on docs/DECISIONS.md. GitHub's mergeability check
 # ignores custom drivers, so `merge=union` left every open PR CONFLICTING after
 # each append even when a local merge was clean (ledger `2026-10-21-ledger-one-file`).
+generated/security/mutation-auth-*.json text eol=lf
+generated/security/mutation-auth-coverage.md text eol=lf
