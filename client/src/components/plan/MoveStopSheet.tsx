@@ -65,7 +65,10 @@ export function MoveStopSheet({ itemId, stopName, currentDay, time, timeEditable
                     role="radio"
                     aria-checked={chosen}
                     disabled={here || pending}
-                    className={`${choice} ${chosen ? on : off} ${here ? "text-[color:var(--slip-muted)]" : ""}`}
+                    aria-disabled={here || undefined}
+                    // The stop's own day is not a choice, and has to look like one that is not: the sheet is
+                    // drawn outside the plan page's colour scope, so the look is opacity, not a slip colour.
+                    className={`${choice} ${chosen ? on : off} ${here ? "cursor-not-allowed opacity-50" : ""}`}
                     onClick={() => setToDay(d.dayNumber)}
                     data-testid={`move-stop-day-${d.dayNumber}`}
                   >
