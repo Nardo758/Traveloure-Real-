@@ -12,8 +12,11 @@
  *   B3 at 1280 wide (A2 part 2): a stop dragged by its handle onto another day's column shows the dashed
  *      "Drop here" box naming that day and the stop it would follow; dropping it moves the stop there, after
  *      that stop, and a reload shows the same.
+ *   B4 at 390 wide with a touch screen (hold-to-drag): the strip's hint is the full sentence; a stop HELD and
+ *      dragged onto another day's chip moves to that day; held again and dragged below that day's other stop
+ *      it shows the "Drop here" box and lands there. Both are read back after a reload.
  *
- * It writes three screenshots to `playwright/a2-captures/`, uploaded by the workflow as `a2-captures-<sha>`.
+ * It writes four screenshots to `playwright/a2-captures/`, uploaded by the workflow as `a2-captures-<sha>`.
  * Runs against the job's own app and database (a fresh traveler and plan per run); nothing is stubbed.
  */
 import { test, expect, type Page } from "@playwright/test";
@@ -162,4 +165,85 @@ test("B3 at 1280 a stop dragged by its handle onto another day lands after the s
   await expect(dayTwoStops()).toHaveCount(2);
   await expect(dayTwoStops().nth(0)).toContainText("Arashiyama Bamboo Grove");
   await expect(dayTwoStops().nth(1)).toContainText("Fushimi Inari Shrine");
+});
+
+test.describe("hold-to-drag on a phone", () => {
+  test.use({ hasTouch: true });
+
+  test("B4 at 390 a held stop goes onto another day's chip, then to a place among that day's stops", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    const { tripId, stopId } = await threeDayPlan(page);
+    await page.goto(`${BASE_URL}/plans/${tripId}`, { waitUntil: "domcontentloaded" });
+    const strip = page.getByTestId("slip-day-strip");
+    await expect(strip).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId("slip-day-strip-hint")).toHaveText("Tap a day to see it. Hold a stop to drag it onto a day above.");
+
+    // Real touch input, through the browser's own input pipeline (not synthetic DOM events).
+    const cdp = await page.context().newCDPSession(page);
+    const touch = (type: "touchStart" | "touchMove" | "touchEnd", x = 0, y = 0) =>
+      cdp.send("Input.dispatchTouchEvent", { type, touchPoints: type === "touchEnd" ? [] : [{ x, y }] });
+    const glide = async (from: { x: number; y: number }, to: { x: number; y: number }, steps = 8) => {
+      for (let i = 1; i <= steps; i++) {
+        await touch("touchMove", from.x + ((to.x - from.x) * i) / steps, from.y + ((to.y - from.y) * i) / steps);
+        await page.waitForTimeout(25);
+      }
+    };
+    /**
+     * The strip just under the page's own top bar, so the chips and the day's stops are on screen together.
+     * Every point is measured AFTER this scroll (B3's lesson).
+     */
+    const settle = async () => {
+      await strip.evaluate((el) => window.scrollBy(0, el.getBoundingClientRect().top - 96));
+      await page.waitForTimeout(150);
+    };
+    const boxOf = async (testId: string) => {
+      const box = await page.getByTestId(testId).boundingBox();
+      expect(box, `${testId} has a box`).toBeTruthy();
+      expect(box!.y + box!.height, `${testId} is on screen`).toBeLessThanOrEqual(844);
+      return box!;
+    };
+    const mid = (b: { x: number; y: number; width: number; height: number }) => ({ x: b.x + b.width / 2, y: b.y + b.height / 2 });
+
+    // 1. Hold day 1's stop, drag it onto day 2's chip.
+    await settle();
+    const held = mid(await boxOf(`stop-drag-row-${stopId}`));
+    const chip = mid(await boxOf("slip-day-chip-2"));
+    await touch("touchStart", held.x, held.y);
+    await page.waitForTimeout(500);
+    await glide(held, chip);
+    await expect(page.getByTestId("slip-day-chip-2")).toHaveAttribute("data-drop-over", "true");
+    await page.screenshot({ path: path.join(OUT_DIR, "hold-drag-390.png"), fullPage: false });
+    await touch("touchEnd");
+    await expect(page.getByTestId("slip-day-chip-2")).toHaveAttribute("aria-label", "Fri 2 · 2 stops");
+    await expect(page.getByTestId("slip-day-chip-1")).toHaveAttribute("aria-label", "Thu 1 · 0 stops");
+
+    // Read back from the server.
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await expect(strip).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByTestId("slip-day-chip-2")).toHaveAttribute("aria-label", "Fri 2 · 2 stops");
+
+    // 2. On day 2 the stop sits first (09:00 before 09:30). Hold it and drag it below the other stop.
+    await page.getByTestId("slip-day-chip-2").tap();
+    const rows = page.getByTestId("slip-day-body-2").locator("[data-drag-row]");
+    await expect(rows).toHaveCount(2);
+    await expect(rows.nth(0)).toContainText("Fushimi Inari Shrine");
+    await settle();
+    const first = mid(await boxOf(`stop-drag-row-${stopId}`));
+    const otherId = await rows.nth(1).getAttribute("data-drag-row");
+    const other = await boxOf(`stop-drag-row-${otherId}`);
+    await touch("touchStart", first.x, first.y);
+    await page.waitForTimeout(500);
+    await glide(first, { x: other.x + other.width / 2, y: other.y + other.height - 6 });
+    await expect(page.getByTestId("stop-drop-slot")).toHaveText("Drop here · Fri, after Arashiyama Bamboo Grove");
+    await touch("touchEnd");
+    await expect(page.getByTestId("stop-drop-slot")).toHaveCount(0);
+    await expect(rows.nth(0)).toContainText("Arashiyama Bamboo Grove");
+    await expect(rows.nth(1)).toContainText("Fushimi Inari Shrine");
+
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await expect(strip).toBeVisible({ timeout: 30_000 });
+    await page.getByTestId("slip-day-chip-2").tap();
+    await expect(rows.nth(0)).toContainText("Arashiyama Bamboo Grove");
+    await expect(rows.nth(1)).toContainText("Fushimi Inari Shrine");
+  });
 });
