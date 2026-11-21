@@ -88,7 +88,9 @@ test("B2 at 390 the same plan is a strip of day chips showing one day at a time"
   await expect(page.locator('[data-day-layout="strip"]')).toBeVisible({ timeout: 20_000 });
   await expect(page.locator('[data-day-layout="columns"]')).toHaveCount(0);
   await expect(page.locator('[data-testid^="slip-day-chip-"]'), "one chip per day").toHaveCount(3);
-  await expect(page.getByTestId("slip-day-strip-hint")).toHaveText("Tap a day to see it.");
+  // Hold-to-drag (Leon, Nov 21, 2026 - sanctioned edit): the plan's owner, which this traveler is, now reads
+  // the full approved hint. A visitor or an advisor still reads only "Tap a day to see it."
+  await expect(page.getByTestId("slip-day-strip-hint")).toHaveText("Tap a day to see it. Hold a stop to drag it onto a day above.");
   await expect(page.locator('[data-testid^="slip-day-toggle-"]'), "the shown day has no toggle").toHaveCount(0);
   await expect(page.getByTestId("slip-days-expand-all")).toHaveCount(0);
   await expect(page.locator('[data-testid^="slip-day-body-"]'), "one day on screen").toHaveCount(1);

@@ -4,10 +4,17 @@
  */
 import { MOVE_STOP_COPY } from "@/lib/move-stop";
 import { stripDayAria, stripDayLabel, type StripDay } from "@/lib/day-strip";
+import { useStopDrag } from "@/components/plan/StopDrag";
 
 export function DayStrip({ days, selectedKey, onSelect }: { days: readonly StripDay[]; selectedKey: string | null; onSelect: (key: string) => void }) {
+  // Hold-to-drag (Leon, Nov 21, 2026): with it on, each chip is a place to drop a held stop, the strip stays
+  // in reach while one is held (the list may have scrolled it away), and the hint says so. Off - a visitor,
+  // an advisor - the strip is tap-only and says only that.
+  const drag = useStopDrag();
+  const holding = !!drag?.hold && !!drag.dragging;
+  const over = holding && drag?.target?.byTime ? drag.target.dayNumber : null;
   return (
-    <div data-testid="slip-day-strip">
+    <div className={holding ? "sticky top-2 z-30 rounded-xl bg-white/95 p-1 shadow-md" : undefined} data-testid="slip-day-strip">
       <div className="flex gap-2 overflow-x-auto pb-1" role="tablist">
         {days.map((d) => {
           const on = d.key === selectedKey;
@@ -19,7 +26,11 @@ export function DayStrip({ days, selectedKey, onSelect }: { days: readonly Strip
               aria-selected={on}
               aria-label={stripDayAria(d)}
               onClick={() => onSelect(d.key)}
+              data-drop-day={drag?.hold && d.dayNum != null ? d.dayNum : undefined}
+              data-drop-over={over != null && over === d.dayNum ? "true" : undefined}
               className={`flex min-h-[48px] min-w-[76px] flex-1 flex-col items-center justify-center rounded-xl border px-2 py-1 text-sm font-semibold ${
+                over != null && over === d.dayNum ? "ring-2 ring-[color:var(--slip-navy)] ring-offset-2 " : ""
+              }${
                 on
                   ? "border-[color:var(--slip-ink)] bg-[color:var(--slip-ink)] text-white"
                   : "border-[color:var(--slip-line)] bg-[color:var(--slip-card)] text-[color:var(--slip-ink)]"
@@ -33,7 +44,7 @@ export function DayStrip({ days, selectedKey, onSelect }: { days: readonly Strip
         })}
       </div>
       <p className="mt-2 text-[13px] text-[color:var(--slip-muted)]" data-testid="slip-day-strip-hint">
-        {MOVE_STOP_COPY.stripTapHint}
+        {drag?.hold ? MOVE_STOP_COPY.stripHint : MOVE_STOP_COPY.stripTapHint}
       </p>
     </div>
   );

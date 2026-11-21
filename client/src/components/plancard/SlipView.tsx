@@ -2453,7 +2453,8 @@ export function SlipView({
   // A2 part 2 (Leon, Nov 20, 2026; board R3_DaysBoard): on the days board the owner drags a stop by its handle
   // onto a day. Owner only, and only while the plan's stops are theirs to change.
   const stopDrop = useStopDrop(tripId);
-  const dragEnabled = dayColumns && isOwner && canEditItems;
+  // On the phone's day strip the same drag is a HOLD on the stop (Leon, Nov 21, 2026; board R3_MovePhone).
+  const dragEnabled = (dayColumns || dayStrip) && isOwner && canEditItems;
   const allDaysOpen =
     daySlots.length > 0 && daySlots.every((slot, idx) => dayIsOpen(slot.key, idx, slot.groups.flatMap((g) => g.items)));
   const setAllDaysOpen = (open: boolean) =>
@@ -3017,8 +3018,8 @@ export function SlipView({
             </div>
           ) : null}
           <FixedPlanBar tripId={tripId} view={fixedPlan} />
+          <StopDragProvider enabled={dragEnabled} hold={dayStrip} days={dragDays} onDrop={(itemId, plan) => stopDrop.mutate({ itemId, plan })}>
           {dayStrip ? <DayStrip days={stripDays} selectedKey={stripKey} onSelect={setStripChosen} /> : null}
-          <StopDragProvider enabled={dragEnabled} days={dragDays} onDrop={(itemId, plan) => stopDrop.mutate({ itemId, plan })}>
           <div className={dayColumns ? DAY_COLUMNS_ROW_CLASS : undefined} data-day-layout={dayColumns ? "columns" : dayStrip ? "strip" : "stack"}>
           {daySlots.map((slot, slotIdx) => {
             // A2: the phone's strip shows one day; the others are not drawn until their chip is tapped.
