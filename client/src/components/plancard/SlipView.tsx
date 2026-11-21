@@ -56,6 +56,8 @@ import {
 } from "@/lib/item-booking-state";
 import { parseTripDate } from "@/lib/calendar-date";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { MoveStopSheet, useMoveStop } from "@/components/plan/MoveStopSheet";
+import type { MoveDay } from "@/lib/move-stop";
 import type { TripPlanTransition } from "@shared/trip-plan";
 import { TRIP_CARD_FINALIZE_NOW_TITLE, TRIP_CARD_READY_TITLE, tripCardBannerState, tripCardForcedPrimaryByDateAlone, tripCardHasFinal, tripCardIsPrimary } from "@shared/trip-primary-surface";
 import { planDatesAreConfirmed } from "@shared/plan-dates";
@@ -823,6 +825,8 @@ function BoardLegSlot({ children }: { children: ReactNode }) {
   return <div className="pl-[102px] pr-4 pb-1">{children}</div>;
 }
 
+const NO_MOVE_DAYS: readonly MoveDay[] = [];
+
 function SlipDayItem({
   tripId,
   activity,
@@ -842,6 +846,7 @@ function SlipDayItem({
   dayNumber,
   dayItemIds,
   groupItemIds,
+  moveDays = NO_MOVE_DAYS,
   promotable = false,
   canSetAsStay = false,
   replacingStay = null,
@@ -896,6 +901,8 @@ function SlipDayItem({
   dayNumber: number | null;
   dayItemIds: readonly string[];
   groupItemIds: readonly string[];
+  /** A2: the plan's days, for the Move sheet. Fewer than two days = no Move entry. */
+  moveDays?: readonly MoveDay[];
   /** R-m: "Ask a local about this" with no advisor on the plan opens the expert door. */
   onOpenExpertDoor: () => void;
   /** Step 5: "Find a host" opens the slip map's Browse layer filtered to this category (null = all). */
@@ -941,6 +948,11 @@ function SlipDayItem({
   // Owner only, and never on a fixed travel/anchor row (its time is the flight's or the tool's).
   const timeEditable = isOwner && !anchorFrom && !travel;
   const timeEdit = useStopTimeEdit({ tripId, itemId: a.id, time: a.time, rule: timeRule });
+  // A2 (Leon, Nov 20): "Move" opens the Move sheet. Offered wherever the row may be reordered (D16: a booked row
+  // may, and the sheet then says why it cannot move), on a plan with another day to move to.
+  const [moveOpen, setMoveOpen] = useState(false);
+  const moveStop = useMoveStop({ tripId, itemId: a.id, onDone: () => setMoveOpen(false) });
+  const canMoveDay = tools.reorder && dayNumber != null && moveDays.length > 1;
   const promote = usePromoteAnchor(tripId, a.id);
   const setAsStay = useSetAsStay(tripId, a.id);
   const [confirmStay, setConfirmStay] = useState(false);
@@ -967,6 +979,7 @@ function SlipDayItem({
     ? {
         onDetails: () => setSheetOpen(true),
         onSwap: actions.onSwap,
+        onMove: canMoveDay ? () => setMoveOpen(true) : undefined,
         onMoveUp: actions.onMoveUp,
         onMoveDown: actions.onMoveDown,
         onRemove: actions.onRemove,
@@ -1041,6 +1054,20 @@ function SlipDayItem({
     >
       {suggestionData?.suggestions?.length ? (
         <SuggestionStrip tripId={tripId} itemId={a.id} suggestions={suggestionData.suggestions} canAnswer={isOwner} />
+      ) : null}
+      {moveOpen && dayNumber != null ? (
+        <MoveStopSheet
+          itemId={a.id}
+          stopName={a.name}
+          currentDay={dayNumber}
+          time={a.time || null}
+          timeEditable={timeRule.editable}
+          booked={!!a.booking?.id}
+          days={moveDays}
+          pending={moveStop.isPending}
+          onMove={(body) => moveStop.mutate(body)}
+          onClose={() => setMoveOpen(false)}
+        />
       ) : null}
       <ItemSheet
         open={sheetOpen}
@@ -1975,6 +2002,11 @@ export function useSlipViewModel({
       ),
     [sortedDays, planEvents, groupByEvent],
   );
+  /** A2: the days a stop can be moved to - the plan's own day rows, in order, with each day's stop count. */
+  const moveDays = useMemo<MoveDay[]>(
+    () => sortedDays.map((day) => ({ dayNumber: day.dayNum, dateIso: day.dateIso ?? null, stops: day.activities.length })),
+    [sortedDays],
+  );
   /** The plan's own day rows, by ordinal — the heading's `date` fallback and the day's legs. */
   const dayByNum = useMemo(
     () => new Map(sortedDays.map((d) => [d.dayNum, d])),
@@ -2212,6 +2244,7 @@ export function useSlipViewModel({
     renderAnchorPanel,
     daySlots,
     dayByNum,
+    moveDays,
     dayOpen,
     setDayOpen,
     lastDayNum,
@@ -2326,6 +2359,7 @@ export function SlipView({
     renderAnchorPanel,
     daySlots,
     dayByNum,
+    moveDays,
     dayOpen,
     setDayOpen,
     lastDayNum,
@@ -3122,6 +3156,7 @@ export function SlipView({
                       dayNumber={slot.dayNum}
                       dayItemIds={dayItemIds}
                       groupItemIds={groupItemIds}
+                      moveDays={moveDays}
                       promotable={
                         canEditItems &&
                         !data.trip?.finalizedAt &&
