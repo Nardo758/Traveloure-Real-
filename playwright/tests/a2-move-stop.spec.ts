@@ -15,8 +15,11 @@
  *   B4 at 390 wide with a touch screen (hold-to-drag): the strip's hint is the full sentence; a stop HELD and
  *      dragged onto another day's chip moves to that day; held again and dragged below that day's other stop
  *      it shows the "Drop here" box and lands there. Both are read back after a reload.
+ *   B5 at 1280 wide (A3): the owner's stop menu has Details, Move and Remove and NO "Move up" / "Move down" -
+ *      the owner reorders by drag. B6: a ONE-day plan, which has no days board, still has drag handles, and a
+ *      stop dragged below the other one stays there after a reload.
  *
- * It writes four screenshots to `playwright/a2-captures/`, uploaded by the workflow as `a2-captures-<sha>`.
+ * It writes five screenshots to `playwright/a2-captures/`, uploaded by the workflow as `a2-captures-<sha>`.
  * Runs against the job's own app and database (a fresh traveler and plan per run); nothing is stubbed.
  */
 import { test, expect, type Page } from "@playwright/test";
@@ -246,4 +249,77 @@ test.describe("hold-to-drag on a phone", () => {
     await expect(rows.nth(0)).toContainText("Arashiyama Bamboo Grove");
     await expect(rows.nth(1)).toContainText("Fushimi Inari Shrine");
   });
+});
+
+test("B5 at 1280 the owner's stop menu has Move, and no Move up / Move down", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const { tripId, stopId } = await threeDayPlan(page);
+  await page.goto(`${BASE_URL}/plans/${tripId}`, { waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId("slip-action-row")).toBeVisible({ timeout: 30_000 });
+  await page.getByTestId(`item-menu-${stopId}`).click();
+
+  await expect(page.getByTestId(`item-menu-move-${stopId}`)).toHaveText("Move");
+  await expect(page.getByTestId(`item-menu-details-${stopId}`)).toBeVisible();
+  await expect(page.getByTestId(`item-menu-remove-${stopId}`)).toBeVisible();
+  await expect(page.getByTestId(`item-menu-move-up-${stopId}`), "the owner reorders by drag").toHaveCount(0);
+  await expect(page.getByTestId(`item-menu-move-down-${stopId}`)).toHaveCount(0);
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: path.join(OUT_DIR, "owner-menu-1280.png"), fullPage: false });
+});
+
+test("B6 a one-day plan has no days board and still reorders by drag", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await registerAndSignIn(
+    page.request,
+    { email: `e2e-a3-oneday-${uid()}@example.com`, password: "MoveStop123!", firstName: "One", lastName: "Day", extra: { userType: "user" } },
+    BASE_URL,
+  );
+  const trip = await page.request.post(`${BASE_URL}/api/trips`, {
+    data: { title: "A3 one-day plan", destination: "Kyoto, Japan", startDate: "2027-04-01", endDate: "2027-04-01" },
+  });
+  expect(trip.status(), await trip.text()).toBe(201);
+  const tripId = (await trip.json()).id as string;
+  const ids: string[] = [];
+  for (const stop of [
+    { title: "Fushimi Inari Shrine", dayNumber: 1, startTime: "09:00" },
+    { title: "Nishiki Market", dayNumber: 1, startTime: "12:00" },
+  ]) {
+    const res = await page.request.post(`${BASE_URL}/api/trips/${tripId}/itinerary-items`, { data: stop });
+    expect([200, 201], await res.text()).toContain(res.status());
+    ids.push((await res.json()).id as string);
+  }
+  const [first, second] = ids;
+
+  await page.goto(`${BASE_URL}/plans/${tripId}`, { waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId("slip-action-row")).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator('[data-day-layout="columns"]'), "one day: no board").toHaveCount(0);
+  const rows = page.locator("[data-drag-row]");
+  await expect(rows).toHaveCount(2);
+  await expect(rows.nth(0)).toContainText("Fushimi Inari Shrine");
+  const handle = page.getByTestId(`stop-drag-handle-${first}`);
+  await expect(handle).toBeVisible();
+
+  // Measured after the hover's scroll (B3's lesson). Drop the first stop below the second.
+  const secondRow = page.getByTestId(`stop-drag-row-${second}`);
+  await secondRow.scrollIntoViewIfNeeded();
+  await handle.hover();
+  const box = await secondRow.boundingBox();
+  expect(box, "the second stop's row has a box").toBeTruthy();
+  const lowerHalf = { x: box!.x + box!.width / 2, y: box!.y + box!.height - 6 };
+  await page.mouse.down();
+  await page.mouse.move(lowerHalf.x, lowerHalf.y - 30, { steps: 8 });
+  await page.mouse.move(lowerHalf.x, lowerHalf.y, { steps: 4 });
+  const slot = page.getByTestId("stop-drop-slot");
+  await expect(slot).toHaveText("Drop here · Thu, after Nishiki Market");
+  const slotBox = await slot.boundingBox();
+  await page.mouse.move(slotBox!.x + slotBox!.width / 2, slotBox!.y + slotBox!.height / 2, { steps: 3 });
+  await page.mouse.up();
+  await expect(slot).toHaveCount(0);
+  await expect(rows.nth(0)).toContainText("Nishiki Market");
+  await expect(rows.nth(1)).toContainText("Fushimi Inari Shrine");
+
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId("slip-action-row")).toBeVisible({ timeout: 30_000 });
+  await expect(rows.nth(0)).toContainText("Nishiki Market");
+  await expect(rows.nth(1)).toContainText("Fushimi Inari Shrine");
 });
