@@ -148,10 +148,14 @@ describe("B8 /experiences event cards", () => {
     const src = readFileSync("client/src/components/plan/PlanEntry.tsx", "utf8");
     assert.match(src, /inline && \(!e\.marketKey \|\| isOpenMarket\(e\.marketKey\)\) \?/);
     assert.match(src, /\{eventRow\(e\)\}\s*<EventAddButton event=\{e\} \/>/, "a sibling of the row, so no button nests in a button");
-    assert.match(src, /<AddToPlanButton\s+testId=\{`plan-entry-event-add-\$\{event\.id\}`\}/);
-    assert.match(src, /event\.sourceId\s*\?\s*planItemRefFromFeedItem\(\{ type: "city_event", sourceContentId: event\.sourceId/);
-    assert.match(src, /if \(!ref\) return null;/);
-    assert.match(src, /onClick=\{\(\) => add\(\{ ref, city: event\.city \}\)\}/);
+    // F2 (sanctioned edit; Leon, Nov 19): the button moved to its own file so the /events rows and the landing strip
+    // draw the same one. The same four facts are pinned there; the /experiences test id is its default prefix.
+    const button = readFileSync("client/src/components/events/EventAddButton.tsx", "utf8");
+    assert.match(button, /testIdPrefix = "plan-entry-event-add"/);
+    assert.match(button, /<AddToPlanButton\s+testId=\{`\$\{testIdPrefix\}-\$\{event\.id\}`\}/);
+    assert.match(button, /event\.sourceId && !event\.partner\s*\?\s*planItemRefFromFeedItem\(\{ type: "city_event", sourceContentId: event\.sourceId/);
+    assert.match(button, /if \(!ref\) return null;/);
+    assert.match(button, /onClick=\{\(\) => add\(\{ ref, city: event\.city \}\)\}/);
     // City cards keep their pick for Start a plan (Leon, Nov 11): no add button on the page's Place picker.
     assert.doesNotMatch(readFileSync("client/src/pages/experiences.tsx", "utf8"), /AddToPlanButton/);
     // The direct add takes the same paths as the feed: the slot, the guest rail, the signed-in ref rail, or sign-in.

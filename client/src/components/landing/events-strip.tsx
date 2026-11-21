@@ -30,6 +30,7 @@ import type { PlanningSource } from "@/contexts/PlanningContext";
 import { EVENT_OCCASION_SLUG } from "@/lib/plan-entry";
 import { isShowSeries } from "@shared/event-page";
 import { EventRow } from "@/components/events/EventRow";
+import { EventAddButton } from "@/components/events/EventAddButton";
 import LANDING_PHOTO_ATTRIBUTION from "../../../public/images/landing/ATTRIBUTION.json";
 import { SectionHeader, OpenSection } from "./section-header";
 import { useMarqueeMarket } from "@/lib/signup-mode";
@@ -142,6 +143,7 @@ function EventCard({
         ...(event.blurb ? [{ text: event.blurb, tone: "muted" as const }] : []),
       ]}
       actions={
+        <>
         <Link href={PLAN_START_HREF}
           onClick={planStartClick(() => onPlanAround(planAroundSource(event, door)))}
           className="inline-flex min-h-[36px] items-center self-start rounded-[8px] border px-3 text-[13px] font-semibold"
@@ -150,6 +152,13 @@ function EventCard({
         >
           Plan around it
         </Link>
+        {/* F2 (Leon, Nov 19): the event's own add, beside the start-a-plan door. */}
+        <EventAddButton
+          event={event}
+          testIdPrefix="city-event-add"
+          className="inline-flex min-h-[36px] items-center self-start rounded-[8px] border border-border px-3 text-[13px] font-semibold"
+        />
+        </>
       }
     />
   );

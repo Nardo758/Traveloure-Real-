@@ -50,10 +50,7 @@ import {
 } from "@shared/experience-group";
 import { countdownLabel, type CityEventCard, type CityEventsPayload } from "@shared/city-events";
 import { EventRow } from "@/components/events/EventRow";
-import { AddToPlanButton } from "@/components/plan/AddToPlanButton";
-import { useDirectPlanAdd } from "@/lib/browse-save";
-import { savedRefKey, useRefSavedState } from "@/lib/saved-refs";
-import { planItemRefFromFeedItem } from "@shared/plan-item-ref";
+import { EventAddButton } from "@/components/events/EventAddButton";
 import { planAroundEventTitle } from "@/components/landing/events-strip";
 import { marketToday } from "@shared/market-today";
 import type { ExperienceType } from "@shared/schema";
@@ -979,27 +976,3 @@ export function PlanEntryPanel({ active, source, onStart, container, placePicker
 }
 
 
-/**
- * Cut-list #1 slice C: an /experiences event card's add — the one AddToPlanButton over the event's `city_event` row
- * (spinner while it saves, "Added ✓" once the plan holds it, the add toast and the first-add calendar from the runner).
- */
-function EventAddButton({ event }: { event: CityEventCard }) {
-  const add = useDirectPlanAdd();
-  // The city_event rail names the event by its source id (the resolver's key); an event that carries none names no row.
-  const ref = event.sourceId
-    ? planItemRefFromFeedItem({ type: "city_event", sourceContentId: event.sourceId, startsAt: event.startsAt, endsAt: event.endsAt }, event.city)
-    : null;
-  const key = savedRefKey(ref);
-  const { saved, inert } = useRefSavedState(key);
-  if (!ref) return null;
-  return (
-    <AddToPlanButton
-      testId={`plan-entry-event-add-${event.id}`}
-      className="inline-flex h-9 items-center rounded-md border border-border px-3 text-[13px] font-semibold"
-      pendingKey={key}
-      added={saved}
-      addedInert={inert}
-      onClick={() => add({ ref, city: event.city })}
-    />
-  );
-}

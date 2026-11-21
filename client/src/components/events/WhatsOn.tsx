@@ -27,6 +27,10 @@ import type { PlanningSource } from "@/contexts/PlanningContext";
 import LANDING_PHOTO_ATTRIBUTION from "../../../public/images/landing/ATTRIBUTION.json";
 import { MONO } from "./MonthGrid";
 import { EventRow } from "./EventRow";
+import { EventAddButton } from "./EventAddButton";
+
+/** The add beside "Plan around it": the same height and radius as that button, outlined. */
+const EVENT_ADD_CLASS = "inline-flex min-h-[36px] items-center self-start rounded-[8px] border border-border px-3 text-[13px] font-semibold";
 
 const FRAUNCES = "'Fraunces', Georgia, serif";
 function PlanButton({ event, filled, onPlanAround }: { event: CalendarEvent; filled: boolean; onPlanAround: (s: PlanningSource) => void }) {
@@ -83,6 +87,8 @@ function WhatsOnRow({ event, isNext, onPlanAround }: { event: CalendarEvent; isN
       actions={
         <>
           <PlanButton event={event} filled={isNext} onPlanAround={onPlanAround} />
+          {/* F2 (Leon, Nov 19): the event's own add, beside the start-a-plan door. A partner row names no row of ours. */}
+          <EventAddButton event={event} testIdPrefix="events-add" className={EVENT_ADD_CLASS} />
           {event.partner ? null : <DetailsLink event={event} />}
         </>
       }
