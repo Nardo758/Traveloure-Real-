@@ -142,8 +142,12 @@ describe("Round 4b", () => {
   });
 
   it("B4 two plans: saved on A, it still saves to B", async () => {
+    // The saved read answers for OPEN plans only (`end_date >= CURRENT_DATE`, B3 above). These two ended on
+    // 2026-11-20, so from the next day the read left them out and "saved on A" failed on every branch. B3's own
+    // open plan ends in 2099; so do these.
+    const OPEN_END = "2099-01-02";
     const mkTrip = async (title: string) => {
-      const [t] = await db.insert(trips).values({ userId: userA, title, destination: "Kyoto, Japan", startDate: "2026-11-15", endDate: "2026-11-20" } as any).returning({ id: trips.id });
+      const [t] = await db.insert(trips).values({ userId: userA, title, destination: "Kyoto, Japan", startDate: "2026-11-15", endDate: OPEN_END } as any).returning({ id: trips.id });
       tripIds.add(t.id);
       return t.id;
     };
