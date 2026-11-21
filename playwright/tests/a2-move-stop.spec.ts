@@ -9,8 +9,11 @@
  *      "Move to <day>" once a day is tapped. Confirming moves the stop: the sheet closes and the stop is on
  *      the day chosen after a reload (the chips' counts, and the stop under that day's chip).
  *   B2 at 1280 wide: the same sheet opens from a column of the days board.
+ *   B3 at 1280 wide (A2 part 2): a stop dragged by its handle onto another day's column shows the dashed
+ *      "Drop here" box naming that day and the stop it would follow; dropping it moves the stop there, after
+ *      that stop, and a reload shows the same.
  *
- * It writes two screenshots to `playwright/a2-captures/`, uploaded by the workflow as `a2-captures-<sha>`.
+ * It writes three screenshots to `playwright/a2-captures/`, uploaded by the workflow as `a2-captures-<sha>`.
  * Runs against the job's own app and database (a fresh traveler and plan per run); nothing is stubbed.
  */
 import { test, expect, type Page } from "@playwright/test";
@@ -108,4 +111,51 @@ test("B2 at 1280 the same sheet opens from a column of the days board", async ({
   await expect(sheet.getByTestId("move-stop-confirm")).toHaveText("Move to Sat 3 Apr");
   await page.waitForTimeout(500);
   await page.screenshot({ path: path.join(OUT_DIR, "move-sheet-1280.png"), fullPage: false });
+});
+
+test("B3 at 1280 a stop dragged by its handle onto another day lands after the stop it was dropped on", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const { tripId, stopId } = await threeDayPlan(page);
+  await page.goto(`${BASE_URL}/plans/${tripId}`, { waitUntil: "domcontentloaded" });
+  await expect(page.locator('[data-day-layout="columns"]')).toBeVisible({ timeout: 30_000 });
+
+  const handle = page.getByTestId(`stop-drag-handle-${stopId}`);
+  await expect(handle).toBeVisible();
+  await expect(page.locator('[data-testid^="stop-drag-handle-"]'), "one handle per stop").toHaveCount(3);
+  await expect(page.getByTestId("stop-drop-slot"), "no landing box until a drag").toHaveCount(0);
+
+  // Day 2 holds one stop (Arashiyama Bamboo Grove). Its row is found inside day 2's column.
+  const dayTwoRow = page.getByTestId("slip-day-2").locator('[data-testid^="stop-drag-row-"]').first();
+  const box = await dayTwoRow.boundingBox();
+  expect(box, "day 2's stop row has a box").toBeTruthy();
+  const lowerHalf = { x: box!.x + box!.width / 2, y: box!.y + box!.height - 6 };
+
+  // A native drag: press on the handle, then move in steps so the browser raises dragstart and dragover.
+  await handle.hover();
+  await page.mouse.down();
+  await page.mouse.move(lowerHalf.x, lowerHalf.y - 40, { steps: 8 });
+  await page.mouse.move(lowerHalf.x, lowerHalf.y, { steps: 4 });
+  const slot = page.getByTestId("stop-drop-slot");
+  await expect(slot).toBeVisible();
+  await expect(slot).toHaveText("Drop here · Fri, after Arashiyama Bamboo Grove");
+  await page.screenshot({ path: path.join(OUT_DIR, "drag-drop-here-1280.png"), fullPage: false });
+
+  // The landing box is under the pointer now; release on it.
+  const slotBox = await slot.boundingBox();
+  await page.mouse.move(slotBox!.x + slotBox!.width / 2, slotBox!.y + slotBox!.height / 2, { steps: 3 });
+  await page.mouse.up();
+  await expect(slot).toHaveCount(0);
+
+  const dayTwoStops = () => page.getByTestId("slip-day-2").locator('[data-testid^="stop-drag-row-"]');
+  await expect(dayTwoStops()).toHaveCount(2);
+  await expect(dayTwoStops().nth(0)).toContainText("Arashiyama Bamboo Grove");
+  await expect(dayTwoStops().nth(1)).toContainText("Fushimi Inari Shrine");
+  await expect(page.getByTestId("slip-day-1").locator('[data-testid^="stop-drag-row-"]')).toHaveCount(0);
+
+  // Read back from the server, not from the page's cache.
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page.locator('[data-day-layout="columns"]')).toBeVisible({ timeout: 30_000 });
+  await expect(dayTwoStops()).toHaveCount(2);
+  await expect(dayTwoStops().nth(0)).toContainText("Arashiyama Bamboo Grove");
+  await expect(dayTwoStops().nth(1)).toContainText("Fushimi Inari Shrine");
 });
