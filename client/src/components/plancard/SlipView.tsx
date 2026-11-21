@@ -97,7 +97,9 @@ import { showsStayBook, showsStayCancel, useStayBooking } from "@/lib/stay-booki
 import { PlacePhoto, usePlacePhotos } from "@/components/plan/PlacePhoto";
 import { legsCheckedLine, navigateHref, readyMadeSourceLine } from "@/lib/trip-card";
 import { DayBlock } from "@/components/plan/DayBlock";
-import { useMinWidth } from "@/hooks/use-min-width";
+import { useMinWidth, useMaxWidth } from "@/hooks/use-min-width";
+import { DayStrip } from "@/components/plan/DayStrip";
+import { stripDayKey, type StripDay } from "@/lib/day-strip";
 import { PlanRowLookProvider } from "@/components/plan/row-look";
 import {
   GETTING_THERE_TOOL,
@@ -2302,6 +2304,10 @@ export function SlipView({
   const healthFlags = useHealthFlags();
   // A1: the days board needs a desktop-width viewport (false on the server and the first render: the phone shape).
   const desktopWidth = useMinWidth(1024);
+  const phoneWidth = useMaxWidth(639);
+  // The day chip the traveler tapped on the phone's strip; a newly linked stop takes the strip back to its day.
+  const [stripChosen, setStripChosen] = useState<string | null>(null);
+  useEffect(() => setStripChosen(null), [highlightItemId]);
   // E9: the party panel asks what the editor's Who step asks. The row comes from the VIEW MODEL above
   // (`occasion`, one cache entry, no second fetch) and is passed to the panel at both mounts - the header's
   // and this tray's. A guest plan has no view-model row (it cannot read /api/trips/:id), so the guest page
@@ -2422,6 +2428,14 @@ export function SlipView({
   // A1 (Leon, Nov 20, 2026): on a desktop-width list view with more than one day, the days are side-by-side columns,
   // every one open, and "Expand all" has nothing to do. The phone keeps one collapsible card per day.
   const dayColumns = desktopWidth && slipView === "list" && daySlots.length > 1;
+  // A2 (Leon, Nov 20, 2026; board R3_MovePhone): on a phone-width list view with more than one day, a strip of
+  // day chips picks the ONE day shown. No "Expand all" there either - one day is on screen at a time.
+  const dayStrip = phoneWidth && slipView === "list" && daySlots.length > 1;
+  const stripDays: StripDay[] = daySlots.map((slot) => {
+    const items = slot.groups.flatMap((g) => g.items);
+    return { key: slot.key, dayNum: slot.dayNum, dateIso: slot.dateIso ?? null, stops: items.length, itemIds: items.map((a) => a.id) };
+  });
+  const stripKey = dayStrip ? stripDayKey({ days: stripDays, chosenKey: stripChosen, highlightItemId, defaultIndex: defaultOpenIdx }) : null;
   const allDaysOpen =
     daySlots.length > 0 && daySlots.every((slot, idx) => dayIsOpen(slot.key, idx, slot.groups.flatMap((g) => g.items)));
   const setAllDaysOpen = (open: boolean) =>
@@ -2802,7 +2816,7 @@ export function SlipView({
                   {allActivities.length > 0 ? `Map only · ${locatedActivities.length} of ${allActivities.length}` : "Map only"}
                 </button>
               </div>
-              {slipView === "list" && daySlots.length > 1 && !dayColumns ? (
+              {slipView === "list" && daySlots.length > 1 && !dayColumns && !dayStrip ? (
                 <button
                   type="button"
                   className="h-9 px-3 text-[13px] font-medium text-[color:var(--slip-navy)] hover:underline"
@@ -2985,8 +2999,11 @@ export function SlipView({
             </div>
           ) : null}
           <FixedPlanBar tripId={tripId} view={fixedPlan} />
-          <div className={dayColumns ? DAY_COLUMNS_ROW_CLASS : undefined} data-day-layout={dayColumns ? "columns" : "stack"}>
+          {dayStrip ? <DayStrip days={stripDays} selectedKey={stripKey} onSelect={setStripChosen} /> : null}
+          <div className={dayColumns ? DAY_COLUMNS_ROW_CLASS : undefined} data-day-layout={dayColumns ? "columns" : dayStrip ? "strip" : "stack"}>
           {daySlots.map((slot, slotIdx) => {
+            // A2: the phone's strip shows one day; the others are not drawn until their chip is tapped.
+            if (dayStrip && slot.key !== stripKey) return null;
             const slotItems = slot.groups.flatMap((g) => g.items);
             // Step 2 addendum: an AI arrival on day 1 / departure on the last day IS the travel row —
             // it takes the glyph and "Add your flight", and the placeholder is not drawn.
@@ -3046,7 +3063,7 @@ export function SlipView({
                 ]
                   .filter(Boolean)
                   .join(" · ") || null}
-                column={dayColumns}
+                column={dayColumns || dayStrip}
                 open={dayIsOpen(slot.key, slotIdx, slotItems)}
                 onOpenChange={(o) => setDayOpen((m) => ({ ...m, [slot.key]: o }))}
                 feasibility={day?.feasibility ?? null}

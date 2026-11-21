@@ -24,8 +24,10 @@ export const MOVE_STOP_COPY = {
   booked: "This stop is booked. Change the booking to move it.",
   /** The error toast's title when the save fails. NOT on the board: listed for Leon's wording stamp (A2 part 1). */
   failed: "Couldn't move that stop",
-  /** Under the phone's day strip. */
+  /** Under the phone's day strip, once a stop can be held and dragged onto a day (a later patch). */
   stripHint: "Tap a day to see it. Hold a stop to drag it onto a day above.",
+  /** Under the phone's day strip today: the approved hint's first sentence (Leon, Nov 20, 2026 - ruling 2). */
+  stripTapHint: "Tap a day to see it.",
 } as const;
 
 /** One day the stop can go to. */
@@ -49,9 +51,14 @@ export function moveDayLong(day: Pick<MoveDay, "dayNumber" | "dateIso">): string
   return d ? `${WKD[d.getDay()]} ${d.getDate()} ${MON[d.getMonth()]}` : `Day ${day.dayNumber}`;
 }
 
+/** "2 stops" / "1 stop" / "0 stops" - the day header's own form. */
+export function stopCount(stops: number): string {
+  return `${stops} ${stops === 1 ? "stop" : "stops"}`;
+}
+
 /** "Tue 8 · now" for the stop's own day, "Wed 9 · 2 stops" for another. */
 export function moveDayOption(day: MoveDay, currentDay: number): string {
-  const tail = day.dayNumber === currentDay ? MOVE_STOP_COPY.now : `${day.stops} ${day.stops === 1 ? "stop" : "stops"}`;
+  const tail = day.dayNumber === currentDay ? MOVE_STOP_COPY.now : stopCount(day.stops);
   return `${moveDayShort(day)} · ${tail}`;
 }
 

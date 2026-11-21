@@ -6,7 +6,7 @@
  *
  *   B1 at 1280 wide the days are side-by-side, always-open columns: no day toggle, no "Expand all", every
  *      day's stop on screen, the columns in day order left to right on one row, no sideways page scroll
- *   B2 at 390 wide the same plan is one collapsible card per day again: toggles back, no columns
+ *   B2 at 390 wide the same plan is a strip of day chips showing one day at a time (A2): no toggles, no columns
  *
  * It writes two screenshots to `playwright/a1-captures/`, uploaded by the workflow as `a1-captures-<sha>`.
  * Runs against the job's own app and database (a fresh traveler and plan per run); nothing is stubbed.
@@ -78,18 +78,29 @@ test("B1 at 1280 the days are always-open columns, side by side", async ({ page 
   await page.screenshot({ path: path.join(OUT_DIR, "days-board-1280.png"), fullPage: true });
 });
 
-test("B2 at 390 the same plan is one collapsible card per day", async ({ page }) => {
+test("B2 at 390 the same plan is a strip of day chips showing one day at a time", async ({ page }) => {
+  // A2 (Leon, Nov 20, 2026; board R3_MovePhone, minus Ideas - sanctioned rewrite): the phone no longer draws
+  // one collapsible card per day; a strip of day chips picks the one day shown.
   await page.setViewportSize({ width: 390, height: 844 });
   const tripId = await threeDayPlan(page);
   await openPlan(page, tripId);
 
-  await expect(page.locator('[data-day-layout="stack"]')).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator('[data-day-layout="strip"]')).toBeVisible({ timeout: 20_000 });
   await expect(page.locator('[data-day-layout="columns"]')).toHaveCount(0);
-  await expect(page.locator('[data-column="true"]')).toHaveCount(0);
-  expect(await page.locator('[data-testid^="slip-day-toggle-"]').count(), "each day keeps its toggle").toBeGreaterThanOrEqual(3);
+  await expect(page.locator('[data-testid^="slip-day-chip-"]'), "one chip per day").toHaveCount(3);
+  await expect(page.getByTestId("slip-day-strip-hint")).toHaveText("Tap a day to see it.");
+  await expect(page.locator('[data-testid^="slip-day-toggle-"]'), "the shown day has no toggle").toHaveCount(0);
+  await expect(page.getByTestId("slip-days-expand-all")).toHaveCount(0);
+  await expect(page.locator('[data-testid^="slip-day-body-"]'), "one day on screen").toHaveCount(1);
+  await expect(page.getByTestId("slip-day-body-1")).toBeVisible();
+
+  await page.getByTestId("slip-day-chip-2").click();
+  await expect(page.getByTestId("slip-day-chip-2")).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("slip-day-body-2")).toBeVisible();
+  await expect(page.locator('[data-testid^="slip-day-body-"]')).toHaveCount(1);
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(overflow, "no sideways scroll at phone width").toBeLessThanOrEqual(0);
 
-  await page.locator('[data-day-layout="stack"]').scrollIntoViewIfNeeded();
+  await page.getByTestId("slip-day-strip").scrollIntoViewIfNeeded();
   await page.screenshot({ path: path.join(OUT_DIR, "days-phone-390.png"), fullPage: true });
 });
