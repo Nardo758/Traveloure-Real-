@@ -92,8 +92,11 @@ test('D8a owner: the frame in list and map, at 1280 and 390', async ({ page }) =
     const row = page.locator('[data-testid="slip-action-row"]');
     await expect(row).toBeVisible();
     await expect(row.locator('button')).toHaveCount(1);
-    await expect(page.locator('[data-testid="button-slip-optimize"]')).toHaveCount(1);
-    await expect(page.locator('[data-testid="button-slip-expert-help"]')).toHaveCount(0);
+    await expect(page.locator('[data-testid="slip-action-optimize"]')).toHaveCount(1);
+    await expect(page.locator('[data-testid="slip-action-hire-expert"]')).toHaveCount(0);
+    // Frame lift: the row's Optimize is the real control, not a second one - it sits in the row, and
+    // the count of 1 above means the optimizer card no longer draws its own.
+    await expect(row.locator('[data-testid="slip-action-optimize"]')).toHaveCount(1);
     for (const id of REMOVED) await expect(page.locator(`[data-testid="${id}"]`)).toHaveCount(0);
     await expectNotIntersected(page);
 
