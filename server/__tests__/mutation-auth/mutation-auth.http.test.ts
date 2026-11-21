@@ -54,6 +54,8 @@ let userA: FixtureUser;
 let userB: FixtureUser;
 let userBTripId: string;
 let userBItemId: string;
+let userATripId: string;
+let userAItemIds: string[] = [];
 let originalBTrip: { id: string; userId: string | null; title: string | null; destination: string };
 
 /**
@@ -188,11 +190,28 @@ before(async () => {
     routingStatus: "in_planning",
   } as any).returning({ id: itineraryItems.id });
   userBItemId = item.id;
+  // Reorder body rule (Leon, Nov 20, 2026): User A's OWN plan - two stops on day 1, one on day 2.
+  const [aTrip] = await db.insert(trips).values({
+    userId: userA.id,
+    title: `A-own-${runId}`,
+    destination: "Authorization Fixture City",
+    startDate: "2031-02-10",
+    endDate: "2031-02-12",
+    status: "draft",
+  }).returning({ id: trips.id });
+  userATripId = aTrip.id;
+  const aItems = await db.insert(itineraryItems).values([
+    { tripId: userATripId, title: `A-day1-first-${runId}`, dayNumber: 1, sortOrder: 0, routingStatus: "in_planning" },
+    { tripId: userATripId, title: `A-day1-second-${runId}`, dayNumber: 1, sortOrder: 1, routingStatus: "in_planning" },
+    { tripId: userATripId, title: `A-day2-${runId}`, dayNumber: 2, sortOrder: 0, routingStatus: "in_planning" },
+  ] as any).returning({ id: itineraryItems.id });
+  userAItemIds = aItems.map((row) => row.id);
 });
 
 after(async () => {
   if (!enabled || createdUserIds.length === 0) return;
   await db.delete(trips).where(eq(trips.id, userBTripId));
+  if (userATripId) await db.delete(trips).where(eq(trips.id, userATripId));
   for (const userId of createdUserIds) {
     await db.execute(sql`
       DELETE FROM sessions
@@ -301,4 +320,37 @@ test("every selected trip-scoped User A → User B mutation is forbidden before 
     [],
     `These trip-scoped endpoints did not prove owner rejection before validation: ${JSON.stringify(notProven)}`,
   );
+});
+// THE REORDER BODY RULE (Leon, Nov 20, 2026). The generic loop above proves User A cannot call reorder on User
+// B's PLAN. This proves the other half: on a plan User A MAY write, the ids in the body are still checked - a
+// stop from another plan, or from another day of the same plan, is refused and nothing is written.
+test("reorder refuses a stop from another plan or another day, and writes nothing", { skip: !enabled }, async () => {
+  const path = `/api/trips/${userATripId}/itinerary/reorder`;
+  const [first, second, dayTwo] = userAItemIds;
+  const orders = async () =>
+    Object.fromEntries(
+      (await db.select({ id: itineraryItems.id, sortOrder: itineraryItems.sortOrder }).from(itineraryItems)
+        .where(inArray(itineraryItems.id, [...userAItemIds, userBItemId]))).map((row) => [row.id, row.sortOrder]),
+    );
+  const before = await orders();
+
+  for (const [caseName, itemIds] of [
+    ["a stop on User B's plan", [second, first, userBItemId]],
+    ["a stop on another day of the same plan", [second, dayTwo]],
+    ["the same stop twice", [second, second]],
+  ] as const) {
+    const refused = await request(path, { method: "POST", cookie: userA.cookie, body: { dayNumber: 1, itemIds } });
+    console.log(`[mutation-auth evidence] ${JSON.stringify({ endpoint: "POST /api/trips/:tripId/itinerary/reorder", case: caseName, actor: "User A (owner)", status: refused.status })}`);
+    assert.equal(refused.status, 400, `${caseName}: must be refused; status=${refused.status}`);
+    assert.deepEqual(await orders(), before, `${caseName}: a refused reorder wrote a sort order`);
+  }
+
+  // The discriminator: the same owner, the same day, only that day's own stops - accepted and written.
+  const ok = await request(path, { method: "POST", cookie: userA.cookie, body: { dayNumber: 1, itemIds: [second, first] } });
+  assert.equal(ok.status, 200, `the owner's own-day reorder must pass; status=${ok.status} body=${await ok.text()}`);
+  const after = await orders();
+  assert.equal(after[second], 0);
+  assert.equal(after[first], 1);
+  assert.equal(after[dayTwo], before[dayTwo], "the other day's stop is untouched");
+  assert.equal(after[userBItemId], before[userBItemId], "User B's stop is untouched");
 });
