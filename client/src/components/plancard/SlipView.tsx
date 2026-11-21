@@ -57,6 +57,8 @@ import {
 import { parseTripDate } from "@/lib/calendar-date";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { MoveStopSheet, useMoveStop } from "@/components/plan/MoveStopSheet";
+import { StopDragProvider, StopDragRow, StopDropSlot, useStopDrop } from "@/components/plan/StopDrag";
+import type { DragDay } from "@/lib/stop-drag";
 import type { MoveDay } from "@/lib/move-stop";
 import type { TripPlanTransition } from "@shared/trip-plan";
 import { TRIP_CARD_FINALIZE_NOW_TITLE, TRIP_CARD_READY_TITLE, tripCardBannerState, tripCardForcedPrimaryByDateAlone, tripCardHasFinal, tripCardIsPrimary } from "@shared/trip-primary-surface";
@@ -1008,7 +1010,11 @@ function SlipDayItem({
     : null;
   // R323 (§12 step 3): an expert's change to this stop arrives as a suggestion ON the row.
   const { data: suggestionData } = useExpertSuggestions(tripId, hasAdvisor && (isOwner || isExpertViewer));
+  // A2 part 2: on the days board the owner drags a stop by its handle. Not an arrival or departure row, and not
+  // a booked stop - that one cannot change day, and its menu's Move says why.
+  const canDrag = isOwner && tools.reorder && !travel && !a.booking?.id;
   return (
+    <StopDragRow itemId={a.id} dayNumber={dayNumber ?? null} dayItemIds={dayItemIds} draggable={canDrag}>
     <ItemRow
       item={a}
       facts={facts}
@@ -1169,6 +1175,7 @@ function SlipDayItem({
       ) : null}
       {actions.panel}
     </ItemRow>
+    </StopDragRow>
   );
 }
 
@@ -2004,6 +2011,11 @@ export function useSlipViewModel({
       ),
     [sortedDays, planEvents, groupByEvent],
   );
+  /** A2 part 2: the board's day columns for a dragged stop - each day's stops in drawn order. */
+  const dragDays = useMemo<DragDay[]>(
+    () => sortedDays.map((day) => ({ dayNumber: day.dayNum, dateIso: day.dateIso ?? null, items: day.activities.map((a) => ({ id: a.id, name: a.name })) })),
+    [sortedDays],
+  );
   /** A2: the days a stop can be moved to - the plan's own day rows, in order, with each day's stop count. */
   const moveDays = useMemo<MoveDay[]>(
     () => sortedDays.map((day) => ({ dayNumber: day.dayNum, dateIso: day.dateIso ?? null, stops: day.activities.length })),
@@ -2247,6 +2259,7 @@ export function useSlipViewModel({
     daySlots,
     dayByNum,
     moveDays,
+    dragDays,
     dayOpen,
     setDayOpen,
     lastDayNum,
@@ -2366,6 +2379,7 @@ export function SlipView({
     daySlots,
     dayByNum,
     moveDays,
+    dragDays,
     dayOpen,
     setDayOpen,
     lastDayNum,
@@ -2436,6 +2450,10 @@ export function SlipView({
     return { key: slot.key, dayNum: slot.dayNum, dateIso: slot.dateIso ?? null, stops: items.length, itemIds: items.map((a) => a.id) };
   });
   const stripKey = dayStrip ? stripDayKey({ days: stripDays, chosenKey: stripChosen, highlightItemId, defaultIndex: defaultOpenIdx }) : null;
+  // A2 part 2 (Leon, Nov 20, 2026; board R3_DaysBoard): on the days board the owner drags a stop by its handle
+  // onto a day. Owner only, and only while the plan's stops are theirs to change.
+  const stopDrop = useStopDrop(tripId);
+  const dragEnabled = dayColumns && isOwner && canEditItems;
   const allDaysOpen =
     daySlots.length > 0 && daySlots.every((slot, idx) => dayIsOpen(slot.key, idx, slot.groups.flatMap((g) => g.items)));
   const setAllDaysOpen = (open: boolean) =>
@@ -3000,6 +3018,7 @@ export function SlipView({
           ) : null}
           <FixedPlanBar tripId={tripId} view={fixedPlan} />
           {dayStrip ? <DayStrip days={stripDays} selectedKey={stripKey} onSelect={setStripChosen} /> : null}
+          <StopDragProvider enabled={dragEnabled} days={dragDays} onDrop={(itemId, plan) => stopDrop.mutate({ itemId, plan })}>
           <div className={dayColumns ? DAY_COLUMNS_ROW_CLASS : undefined} data-day-layout={dayColumns ? "columns" : dayStrip ? "strip" : "stack"}>
           {daySlots.map((slot, slotIdx) => {
             // A2: the phone's strip shows one day; the others are not drawn until their chip is tapped.
@@ -3064,6 +3083,7 @@ export function SlipView({
                   .filter(Boolean)
                   .join(" · ") || null}
                 column={dayColumns || dayStrip}
+                dropDay={{ dayNumber: slot.dayNum, lastItemId: dayItemIds[dayItemIds.length - 1] ?? null }}
                 open={dayIsOpen(slot.key, slotIdx, slotItems)}
                 onOpenChange={(o) => setDayOpen((m) => ({ ...m, [slot.key]: o }))}
                 feasibility={day?.feasibility ?? null}
@@ -3123,6 +3143,7 @@ export function SlipView({
                 {!arrivalItemId ? <AnchorConflictLine kind="arrival" text={arrivalConflict} /> : null}
                 {/* R-i: airport → stay, between the arrival anchor and the first stop. */}
                 {showTravelAnchors && slot.dayNum === 1 && !arrivalItemId ? <BoardLegSlot>{renderAirportLeg("arrival")}</BoardLegSlot> : null}
+                {slot.dayNum != null ? <StopDropSlot dayNumber={slot.dayNum} afterId={null} /> : null}
                 {slot.groups.map((group) => {
                   const groupItemIds = group.items.map((a) => a.id);
                   const rows = group.items.map((a) => (
@@ -3276,6 +3297,7 @@ export function SlipView({
             );
           })}
           </div>
+          </StopDragProvider>
       </div>
       {/* UI brief 1 (cleanup): the get-help NOTE is gone. It was a second door to the same chooser in the
           same situation; the action row's expert button is the one general door. The per-day hook and the
