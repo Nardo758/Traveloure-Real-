@@ -454,9 +454,12 @@ describe("0 — the relayout lost nothing and re-wired nothing", () => {
 // one home. The pins below hold the NEW homes; every testid the old ones held is still asserted.
 
 describe("1 — one centered column; the rail's pieces each have one home", () => {
-  it("the slip is one column at most 680px wide, and the map view keeps its own width", () => {
+  it("the slip is one column at most 680px wide, except the desktop days board; the map view keeps its own width", () => {
     assert.match(viewCode, /data-testid="slip-columns"/, "the plan column container is still addressable");
-    assert.match(viewCode, /slipView === "map" \? "max-w-6xl" : "max-w-\[680px\]"/, "ruling 7: 680px, map unchanged");
+    // A1 (sanctioned edit; Leon, Nov 20, 2026: "desktop shows every day as an always-open column"): ruling 7's 680px
+    // column still holds on a phone, on a one-day plan and on an empty plan. Only the desktop days board is wider.
+    assert.match(viewCode, /slipView === "map" \|\| dayColumns \? "max-w-6xl" : "max-w-\[680px\]"/, "ruling 7: 680px, except the map and the days board");
+    assert.match(viewCode, /const dayColumns = desktopWidth && slipView === "list" && daySlots\.length > 1;/, "the board needs a desktop width, the list view and more than one day");
     assert.doesNotMatch(viewCode, /lg:flex-row/, "no second column at lg");
     assert.doesNotMatch(viewCode, /lg:w-80/, "no 320px rail track");
   });
