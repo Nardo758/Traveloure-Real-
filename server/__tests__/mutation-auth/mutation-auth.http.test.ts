@@ -56,6 +56,7 @@ let userBTripId: string;
 let userBItemId: string;
 let userATripId: string;
 let userAItemIds: string[] = [];
+let userABookedItemId: string;
 let originalBTrip: { id: string; userId: string | null; title: string | null; destination: string };
 
 /**
@@ -206,6 +207,11 @@ before(async () => {
     { tripId: userATripId, title: `A-day2-${runId}`, dayNumber: 2, sortOrder: 0, routingStatus: "in_planning" },
   ] as any).returning({ id: itineraryItems.id });
   userAItemIds = aItems.map((row) => row.id);
+  // Booked-move refusal (Leon, Nov 20, 2026): a money-committed stop on day 2 of User A's own plan.
+  const [booked] = await db.insert(itineraryItems).values({
+    tripId: userATripId, title: `A-booked-${runId}`, dayNumber: 2, sortOrder: 1, routingStatus: "purchased",
+  } as any).returning({ id: itineraryItems.id });
+  userABookedItemId = booked.id;
 });
 
 after(async () => {
@@ -353,4 +359,31 @@ test("reorder refuses a stop from another plan or another day, and writes nothin
   assert.equal(after[first], 1);
   assert.equal(after[dayTwo], before[dayTwo], "the other day's stop is untouched");
   assert.equal(after[userBItemId], before[userBItemId], "User B's stop is untouched");
+});
+
+// A BOOKED STOP DOES NOT CHANGE DAY (Leon, Nov 20, 2026) - the server's refusal behind the Move sheet's
+// sentence, on the owner's own plan. The item update refuses the move itself; the reorder route cannot carry
+// one, because it takes only the stops already on the day sent.
+test("a booked stop is refused a move to another day, on the item update and on reorder", { skip: !enabled }, async () => {
+  const dayOf = async (id: string) =>
+    (await db.select({ dayNumber: itineraryItems.dayNumber }).from(itineraryItems).where(eq(itineraryItems.id, id)))[0]?.dayNumber;
+  const itemPath = (id: string) => `/api/trips/${userATripId}/itinerary-items/${id}`;
+
+  const moved = await request(itemPath(userABookedItemId), { method: "PATCH", cookie: userA.cookie, body: { dayNumber: 1 } });
+  assert.equal(moved.status, 409, `a booked stop's move must be refused; status=${moved.status}`);
+  assert.deepEqual(await moved.json(), { code: "item_booked", message: "This stop is booked. Change the booking to move it." });
+  assert.equal(await dayOf(userABookedItemId), 2, "the booked stop stayed on its day");
+
+  const viaReorder = await request(`/api/trips/${userATripId}/itinerary/reorder`, {
+    method: "POST", cookie: userA.cookie, body: { dayNumber: 1, itemIds: [userAItemIds[0], userABookedItemId] },
+  });
+  assert.equal(viaReorder.status, 400, `reorder cannot pull a booked stop onto another day; status=${viaReorder.status}`);
+  assert.equal(await dayOf(userABookedItemId), 2);
+
+  // The discriminators: naming the day it is already on is not a move, and an unbooked stop still moves.
+  const sameDay = await request(itemPath(userABookedItemId), { method: "PATCH", cookie: userA.cookie, body: { dayNumber: 2 } });
+  assert.equal(sameDay.status, 200, `the booked stop's own day is not a move; status=${sameDay.status} body=${await sameDay.text()}`);
+  const free = await request(itemPath(userAItemIds[2]), { method: "PATCH", cookie: userA.cookie, body: { dayNumber: 3 } });
+  assert.equal(free.status, 200, `an unbooked stop still moves; status=${free.status} body=${await free.text()}`);
+  assert.equal(await dayOf(userAItemIds[2]), 3);
 });
