@@ -8,6 +8,7 @@
  * rows arrive with step 3/9 — the day's legs render where the caller puts them today.
  */
 import { useState, type ReactNode } from "react";
+import { useDayDropZone } from "@/components/plan/StopDrag";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { usePlanRowLook } from "./row-look";
 import { feasibilityLine, type DayFeasibility } from "@shared/plan-feasibility";
@@ -57,6 +58,8 @@ export interface DayBlockProps {
    * in place of the toggle. The phone and every other mount keep the collapsible card.
    */
   column?: boolean;
+  /** A2 part 2: this day's number and its last stop, for a stop dragged onto the column (days board only). */
+  dropDay?: { dayNumber: number | null; lastItemId: string | null } | null;
   children: ReactNode;
 }
 
@@ -82,7 +85,9 @@ function DayHeader({ column, dayKey, isOpen, onToggle, className, children }: { 
   );
 }
 
-export function DayBlock({ dayKey, heading, stats, defaultOpen = false, open, onOpenChange, photo = null, aside = null, domId, thumb = null, feasibility = null, localTeaser = null, busyBus = null, fixControl = null, hook = null, column = false, children }: DayBlockProps) {
+export function DayBlock({ dayKey, heading, stats, defaultOpen = false, open, onOpenChange, photo = null, aside = null, domId, thumb = null, feasibility = null, localTeaser = null, busyBus = null, fixControl = null, hook = null, column = false, dropDay = null, children }: DayBlockProps) {
+  // A2 part 2: on the desktop days board the day is a drop zone for a dragged stop; off it this is {}.
+  const dropZone = useDayDropZone(dropDay?.dayNumber ?? null, dropDay?.lastItemId ?? null);
   const feasibilityText = feasibilityLine(feasibility);
   const teaserText = localTeaserLine(localTeaser);
   const busyBusText = busyBus?.reason && busyBus.cityName ? busyBusDayLine(busyBus) : null;
@@ -106,6 +111,7 @@ export function DayBlock({ dayKey, heading, stats, defaultOpen = false, open, on
         data-testid={`slip-day-${dayKey}`}
         data-open={isOpen ? "true" : "false"}
         data-column={column ? "true" : undefined}
+        {...dropZone}
       >
         {isOpen && photo ? <div data-testid={`slip-day-band-${dayKey}`}>{photo}</div> : null}
         <DayHeader column={column} dayKey={dayKey} isOpen={isOpen} onToggle={toggle} className="flex w-full items-center gap-3 px-4 pt-3.5 pb-2.5 text-left">
@@ -137,7 +143,8 @@ export function DayBlock({ dayKey, heading, stats, defaultOpen = false, open, on
     );
   }
   return (
-    <section id={domId} className={column ? `${DAY_COLUMN_CLASS} py-2` : "py-2 first:pt-0 last:pb-0"} data-testid={`slip-day-${dayKey}`} data-open={isOpen ? "true" : "false"} data-column={column ? "true" : undefined}>
+    <section id={domId} className={column ? `${DAY_COLUMN_CLASS} py-2` : "py-2 first:pt-0 last:pb-0"} data-testid={`slip-day-${dayKey}`} data-open={isOpen ? "true" : "false"} data-column={column ? "true" : undefined}
+        {...dropZone}>
       <DayHeader column={column} dayKey={dayKey} isOpen={isOpen} onToggle={toggle} className="flex w-full items-start gap-1.5 px-3 pt-1 pb-0.5 text-left">
         {column ? null : <Chevron className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-muted-foreground" aria-hidden="true" />}
         <span className="min-w-0">
