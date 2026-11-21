@@ -1,0 +1,111 @@
+/**
+ * a2-move-stop.spec.ts - A2 part 1 in a real browser (Leon, Nov 20, 2026; board R3_MovePhone, minus Ideas).
+ *
+ * The unit tests pin the Move sheet's words, its PATCH body and where the stop menu offers it. Nothing had
+ * opened it. This spec builds a real three-day plan (one stop a day) and checks:
+ *
+ *   B1 at 390 wide: the stop's menu has "Move"; the sheet names the stop, lists the three days with the
+ *      stop's own day reading "now" and not choosable, offers "Keep 09:00" and "Pick a time", and shows
+ *      "Move to <day>" once a day is tapped. Confirming moves the stop: the sheet closes and the stop is on
+ *      the day chosen after a reload (the chips' counts, and the stop under that day's chip).
+ *   B2 at 1280 wide: the same sheet opens from a column of the days board.
+ *
+ * It writes two screenshots to `playwright/a2-captures/`, uploaded by the workflow as `a2-captures-<sha>`.
+ * Runs against the job's own app and database (a fresh traveler and plan per run); nothing is stubbed.
+ */
+import { test, expect, type Page } from "@playwright/test";
+import fs from "node:fs";
+import path from "node:path";
+import { registerAndSignIn } from "../utils/auth";
+
+const BASE_URL = process.env.BASE_URL ?? "http://localhost:5000";
+const OUT_DIR = path.join(process.cwd(), "playwright", "a2-captures");
+const uid = () => Math.random().toString(36).slice(2, 10);
+
+// 2027-04-01 is a Thursday: the days read "Thu 1", "Fri 2", "Sat 3".
+const STOPS = [
+  { title: "Fushimi Inari Shrine", dayNumber: 1, startTime: "09:00" },
+  { title: "Arashiyama Bamboo Grove", dayNumber: 2, startTime: "09:30" },
+  { title: "Kiyomizu-dera", dayNumber: 3, startTime: "15:00" },
+];
+
+/** A signed-in traveler with a three-day plan, one stop on each day. Returns the plan and day 1's stop. */
+async function threeDayPlan(page: Page): Promise<{ tripId: string; stopId: string }> {
+  await registerAndSignIn(
+    page.request,
+    { email: `e2e-a2-move-${uid()}@example.com`, password: "MoveStop123!", firstName: "Move", lastName: "Stop", extra: { userType: "user" } },
+    BASE_URL,
+  );
+  const trip = await page.request.post(`${BASE_URL}/api/trips`, {
+    data: { title: "A2 move stop plan", destination: "Kyoto, Japan", startDate: "2027-04-01", endDate: "2027-04-03" },
+  });
+  expect(trip.status(), await trip.text()).toBe(201);
+  const tripId = (await trip.json()).id as string;
+  const ids: string[] = [];
+  for (const stop of STOPS) {
+    const res = await page.request.post(`${BASE_URL}/api/trips/${tripId}/itinerary-items`, { data: stop });
+    expect([200, 201], await res.text()).toContain(res.status());
+    ids.push((await res.json()).id as string);
+  }
+  expect(ids[0], "the created stop has an id").toBeTruthy();
+  return { tripId, stopId: ids[0] };
+}
+
+async function openMoveSheet(page: Page, tripId: string, stopId: string) {
+  await page.goto(`${BASE_URL}/plans/${tripId}`, { waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId("slip-action-row")).toBeVisible({ timeout: 30_000 });
+  await page.getByTestId(`item-menu-${stopId}`).click();
+  await page.getByTestId(`item-menu-move-${stopId}`).click();
+  await expect(page.getByTestId(`move-stop-sheet-${stopId}`)).toBeVisible();
+}
+
+test.beforeAll(() => {
+  fs.mkdirSync(OUT_DIR, { recursive: true });
+});
+
+test("B1 at 390 the stop menu's Move opens the sheet, and confirming moves the stop to the day chosen", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const { tripId, stopId } = await threeDayPlan(page);
+  await openMoveSheet(page, tripId, stopId);
+  const sheet = page.getByTestId(`move-stop-sheet-${stopId}`);
+
+  await expect(sheet).toContainText("Move Fushimi Inari Shrine to");
+  await expect(sheet.locator('[data-testid^="move-stop-day-"]')).toHaveCount(3);
+  await expect(sheet.getByTestId("move-stop-day-1")).toHaveText("Thu 1 · now");
+  await expect(sheet.getByTestId("move-stop-day-1")).toBeDisabled();
+  await expect(sheet.getByTestId("move-stop-day-2")).toHaveText("Fri 2 · 1 stop");
+  await expect(sheet.getByTestId("move-stop-day-3")).toHaveText("Sat 3 · 1 stop");
+  await expect(sheet.getByTestId("move-stop-keep-time")).toHaveText(/^Keep 0?9:00/);
+  await expect(sheet.getByTestId("move-stop-pick-time")).toHaveText("Pick a time");
+  await expect(sheet.getByTestId("move-stop-confirm"), "no day chosen yet").toHaveCount(0);
+
+  await sheet.getByTestId("move-stop-day-2").click();
+  await expect(sheet.getByTestId("move-stop-confirm")).toHaveText("Move to Fri 2 Apr");
+  // The sheet's open animation must settle before the picture is taken.
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: path.join(OUT_DIR, "move-sheet-390.png"), fullPage: false });
+
+  await sheet.getByTestId("move-stop-confirm").click();
+  await expect(sheet).toHaveCount(0);
+  // Read back from the server, not from the page's cache: reload, then look under the day chosen.
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId("slip-day-strip")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("slip-day-chip-1")).toHaveAttribute("aria-label", "Thu 1 · 0 stops");
+  await expect(page.getByTestId("slip-day-chip-2")).toHaveAttribute("aria-label", "Fri 2 · 2 stops");
+  await page.getByTestId("slip-day-chip-2").click();
+  await expect(page.getByTestId("slip-day-body-2")).toContainText("Fushimi Inari Shrine");
+  await expect(page.getByTestId("slip-day-body-2")).toContainText("Arashiyama Bamboo Grove");
+});
+
+test("B2 at 1280 the same sheet opens from a column of the days board", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const { tripId, stopId } = await threeDayPlan(page);
+  await openMoveSheet(page, tripId, stopId);
+  const sheet = page.getByTestId(`move-stop-sheet-${stopId}`);
+
+  await expect(sheet).toContainText("Move Fushimi Inari Shrine to");
+  await sheet.getByTestId("move-stop-day-3").click();
+  await expect(sheet.getByTestId("move-stop-confirm")).toHaveText("Move to Sat 3 Apr");
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: path.join(OUT_DIR, "move-sheet-1280.png"), fullPage: false });
+});
