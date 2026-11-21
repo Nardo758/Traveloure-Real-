@@ -56,12 +56,15 @@ export interface DropPlan {
 
 /**
  * The writes for dropping `itemId` (now on `fromDay`) at `target`, or null when the drop changes nothing: no
- * such day, "after itself", or the place the stop already holds. A stop that arrives on a day with no other
+ * such day, "after itself", the place the stop already holds, or another day for a stop that keeps its day. A stop that arrives on a day with no other
  * stop needs no reorder.
  */
-export function dropPlan(input: { itemId: string; fromDay: number; target: DropTarget | null; days: readonly DragDay[] }): DropPlan | null {
+export function dropPlan(input: { itemId: string; fromDay: number; ownDayOnly?: boolean; target: DropTarget | null; days: readonly DragDay[] }): DropPlan | null {
   const { itemId, fromDay, target } = input;
   if (!target) return null;
+  // A booked stop is reordered within its day; it does not change day (Leon, Nov 21, 2026). The server
+  // refuses that move too - this is why no landing place is ever offered for one.
+  if (input.ownDayOnly && target.dayNumber !== fromDay) return null;
   const day = input.days.find((d) => d.dayNumber === target.dayNumber);
   if (!day) return null;
   if (target.byTime) return target.dayNumber === fromDay ? null : { move: { dayNumber: target.dayNumber }, reorder: null };

@@ -67,6 +67,13 @@ export interface DayBlockProps {
  * A column's width on the days board: up to four share the row, a fifth makes the row scroll sideways
  * (`DAY_COLUMNS_ROW_CLASS` in the slip).
  */
+/**
+ * A CLOSED day a dragged stop would land on is ringed: its stops are not drawn, so the dashed landing box
+ * that marks the place in an open day has nowhere to appear (A3; the stacked day cards). The board look
+ * only, and only where drag is on: the plain look carries no slip colour.
+ */
+const DAY_DROP_OVER_CLASS =
+  "data-[drop-over=true]:data-[open=false]:ring-2 data-[drop-over=true]:data-[open=false]:ring-[color:var(--slip-navy)]";
 const DAY_COLUMN_CLASS = "min-w-[264px] flex-1 basis-0 self-start";
 
 /** The day's header: the toggle on a collapsible card, a plain header on an always-open column. */
@@ -107,7 +114,7 @@ export function DayBlock({ dayKey, heading, stats, defaultOpen = false, open, on
     return (
       <section
         id={domId}
-        className={`${column ? DAY_COLUMN_CLASS : "mb-3"} overflow-hidden rounded-[var(--slip-radius-card)] border border-[color:var(--slip-line)] bg-[color:var(--slip-card)]`}
+        className={`${column ? DAY_COLUMN_CLASS : "mb-3"} ${dropZone["data-drop-column"] != null ? DAY_DROP_OVER_CLASS : ""} overflow-hidden rounded-[var(--slip-radius-card)] border border-[color:var(--slip-line)] bg-[color:var(--slip-card)]`}
         data-testid={`slip-day-${dayKey}`}
         data-open={isOpen ? "true" : "false"}
         data-column={column ? "true" : undefined}

@@ -50,18 +50,21 @@ test("H3 no landing box is drawn until a stop is being dragged", () => {
 test("H4 the landing box is dashed, reads the approved line, and is drawn only where the drop would change something", () => {
   assert.match(drag, /border-2 border-dashed/);
   assert.match(drag, /\{dropHereLabel\(day, afterId\)\}/);
-  assert.match(drag, /if \(!day \|\| !dropPlan\(\{ itemId: drag\.dragging\.itemId, fromDay: drag\.dragging\.fromDay, target: drag\.target, days: drag\.days \}\)\) return null;/);
+  // A3 (sanctioned edit): the provider works the drop out once (`plan`), for the box, the chips and the drop.
+  assert.match(drag, /if \(!day \|\| !drag\.plan\) return null;/);
 });
 
-test("H5 drag is on only on the desktop days board and the phone's day strip, for the owner, while the stops are theirs to change", () => {
-  // Hold-to-drag (Leon, Nov 21, 2026 - sanctioned edit): the phone's strip joins the board; there it is a hold.
-  assert.match(slip, /const dragEnabled = \(dayColumns \|\| dayStrip\) && isOwner && canEditItems;/);
-  assert.match(slip, /<StopDragProvider enabled=\{dragEnabled\} hold=\{dayStrip\} days=\{dragDays\}/);
+test("H5 drag is on for the owner in every layout of the days, while the stops are theirs to change", () => {
+  // A3 (Leon, Nov 21, 2026 - sanctioned edit): the owner's menu no longer reorders, so drag is not limited to
+  // the desktop board and the phone's strip - a one-day plan and a tablet's stacked day cards drag too.
+  assert.match(slip, /const dragEnabled = isOwner && canEditItems;/);
+  assert.match(slip, /<StopDragProvider enabled=\{dragEnabled\} days=\{dragDays\}/);
 });
 
-test("H6 a booked stop and an arrival or departure row have no handle", () => {
-  assert.match(slip, /const canDrag = isOwner && tools\.reorder && !travel && !a\.booking\?\.id;/);
-  assert.match(slip, /<StopDragRow itemId=\{a\.id\} dayNumber=\{dayNumber \?\? null\} dayItemIds=\{dayItemIds\} draggable=\{canDrag\}>/);
+test("H6 an arrival or departure row has no handle; a booked stop has one, for its own day only", () => {
+  // A3 (Leon, Nov 21, 2026 - sanctioned edit): "Booked stops: draggable within their own day only."
+  assert.match(slip, /const canDrag = isOwner && tools\.reorder && !travel;/);
+  assert.match(slip, /<StopDragRow itemId=\{a\.id\} dayNumber=\{dayNumber \?\? null\} dayItemIds=\{dayItemIds\} draggable=\{canDrag\} ownDayOnly=\{!!a\.booking\?\.id\}>/);
 });
 
 test("H7 each day column takes the drop, and a day's first place has its own landing box", () => {
@@ -85,7 +88,7 @@ const strip = read("../../plan/DayStrip.tsx");
 const drawHold = (draggable: boolean) =>
   renderToStaticMarkup(
     <QueryClientProvider client={new QueryClient()}>
-      <StopDragProvider enabled hold days={days} onDrop={() => {}}>
+      <StopDragProvider enabled days={days} onDrop={() => {}}>
         <StopDragRow itemId="a" dayNumber={1} dayItemIds={["a"]} draggable={draggable}>
           <p>row</p>
         </StopDragRow>
@@ -93,28 +96,31 @@ const drawHold = (draggable: boolean) =>
     </QueryClientProvider>,
   );
 
-test("K1 on the phone the handle is drawn but is not a mouse-drag source; the row carries what the finger's hit test reads", () => {
+test("K1 the row carries what the finger's hit test reads, and the handle is a mouse-drag source the hold switches off while a finger is down", () => {
   const html = drawHold(true);
   assert.match(html, /data-drag-row="a"/);
   assert.match(html, /data-drag-day="1"/);
-  assert.match(html, /<span aria-hidden="true" draggable="false"[^>]*data-testid="stop-drag-handle-a">/);
-  assert.match(html, /select-none/);
+  assert.match(html, /<span aria-hidden="true" draggable="true"[^>]*data-drag-handle=""[^>]*data-testid="stop-drag-handle-a">/);
+  assert.match(html, /\[@media\(pointer:coarse\)\]:select-none/);
+  assert.match(drag, /handle\(\)\?\.setAttribute\("draggable", "false"\);/);
+  assert.match(drag, /handle\(\)\?\.setAttribute\("draggable", "true"\);/);
 });
 
 test("K2 a stop that may not move is not held: no handle, no hold styling", () => {
   const html = drawHold(false);
   assert.doesNotMatch(html, /stop-drag-handle/);
   assert.doesNotMatch(html, /select-none/);
-  assert.match(drag, /useHoldDrag\(rowRef, \{ enabled: !!drag\?\.hold && draggable && dayNumber != null, itemId, dayNumber \}\);/);
+  assert.match(drag, /useHoldDrag\(rowRef, \{ enabled: !!drag && draggable && dayNumber != null, itemId, dayNumber, ownDayOnly \}\);/);
 });
 
 test("K3 the hold: a timer starts the drag, a drift before it cancels (a scroll), and only a live drag stops the page scrolling", () => {
   const hook = drag.slice(drag.indexOf("function useHoldDrag"), drag.indexOf("/**\n * A day column as a drop zone."));
   assert.match(hook, /\}, HOLD_DRAG_MS\);/);
   assert.match(hook, /if \(startAt && !holdStillHolding\(startAt, \{ x: t\.clientX, y: t\.clientY \}\)\) cancelTimer\(\);\s*return;/);
-  const guard = hook.indexOf("if (!active) {");
-  const prevent = hook.indexOf("e.preventDefault();");
-  assert.ok(guard > 0 && prevent > guard, "preventDefault only once the drag is live");
+  const move = hook.slice(hook.indexOf("const onMove = "), hook.indexOf("const finish = "));
+  const guard = move.indexOf("if (!active) {");
+  const prevent = move.indexOf("e.preventDefault();");
+  assert.ok(guard > 0 && prevent > guard, "the page is held still only once the drag is live");
   assert.match(hook, /addEventListener\("touchmove", onMove, \{ passive: false \}\)/);
   assert.match(hook, /const onCancel = \(\) => finish\(false\);/);
 });
@@ -126,8 +132,35 @@ test("K4 what is under the finger: a day chip moves the stop to that day by its 
   assert.match(hit, /afterIdForRow\(\{ rowId: row\.dataset\.dragRow!, dayItemIds, upperHalf: y < box\.top \+ box\.height \/ 2 \}\)/);
 });
 
-test("K5 the strip: chips are drop targets only with hold-drag on, it stays in reach while a stop is held, and the hint is the full approved sentence", () => {
-  assert.match(strip, /data-drop-day=\{drag\?\.hold && d\.dayNum != null \? d\.dayNum : undefined\}/);
+test("K5 the strip: chips are drop targets only with drag on, it stays in reach while a stop is held, and the hint is the full approved sentence", () => {
+  assert.match(strip, /data-drop-day=\{drag && d\.dayNum != null \? d\.dayNum : undefined\}/);
   assert.match(strip, /className=\{holding \? "sticky top-2 z-30/);
-  assert.match(strip, /\{drag\?\.hold \? MOVE_STOP_COPY\.stripHint : MOVE_STOP_COPY\.stripTapHint\}/);
+  assert.match(strip, /\{drag \? MOVE_STOP_COPY\.stripHint : MOVE_STOP_COPY\.stripTapHint\}/);
+});
+
+// A3 - THE OWNER'S MENU NO LONGER REORDERS; DRAG DOES, EVERYWHERE (Leon, Nov 21, 2026).
+test("N1 the owner's stop menu has no Move up / Move down; an advisor's keeps both", () => {
+  assert.match(slip, /onMoveUp: isOwner \? null : actions\.onMoveUp,/);
+  assert.match(slip, /onMoveDown: isOwner \? null : actions\.onMoveDown,/);
+  // The entries themselves stay in the menu component, for the advisor.
+  const row = read("../../plan/ItemRow.tsx");
+  assert.match(row, /item-menu-move-up-\$\{id\}/);
+  assert.match(row, /item-menu-move-down-\$\{id\}/);
+});
+
+test("N2 every other menu entry is still wired for the owner", () => {
+  for (const entry of ["onDetails", "onSwap", "onMove:", "onRemove", "onToggleLock", "onAskLocal"]) {
+    assert.ok(slip.includes(entry), `${entry} is still passed to the row's menu`);
+  }
+});
+
+test("N3 a day is a landing place for a finger too, and a closed day that would take the drop is ringed", () => {
+  assert.match(drag, /"data-drop-column": dayNumber,/);
+  assert.match(drag, /const column = el\.closest<HTMLElement>\("\[data-drop-column\]"\);/);
+  assert.match(block, /data-\[drop-over=true\]:data-\[open=false\]:ring-2/);
+});
+
+test("N4 the strip's chips take a mouse drop as well as a finger's, and are ringed only where the drop would do something", () => {
+  assert.match(strip, /drag\.over\(\{ dayNumber: d\.dayNum, afterId: null, byTime: true \}\);/);
+  assert.match(strip, /const over = holding && drag\?\.plan && drag\.target\?\.byTime \? drag\.target\.dayNumber : null;/);
 });

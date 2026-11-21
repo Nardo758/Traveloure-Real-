@@ -78,3 +78,13 @@ test("G11 a finger that drifts past the slop before the hold completes is a scro
   assert.equal(holdStillHolding(start, { x: 103, y: 104 }), true);
   assert.equal(holdStillHolding(start, { x: 100, y: 100 + HOLD_DRAG_SLOP_PX + 1 }), false);
 });
+
+// A3 - a booked stop is dragged within its own day only (Leon, Nov 21, 2026).
+test("G12 a stop that keeps its day: a new place in its own day is written, another day never is", () => {
+  assert.deepEqual(dropPlan({ itemId: "tofuku", fromDay: 1, ownDayOnly: true, target: { dayNumber: 1, afterId: null }, days }), {
+    move: null,
+    reorder: { dayNumber: 1, itemIds: ["tofuku", "fushimi"] },
+  });
+  assert.equal(dropPlan({ itemId: "tofuku", fromDay: 1, ownDayOnly: true, target: { dayNumber: 2, afterId: "tenryu" }, days }), null);
+  assert.equal(dropPlan({ itemId: "tofuku", fromDay: 1, ownDayOnly: true, target: { dayNumber: 2, afterId: null, byTime: true }, days }), null, "nor onto another day's chip");
+});

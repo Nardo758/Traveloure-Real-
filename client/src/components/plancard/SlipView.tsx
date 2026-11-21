@@ -984,8 +984,10 @@ function SlipDayItem({
         onDetails: () => setSheetOpen(true),
         onSwap: actions.onSwap,
         onMove: canMoveDay ? () => setMoveOpen(true) : undefined,
-        onMoveUp: actions.onMoveUp,
-        onMoveDown: actions.onMoveDown,
+        // A3 (Leon, Nov 21, 2026): the OWNER reorders by drag, so their menu has no Move up / Move down. An
+        // advisor has no drag - their reorder is a filed suggestion - and keeps both.
+        onMoveUp: isOwner ? null : actions.onMoveUp,
+        onMoveDown: isOwner ? null : actions.onMoveDown,
         onRemove: actions.onRemove,
         // R-ah: the lock is the OWNER's instruction to every machine rewrite.
         onToggleLock: isOwner ? toggleLock : undefined,
@@ -1010,11 +1012,11 @@ function SlipDayItem({
     : null;
   // R323 (§12 step 3): an expert's change to this stop arrives as a suggestion ON the row.
   const { data: suggestionData } = useExpertSuggestions(tripId, hasAdvisor && (isOwner || isExpertViewer));
-  // A2 part 2: on the days board the owner drags a stop by its handle. Not an arrival or departure row, and not
-  // a booked stop - that one cannot change day, and its menu's Move says why.
-  const canDrag = isOwner && tools.reorder && !travel && !a.booking?.id;
+  // The owner drags a stop (A2; A3: in every layout). Not an arrival or departure row. A BOOKED stop is dragged
+  // within its own day only (Leon, Nov 21, 2026): it cannot change day, and its menu's Move says why.
+  const canDrag = isOwner && tools.reorder && !travel;
   return (
-    <StopDragRow itemId={a.id} dayNumber={dayNumber ?? null} dayItemIds={dayItemIds} draggable={canDrag}>
+    <StopDragRow itemId={a.id} dayNumber={dayNumber ?? null} dayItemIds={dayItemIds} draggable={canDrag} ownDayOnly={!!a.booking?.id}>
     <ItemRow
       item={a}
       facts={facts}
@@ -2453,8 +2455,9 @@ export function SlipView({
   // A2 part 2 (Leon, Nov 20, 2026; board R3_DaysBoard): on the days board the owner drags a stop by its handle
   // onto a day. Owner only, and only while the plan's stops are theirs to change.
   const stopDrop = useStopDrop(tripId);
-  // On the phone's day strip the same drag is a HOLD on the stop (Leon, Nov 21, 2026; board R3_MovePhone).
-  const dragEnabled = (dayColumns || dayStrip) && isOwner && canEditItems;
+  // A3 (Leon, Nov 21, 2026): the owner reorders by DRAG in every layout of the days - the board, the phone's
+  // strip, the stacked day cards - because the stop menu no longer carries Move up / Move down for them.
+  const dragEnabled = isOwner && canEditItems;
   const allDaysOpen =
     daySlots.length > 0 && daySlots.every((slot, idx) => dayIsOpen(slot.key, idx, slot.groups.flatMap((g) => g.items)));
   const setAllDaysOpen = (open: boolean) =>
@@ -3018,7 +3021,7 @@ export function SlipView({
             </div>
           ) : null}
           <FixedPlanBar tripId={tripId} view={fixedPlan} />
-          <StopDragProvider enabled={dragEnabled} hold={dayStrip} days={dragDays} onDrop={(itemId, plan) => stopDrop.mutate({ itemId, plan })}>
+          <StopDragProvider enabled={dragEnabled} days={dragDays} onDrop={(itemId, plan) => stopDrop.mutate({ itemId, plan })}>
           {dayStrip ? <DayStrip days={stripDays} selectedKey={stripKey} onSelect={setStripChosen} /> : null}
           <div className={dayColumns ? DAY_COLUMNS_ROW_CLASS : undefined} data-day-layout={dayColumns ? "columns" : dayStrip ? "strip" : "stack"}>
           {daySlots.map((slot, slotIdx) => {
