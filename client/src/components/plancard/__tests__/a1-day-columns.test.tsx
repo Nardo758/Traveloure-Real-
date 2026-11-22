@@ -70,7 +70,7 @@ describe("A1 - days as always-open columns on desktop", () => {
     const view = read("../SlipView.tsx");
     assert.ok(view.includes('const dayColumns = desktopWidth && slipView === "list" && daySlots.length > 1;'));
     assert.ok(view.includes("const desktopWidth = useMinWidth(1024);"));
-    assert.ok(view.includes('slipView === "map" || dayColumns ? "max-w-6xl" : "max-w-[680px]"'), "the page widens only for the map and the board");
+    assert.ok(view.includes('slipView === "map" || dayColumns || besideMap ? "max-w-6xl" : "max-w-[680px]"'), "the page widens only for the map, the board and the map beside the days (A7)");
     // A2 (Leon, Nov 20, 2026 - sanctioned edit): the phone's day strip is a third layout beside these two, so the
     // three lines below now also name `dayStrip`. The board's own conditions are unchanged.
     assert.ok(view.includes('slipView === "list" && daySlots.length > 1 && !dayColumns && !dayStrip ? ('), "Expand all is not drawn over the board");

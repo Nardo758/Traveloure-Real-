@@ -101,7 +101,7 @@ export function isLocated(a: Pick<PlanCardActivity, "lat" | "lng">): boolean {
 export const MAP_FALLBACK_LIST_NOTICE = "This day's stops can't be drawn on this map, so they're listed.";
 
 /** GC-1: the day's stops in order — names and times only, no point, line or minute. */
-function MapFallbackList({ tripId, activities }: { tripId: string; activities: readonly PlanCardActivity[] }) {
+export function MapFallbackList({ tripId, activities }: { tripId: string; activities: readonly PlanCardActivity[] }) {
   return (
     <div className="h-full overflow-y-auto bg-card px-4 py-3" data-testid={`map-fallback-list-${tripId}`}>
       <p className="mb-2 text-xs text-muted-foreground">{MAP_FALLBACK_LIST_NOTICE}</p>
