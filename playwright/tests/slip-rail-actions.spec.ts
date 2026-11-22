@@ -358,22 +358,24 @@ test("A8: the tools tray opens the existing tools (surface step 2)", async ({ pa
   // contract board left the rail; the group manifest's tools open them from the slip's tray.
   const tripId = await registerAndCreateTrip(page, "plan");
   await openSlip(page, tripId);
-  const tray = page.getByTestId("slip-tools-tray");
-  await expect(tray).toBeVisible();
+  // A10 fix (Leon, Nov 22 2026): a plan with no occasion resolves to plain_plan, which the app treats as a trip,
+  // so the strip is drawn INSTEAD of the tray row. Same tools, same sheets - only the container changed.
+  const strip = page.getByTestId("slip-told-strip");
+  await expect(strip).toBeVisible();
   // Only live tools render (ledger `2026-10-08-tools-tray-live-only`, sanctioned rewrite): a tool
   // with no existing component draws nothing, and the tray says "coming soon" nowhere.
-  await expect(tray).not.toContainText("coming soon");
+  await expect(strip).not.toContainText("coming soon");
   // Step 9c D7 (ledger `2026-10-07-step9c-leg-options`; sanctioned amendment): Getting around is live —
   // it reads the plan's own days and every gap between their stops.
   // QW-4 (stage-aware tray): a fresh plan has no two stops, so neither content-gated chip is drawn —
   // the tray never offers a tool that would open empty.
-  await expect(page.getByTestId("tool-chip-getting_around")).toHaveCount(0);
-  await expect(page.getByTestId("tool-chip-pace")).toHaveCount(0);
+  await expect(page.getByTestId("slip-told-getting_around")).toHaveCount(0);
+  await expect(page.getByTestId("slip-told-pace")).toHaveCount(0);
   // Two stops make both questions answerable; the slip then draws both chips.
   await addItem(page, tripId);
   await addItem(page, tripId);
   await openSlip(page, tripId);
-  await page.getByTestId("tool-chip-getting_around").click();
+  await page.getByTestId("slip-told-getting_around").click();
   await expect(page.getByTestId("tool-sheet-getting_around")).toBeVisible();
   // Production smoke F1 (ledger `2026-10-08-getting-around-every-gap`; sanctioned): a free plan says where
   // travel times come from, and its days are listed rather than replaced by an empty line.
@@ -381,7 +383,7 @@ test("A8: the tools tray opens the existing tools (surface step 2)", async ({ pa
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("tool-sheet-getting_around")).toHaveCount(0);
   // Pace opens the EXISTING energy budget in a sheet.
-  await page.getByTestId("tool-chip-pace").click();
+  await page.getByTestId("slip-told-pace").click();
   await expect(page.getByTestId("tool-sheet-pace")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("tool-sheet-pace")).toHaveCount(0);

@@ -118,7 +118,7 @@ import {
 import { absorbedTravelItemId, flightTimeConflictLine } from "@shared/getting-there";
 import { ToolsTray } from "@/components/plan/ToolsTray";
 import { NextQuestion } from "@/components/plan/NextQuestion";
-import { nextQuestion, type NextQuestionKey } from "@/lib/next-question";
+import { nextQuestion, stripGroupIsTrip, type NextQuestionKey } from "@/lib/next-question";
 import { SlipPartyRoster } from "./SlipPartyRoster";
 import { PlanCostStrip } from "@/components/plan/PlanCostStrip";
 import { SlipEmptyGuestStart, SlipEmptyStart } from "@/components/plan/SlipEmptyStart";
@@ -2511,7 +2511,7 @@ export function SlipView({
    * today's header and no strip; other occasions keep their own tool rows; phones keep today's layout.
    */
   const toldStrip =
-    isOwner && !!data.trip && slipView === "list" && experienceGroup === "trips" && desktopWidth;
+    isOwner && !!data.trip && slipView === "list" && stripGroupIsTrip(experienceGroup, occasion?.slug ?? null) && desktopWidth;
   const toldDone = {
     dates: (data.trip as any)?.datesConfirmed === true,
     // B-8's rule: a fact nobody stated is never marked answered (no "party 0").
