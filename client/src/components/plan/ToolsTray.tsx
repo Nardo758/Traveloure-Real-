@@ -74,6 +74,12 @@ export interface ToolsTrayProps {
     doneChips?: { dates?: boolean; party?: boolean; stay?: boolean };
     /** A10 part 2: the ONE "Next:" question this visit, or null when the plan has answered all four. */
     nextQuestion?: NextQuestionKey | null;
+    /**
+     * A10 part 3 (Leon, Nov 22 2026): the further answers the strip draws after dates, party and stay - Getting there,
+     * Getting around, Pace. Each one presses exactly what the tray's chip pressed: the dates/party panel when that fact
+     * is missing, its own sheet once the plan can answer it, and nothing while its gate is shut.
+     */
+    extraChips?: readonly ToolKey[];
     onNextAnswer?: () => void;
     onNextSkip?: () => void;
 }
@@ -217,6 +223,18 @@ export function ToolsTray(props: ToolsTrayProps) {
               {chip("dates", "Dates", props.doneChips?.dates === true, () => props.onNeedDates?.())}
               {chip("party", TOOL_LABEL.travel_party, props.doneChips?.party === true, () => props.onNeedParty?.())}
               {chip("stay", TOOL_LABEL.where_to_stay, props.doneChips?.stay === true, pressStay)}
+              {(props.extraChips ?? []).map((key) => {
+                const route = props.facts ? trayPress(key, props.facts) : "sheet";
+                // A shut gate draws nothing, exactly as the tray's own filter does.
+                if (route === "hidden") return null;
+                const press =
+                  route === "dates"
+                    ? () => props.onNeedDates?.()
+                    : route === "party"
+                      ? () => props.onNeedParty?.()
+                      : () => setOpen(key);
+                return chip(key, TOOL_LABEL[key], props.doneTools?.has(key) === true, press);
+              })}
             </div>
           </section>
           {sheet}

@@ -2721,6 +2721,8 @@ export function SlipView({
             <div className="flex flex-wrap items-center gap-2" data-testid="slip-tools-row">
               {isOwner && slipView === "list" ? (
               <ToolsTray
+                // A10 part 3: the answers after dates, party and stay - Getting there, Getting around, Pace.
+                extraChips={["getting_there", "getting_around", "pace"] as const}
                 nextQuestion={nextKey}
                 onNextAnswer={() => {
                   if (nextKey === "dates") setTrayChip("dates");
