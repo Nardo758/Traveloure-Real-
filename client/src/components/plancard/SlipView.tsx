@@ -2503,6 +2503,19 @@ export function SlipView({
   // nobody saved stays unchecked (§13 — an unanswered question is not "done").
   const datesSaved = (data.trip as any)?.datesConfirmed === true;
   const stayChosen = allActivities.some((a) => isLodgingItem({ type: a.type, title: a.name }));
+  /**
+   * A10 (Leon, Nov 21 2026): on an OWNER's trip, at the list view, the tools row is replaced by "What you've told
+   * us" - three chips (dates, party, stay) that open the same panels and sheet the tray opened. A guest keeps
+   * today's header and no strip; other occasions keep their own tool rows; phones keep today's layout.
+   */
+  const toldStrip =
+    isOwner && !!data.trip && slipView === "list" && experienceGroup === "trips" && desktopWidth;
+  const toldDone = {
+    dates: (data.trip as any)?.datesConfirmed === true,
+    // B-8's rule: a fact nobody stated is never marked answered (no "party 0").
+    party: Number((data.trip as any)?.numberOfTravelers ?? (data.trip as any)?.travelers ?? 0) > 0,
+    stay: stayChosen,
+  };
   const doneTools = useMemo(() => {
     const done = new Set<ToolKey>();
     if (momentAnchor) done.add("the_reservation");
@@ -2595,7 +2608,7 @@ export function SlipView({
         }
         data={data}
         eventCount={countPlanEvents(planEvents)}
-        partyLabel={partyLabel}
+        partyLabel={toldStrip ? "" : partyLabel}
         isHidden={occasionIsHidden}
         isOwner={isOwner}
         /* S6/S7 — resolved ONCE above and handed to BOTH surfaces that state them (this header and
@@ -2691,6 +2704,8 @@ export function SlipView({
             <div className="flex flex-wrap items-center gap-2" data-testid="slip-tools-row">
               {isOwner && slipView === "list" ? (
               <ToolsTray
+                chrome={toldStrip ? "strip" : "tray"}
+                doneChips={toldDone}
                 tripId={tripId}
                 group={experienceGroup}
                 occasionSlug={occasion?.slug ?? null}

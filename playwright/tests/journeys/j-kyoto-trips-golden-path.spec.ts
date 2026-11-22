@@ -506,7 +506,11 @@ test.describe("2 · where are you staying", () => {
     expect(after.reason).toBe("no_draft");
     expect(after.dismissed).toBe(true);
     // …and the tray's "Where to stay" chip still opens the full chooser.
-    await testid(page, "tool-chip-where_to_stay").click();
+    // A10 (Leon, Nov 21 2026): on an owner's trip at desktop width the tray row is replaced by the
+    // "What you've told us" strip, so the stay control is slip-told-stay inside slip-told-strip. It opens
+    // the same full chooser the tray chip opened; only the control's home changed.
+    await expect(testid(page, "slip-told-strip")).toBeVisible({ timeout: 20_000 });
+    await testid(page, "slip-told-stay").click();
     const chooser = testid(page, "tool-sheet-where_to_stay").getByTestId("anchor-panel-chooser");
     await expect(chooser).toBeVisible({ timeout: 20_000 });
     await expect(chooser.getByTestId("slip-anchor-compare")).toHaveText("Add places I'm considering");
