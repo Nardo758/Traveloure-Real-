@@ -1007,7 +1007,9 @@ test.describe("4 · free draft around the set", () => {
     // TEST EDIT (A1; Leon, Nov 20, 2026): at this desktop width every day is an always-open column, so day 2's stop
     // shows without pressing its header (which is no longer a toggle).
     await expect(testid(page, "slip-day-toggle-2")).toHaveCount(0);
-    await expect(page.getByText("Stop on day 2")).toBeVisible({ timeout: 20_000 });
+    // A7 (Leon, Nov 21 2026): the stop's name now also appears in the map panel's fallback list, so the
+    // lookup is scoped to the slip row instead of the whole page. Test-only change; no app code.
+    await expect(page.getByTestId(/^slip-item-name-/).filter({ hasText: "Stop on day 2" })).toBeVisible({ timeout: 20_000 });
     await expect(testid(page, "where-to-stay-panel")).toHaveCount(0);
     await expect(testid(page, "anchor-panel-collapsed")).toHaveCount(0);
     await expect(testid(page, "slip-lodging-entry")).toHaveCount(0);
