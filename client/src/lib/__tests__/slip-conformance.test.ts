@@ -300,11 +300,15 @@ const ALLOWED_REPOINTS: Record<string, { to: string[]; reason: string }> = {
   },
   "slip-action-optimize": {
     to: [
-      "onClick:() => { if (optimizing || creatingComparison || optimizeDisabledReason) return; guard((dates) => { gatedWindow.current = dates; setBuildAroundOpen(true); }); }",
+      'onClick:() => { optimizerSlot?.scrollIntoView?.({ behavior: "smooth", block: "nearest" }); openOptimize(); }',
+      "onClick:openOptimize",
     ],
     reason:
       "E1 ruling 7 — Optimize goes through the dates gate before the build-around step; the in-flight " +
-      "early return is unchanged and the run reads the window the gate handed over.",
+      "early return is unchanged and the run reads the window the gate handed over. Frame lift (Leon, Nov 19, " +
+      "2026): that guarded open is now ONE named function, `openOptimize`, pinned by its own test below. The " +
+      "page frame's action row carries the control (first target: bring the card into view, then " +
+      "`openOptimize`); the card's own CTA (second target) is drawn only by a mount with no row slot.",
   },
   "slip-action-finalize-plan": {
     to: ["onClick:refinalize"],
@@ -360,9 +364,10 @@ const ALLOWED_REMOVALS = {
     "menu, the bottom bar, the optimizer card), pinned by this inventory and by section 1.",
   "slip-action-hire-expert":
     "Main-rail (ruling 3; ledger `2026-10-08-slip-main-rail`) — not removed from the page: the hire " +
-    "door is the optimizer card's \"Local expert\" button (`components/plan/OptimizerLead.tsx`, outside " +
-    "this inventory's file set), where the Main board draws it, carrying the SAME testid and the SAME " +
-    "handler (`openHandoffChooser({})`, R323). The Build card that held it is gone.",
+    "door is the page frame's action-row button (`components/plancard/SlipActionRow.tsx`, outside this " +
+    "inventory's file set) since the frame lift (Leon, Nov 19, 2026), carrying the SAME testid and the SAME " +
+    "handler (`openHandoffChooser({})`, R323) the optimizer card's \"Local expert\" button had. The card " +
+    "no longer draws it on the slip. The Build card that held it is gone.",
   "button-toggle-slip-contracts":
     "surface step 2 (ledger `2026-10-03-surface-step2-tools-tray`) — the contract board left the rail's " +
     "Plan card for the slip's tools tray: the SAME `VendorContractBoard`, opened by the manifest's " +

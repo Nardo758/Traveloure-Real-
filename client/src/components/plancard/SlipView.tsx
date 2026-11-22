@@ -194,7 +194,6 @@ import { HandoffChooserHost } from "@/components/plan/HandoffChooser";
 import { HandoffBanner, HandoffFooter, SuggestionStrip, useExpertSuggestions, useHandoff } from "@/components/plan/HandoffBanner";
 import { SlipActionRow } from "@/components/plancard/SlipActionRow";
 import { AskAiDrawer } from "./AskAiDrawer";
-import { useOptimizerLeadData } from "@/components/plan/use-optimizer-lead-data";
 import { handoffDayStat, handoffExpertLabel, handoffPenScope, openHandoffChooser } from "@/lib/handoff-client";
 import { useExpertAvailability } from "@/lib/expert-availability";
 import {
@@ -1906,6 +1905,9 @@ export function useSlipViewModel({
   // tray's "Where to stay" opens the full chooser whenever the stay is undecided (`anchorSurfaces`).
   const anchorSurface = anchorSurfaces(whereToStayQuery.data, hasStayItem);
   const [optimizerSlot, setOptimizerSlot] = useState<HTMLDivElement | null>(null);
+  // Frame lift (Leon, Nov 19, 2026): the action row's slot for the ONE Optimize control. `SlipRail` owns the
+  // Optimize state, so it portals the control here the same way it portals the card into `optimizerSlot`.
+  const [optimizeActionSlot, setOptimizeActionSlot] = useState<HTMLSpanElement | null>(null);
   // Item 1 (ledger `2026-10-10-empty-anchor-card`): the empty stay card follows the server's surface
   // decision ALONE (`anchorSurfaces` — undismissed `no_draft`), exactly as the tray's chooser does. It
   // was also gated on a resolved Trips occasion, so a plan whose occasion row is unresolved, has NULL
@@ -2277,6 +2279,8 @@ export function useSlipViewModel({
     anchorSurface,
     optimizerSlot,
     setOptimizerSlot,
+    optimizeActionSlot,
+    setOptimizeActionSlot,
     anchorPanelEmpty,
     planEvents,
     groupByEvent,
@@ -2399,6 +2403,8 @@ export function SlipView({
     anchorSurface,
     optimizerSlot,
     setOptimizerSlot,
+    optimizeActionSlot,
+    setOptimizeActionSlot,
     anchorPanelEmpty,
     planEvents,
     groupByEvent,
@@ -2440,9 +2446,6 @@ export function SlipView({
   const partyRow = occasion ?? guest?.partyOccasion ?? null;
   // A guest's plan reads no member rail: every per-plan read and control below takes this, empty for a guest.
   const tripId = guest ? "" : planTripId;
-  // THE ONE FEE READ the optimizer card also uses (`SlipRail.tsx:459` -> `useOptimizerLeadData`): same hook,
-  // same query keys (`["/api/optimization-fee", { tripId }]`), so React Query serves both from one request.
-  const optimizeFee = useOptimizerLeadData(tripId, isOwner && !guest).fee;
   // Step 8b-2 (ruling 4): the map band reads the ONE AI action the rail reads.
   const aiAction = useSlipAiAction(tripId, allActivities);
   // FB-1 step 4: "Your plan, fixed" by tap — only for a viewer with the item tools, once a run exists.
@@ -2866,10 +2869,9 @@ export function SlipView({
               counts into the state board, so the placeholder and the segments can still never both
               draw: `SlipStatusStrip` returns null when every count is zero (§13). */}
           <SlipActionRow
-            fee={optimizeFee}
             showOptimize={isOwner}
             showExpert={expertDoorLive}
-            onOptimize={() => optimizerSlot?.scrollIntoView({ behavior: "smooth", block: "center" })}
+            optimizeSlotRef={setOptimizeActionSlot}
             onExpert={() => openHandoffChooser({})}
           />
           <div
@@ -3060,6 +3062,7 @@ export function SlipView({
           stopsLine={stopsLine}
           zoneLine={zoneLine}
           optimizerSlot={optimizerSlot}
+          optimizeActionSlot={optimizeActionSlot}
           leadCopy={leadCopy}
         />
       ) : null}

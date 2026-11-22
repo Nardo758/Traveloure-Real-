@@ -1706,8 +1706,11 @@ test.describe("7 · a local expert checks the plan", () => {
     const row = testid(page, "slip-action-row");
     await expect(row).toBeVisible({ timeout: 20_000 });
     await expect(row.locator("button")).toHaveCount(2);
-    await expect(testid(page, "button-slip-optimize")).toHaveCount(1);
-    await expect(testid(page, "button-slip-expert-help")).toHaveCount(1);
+    await expect(testid(page, "slip-action-optimize")).toHaveCount(1);
+    await expect(testid(page, "slip-action-hire-expert")).toHaveCount(1);
+    // Frame lift: both actions are IN the row, and the counts of 1 above mean the card draws neither.
+    await expect(row.locator('[data-testid="slip-action-optimize"]')).toHaveCount(1);
+    await expect(row.locator('[data-testid="slip-action-hire-expert"]')).toHaveCount(1);
     // The two screenshots the pack keeps: this run is the one where the door is ON.
     await page.setViewportSize({ width: 1280, height: 900 });
     await row.scrollIntoViewIfNeeded();
@@ -1715,7 +1718,7 @@ test.describe("7 · a local expert checks the plan", () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await row.scrollIntoViewIfNeeded();
     await page.screenshot({ path: "shots/2049/owner-list-390.png" });
-    await testid(page, "button-slip-expert-help").click();
+    await testid(page, "slip-action-hire-expert").click();
     await expect(testid(page, "handoff-chooser")).toBeVisible({ timeout: 20_000 });
   });
 
@@ -1727,8 +1730,8 @@ test.describe("7 · a local expert checks the plan", () => {
     await createItem(page.request, tripId, "Amber Fort", 1);
     await page.goto(`/plans/${tripId}`);
     await expect(testid(page, "slip-action-row")).toBeVisible({ timeout: 20_000 });
-    await expect(testid(page, "button-slip-optimize")).toHaveCount(1);
-    await expect(testid(page, "button-slip-expert-help")).toHaveCount(0);
+    await expect(testid(page, "slip-action-optimize")).toHaveCount(1);
+    await expect(testid(page, "slip-action-hire-expert")).toHaveCount(0);
     expect((await doorRows(tripId, "expert_interest")).length).toBe(0);
     expect((await doorRows(tripId, "expert_help_level_chosen")).length).toBe(0);
   });
