@@ -102,6 +102,8 @@ import { DayBlock } from "@/components/plan/DayBlock";
 import { useMinWidth, useMaxWidth } from "@/hooks/use-min-width";
 import { DayStrip } from "@/components/plan/DayStrip";
 import { stripDayKey, type StripDay } from "@/lib/day-strip";
+import { DaysMapPanel } from "@/components/plan/DaysMapPanel";
+import { DAYS_MAP_COPY, DAYS_MAP_PARAM, DAYS_MAP_PARAM_HIDDEN, daysMapFromUrl } from "@/lib/days-map";
 import { PlanRowLookProvider } from "@/components/plan/row-look";
 import {
   GETTING_THERE_TOOL,
@@ -1787,10 +1789,27 @@ export function useSlipViewModel({
   const [trayChip, setTrayChip] = useState<"dates" | "who" | null>(null);
   // PLAN-1 Phase 2 (ruling 4): the traveler's toggle is remembered server-side (`savePlanView`); a programmatic switch
   // (Find a host, the empty board's Browse) is not a choice and is not saved.
+  // A7 (board R3_DaysBoard; Leon, Nov 21, 2026): "Days and map" is the list view with the map beside it, and it
+  // is what the list view shows unless "Days only" was chosen. That choice rides the URL (`?beside=none`); the
+  // account still remembers one of Days / Map, so both day choices save as Days.
+  const [mapBeside, setMapBeside] = useState<boolean>(() => {
+    try {
+      return daysMapFromUrl(window.location.search);
+    } catch {
+      return true;
+    }
+  });
   const chooseView = (v: "list" | "map") => {
     setSlipView(v);
     // A guest has no account to remember it on (the view stays in the URL).
     if (!isGuest) void savePlanView(v === "map" ? "map" : "days");
+    // A7: the list button is "Days only" - it hides the map beside the days.
+    if (v === "list") setMapBeside(false);
+  };
+  const chooseDaysAndMap = () => {
+    setSlipView("list");
+    setMapBeside(true);
+    if (!isGuest) void savePlanView("days");
   };
   const [mapDay, setMapDay] = useState(0);
   // LD 43(d): "the plan holds bookable rows" = something staged for checkout, or already booked.
@@ -1827,6 +1846,9 @@ export function useSlipViewModel({
       // PLAN-1 Phase 2: the shown planner is always stated (`days` too), so a reload keeps it even on a plan that
       // opens on Map by default.
       params.set("view", slipView === "map" ? "map" : "days");
+      // A7: "Days only" is a list-view choice, and the one the URL has to say; the map view does not carry it.
+      if (slipView === "list" && !mapBeside) params.set(DAYS_MAP_PARAM, DAYS_MAP_PARAM_HIDDEN);
+      else params.delete(DAYS_MAP_PARAM);
       const qs = params.toString();
       const next = `${window.location.pathname}${qs ? `?${qs}` : ""}${window.location.hash}`;
       if (next !== `${window.location.pathname}${window.location.search}${window.location.hash}`) {
@@ -1835,7 +1857,7 @@ export function useSlipViewModel({
     } catch {
       /* no URL to write */
     }
-  }, [slipView]);
+  }, [slipView, mapBeside]);
 
   // ?item=<itemId>: scroll to + briefly highlight that row on mount.
   const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -2228,6 +2250,8 @@ export function useSlipViewModel({
     slipView,
     setSlipView,
     chooseView,
+    mapBeside,
+    chooseDaysAndMap,
     trayChip,
     setTrayChip,
     mapDay,
@@ -2348,6 +2372,8 @@ export function SlipView({
     slipView,
     setSlipView,
     chooseView,
+    mapBeside,
+    chooseDaysAndMap,
     trayChip,
     setTrayChip,
     mapDay,
@@ -2447,6 +2473,11 @@ export function SlipView({
   // A2 (Leon, Nov 20, 2026; board R3_MovePhone): on a phone-width list view with more than one day, a strip of
   // day chips picks the ONE day shown. No "Expand all" there either - one day is on screen at a time.
   const dayStrip = phoneWidth && slipView === "list" && daySlots.length > 1;
+  // A7 (board R3_DaysBoard): at desktop width a plan with stops can keep a pins-only map beside its days, and
+  // does unless "Days only" was chosen. Below that width there is no room for both, and a plan with no stops has
+  // nothing to map, so neither is offered it: the phone and the empty plan keep Days only / Map only.
+  const besideOffered = desktopWidth && allActivities.length > 0;
+  const besideMap = besideOffered && slipView === "list" && mapBeside;
   const stripDays: StripDay[] = daySlots.map((slot) => {
     const items = slot.groups.flatMap((g) => g.items);
     return { key: slot.key, dayNum: slot.dayNum, dateIso: slot.dateIso ?? null, stops: items.length, itemIds: items.map((a) => a.id) };
@@ -2487,7 +2518,7 @@ export function SlipView({
     <div
       /* Ruling 7: one centered column, at most 680px wide, at every width; the map view keeps its
          wide layout (map view unchanged). */
-      className={`${SLIP_SURFACE_CLASS} ${slipView === "map" || dayColumns ? "max-w-6xl" : "max-w-[680px]"} mx-auto space-y-5`}
+      className={`${SLIP_SURFACE_CLASS} ${slipView === "map" || dayColumns || besideMap ? "max-w-6xl" : "max-w-[680px]"} mx-auto space-y-5`}
       {...slipTokensAttr(readSlipTokensMode())}
       data-testid={`slip-view-${planTripId}`}
       /* A1: the group is an internal key (R127) — a data attribute for tests, never display text. */
@@ -2809,11 +2840,24 @@ export function SlipView({
               {/* The Main board's switch (ledger `2026-10-08-slip-main-rows`): "Days" and "Map · N of M",
                   where N is the located stops — a real coordinate, never a ward centroid. */}
               <div className="inline-flex rounded-[var(--slip-radius-chip)] bg-[color:var(--slip-wash)] p-[3px]">
+                {/* A7 (board R3_DaysBoard): "Days and map" leads the switch where it can be shown, and only there,
+                    so a phone or an empty plan never offers a layout it cannot draw. */}
+                {besideOffered ? (
+                  <button
+                    type="button"
+                    className={`inline-flex h-9 items-center rounded-[var(--slip-radius-chip)] px-[18px] text-sm ${besideMap ? "bg-[color:var(--slip-card)] font-semibold text-[color:var(--slip-ink)]" : "font-medium text-[color:var(--slip-muted)]"}`}
+                    onClick={chooseDaysAndMap}
+                    aria-pressed={besideMap}
+                    data-testid="button-slip-view-days-map"
+                  >
+                    {DAYS_MAP_COPY.view}
+                  </button>
+                ) : null}
                 <button
                   type="button"
-                  className={`inline-flex h-9 items-center rounded-[var(--slip-radius-chip)] px-[18px] text-sm ${slipView === "list" ? "bg-[color:var(--slip-card)] font-semibold text-[color:var(--slip-ink)]" : "font-medium text-[color:var(--slip-muted)]"}`}
+                  className={`inline-flex h-9 items-center rounded-[var(--slip-radius-chip)] px-[18px] text-sm ${slipView === "list" && !besideMap ? "bg-[color:var(--slip-card)] font-semibold text-[color:var(--slip-ink)]" : "font-medium text-[color:var(--slip-muted)]"}`}
                   onClick={() => chooseView("list")}
-                  aria-pressed={slipView === "list"}
+                  aria-pressed={slipView === "list" && !besideMap}
                   data-testid="button-slip-view-list"
                 >
                   Days only
@@ -2994,7 +3038,11 @@ export function SlipView({
           ))}
         </div>
       ) : null}
-      <div>
+      {/* A7 (board R3_DaysBoard): with "Days and map" showing, the days keep the left and a pins-only map stands
+          beside them. The map column is 320 wide so three day columns (264 each, A1) fit the 1,152 page without
+          scrolling sideways; a longer plan scrolls its days, as the board says. Every other layout is unchanged. */}
+      <div className={besideMap ? "lg:grid lg:grid-cols-[minmax(0,1fr)_320px] lg:items-start lg:gap-4" : undefined} data-days-map={besideMap ? "beside" : undefined}>
+      <div className={besideMap ? "min-w-0" : undefined}>
           {/* §13 — "No items" is now said ONLY when there is genuinely nothing to show. A plan
               with events and no items has slots (the event cards below), so this line no longer
               contradicts the header's own event count directly above it.
@@ -3302,6 +3350,18 @@ export function SlipView({
           })}
           </div>
           </StopDragProvider>
+      </div>
+      {besideMap && data.trip ? (
+        <DaysMapPanel
+          tripId={planTripId}
+          days={mapDays}
+          anchor={mapAnchor}
+          fallbackCenter={guest?.center ?? null}
+          emptyNote={planEmptyReason}
+          // "Browse nearby" is the map view's Browse layer; a viewer who cannot change the plan gets no button.
+          onBrowse={canEditItems || guest ? () => openFindHost(null) : null}
+        />
+      ) : null}
       </div>
       {/* UI brief 1 (cleanup): the get-help NOTE is gone. It was a second door to the same chooser in the
           same situation; the action row's expert button is the one general door. The per-day hook and the
