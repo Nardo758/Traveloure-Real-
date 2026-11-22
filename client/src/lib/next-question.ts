@@ -64,3 +64,31 @@ export const NEXT_QUESTION_SKIP = "Skip";
 export function stripGroupIsTrip(group: string | null | undefined, occasionSlug?: string | null): boolean {
   return manifestFor(group, occasionSlug).group === "trip";
 }
+
+/** The board's order, fixed: four questions, nothing else can be asked. */
+export const NEXT_QUESTION_ORDER: readonly NextQuestionKey[] = ["dates", "party", "stay", "flight"];
+
+/** Is ONE question answered by the plan's own facts? */
+function answered(f: NextQuestionFacts, key: NextQuestionKey): boolean {
+  if (key === "dates") return f.datesConfirmed;
+  if (key === "party") return f.travelers !== null && f.travelers > 0;
+  if (key === "stay") return f.stayChosen;
+  return f.flightKnown;
+}
+
+/**
+ * A10 fix 2 (Leon, Nov 22 2026): the skip-aware question. The caller used to mark a skip by setting a property named
+ * after the question ("party": true) and ask `nextQuestion` again - a property `nextQuestion` never read, so the loop
+ * could not advance and span forever. This walks the FIXED four-key order instead, so a skip always consumes one
+ * question and the loop is bounded to four passes.
+ */
+export function nextQuestionSkipping(
+  f: NextQuestionFacts,
+  skipped: readonly NextQuestionKey[],
+): NextQuestionKey | null {
+  for (const key of NEXT_QUESTION_ORDER) {
+    if (skipped.includes(key)) continue;
+    if (!answered(f, key)) return key;
+  }
+  return null;
+}
