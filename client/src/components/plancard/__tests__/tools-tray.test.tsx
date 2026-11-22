@@ -26,6 +26,7 @@ import { ToolsTray, toolContent, type ToolsTrayProps } from "../../plan/ToolsTra
 import { GETTING_THERE_TOOL, TravelAnchorPlaceholder, flightAnchorFor, flightRowText } from "../../plan/AnchorRow";
 import { ItemRow } from "../../plan/ItemRow";
 import { GROUP_MANIFEST, TOOL_LABEL, TOOL_STATE, toolIsLive, type ToolKey } from "@shared/group-manifest";
+import { stripGroupIsTrip } from "@/lib/next-question";
 
 (globalThis as any).React = React;
 
@@ -171,5 +172,27 @@ describe("travel row absorbed by an AI item (step 2 addendum)", () => {
     assert.doesNotMatch(fixed, />10:00</);
     assert.match(fixed, /data-testid="slip-anchor-detail-ai-arr"[^>]*>JL 61 · HND → KIX</);
     assert.doesNotMatch(fixed, /slip-anchor-action-ai-arr/);
+  });
+});
+
+describe("A10 fix — the strip on a plain_plan owner trip", () => {
+  // Leon, Nov 22 2026: staging showed owner plans with no occasion resolving to `plain_plan`, and the strip's old
+  // `experienceGroup === "trips"` check skipped them while the rest of the app treated those plans as trips. The gate
+  // now reads `manifestFor`'s own mapping, where plain_plan, an unknown group and null are all Trip.
+  it("plain_plan is trip-like by the app's own mapping (and so are trips)", () => {
+    assert.equal(stripGroupIsTrip("plain_plan", null), true, "a plan with no occasion is a trip");
+    assert.equal(stripGroupIsTrip(null, null), true, "no group at all is a trip");
+    assert.equal(stripGroupIsTrip("nonsense", null), true, "an unknown group is a trip");
+    assert.equal(stripGroupIsTrip("trips", null), true);
+    assert.equal(stripGroupIsTrip("moments", null), false, "a Moment is not");
+  });
+
+  it("the strip renders slip-told-strip and the Next question for a plain_plan plan", () => {
+    const html = render({ group: "plain_plan", chrome: "strip", nextQuestion: "dates" });
+    assert.match(html, /data-testid="slip-told-strip"/, "the strip is drawn");
+    assert.match(html, /data-testid="slip-next-question"/, "the question is drawn inside it");
+    assert.match(html, /data-next-question="dates"/);
+    assert.match(html, /What you(?:&#x27;|'|\u2019)ve told us|What you’ve told us/, "the title");
+    assert.doesNotMatch(html, /data-testid="slip-tools-tray"/, "the tray row is gone on this surface");
   });
 });

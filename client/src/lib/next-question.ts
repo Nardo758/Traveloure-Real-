@@ -1,3 +1,5 @@
+import { manifestFor } from "@shared/group-manifest";
+
 /**
  * A10 part 2 (Leon, Nov 22 2026): the "Next:" question, one at a time, in the order the board gives -
  * dates, party, stay, flight. Pure: the caller hands in the plan's facts, the module names the first question
@@ -52,3 +54,13 @@ export const NEXT_QUESTION_COPY: Record<NextQuestionKey, { sentence: string; act
 
 /** The dismissive control's one word. */
 export const NEXT_QUESTION_SKIP = "Skip";
+
+/**
+ * A10 fix (Leon, Nov 22 2026): the strip's surface is a TRIP, and the app already decides what a trip is - `manifestFor`
+ * maps `plain_plan`, an unknown group and null all to the Trip manifest (`shared/group-manifest.ts:242-249`). Staging
+ * showed owner plans with no occasion resolving to `plain_plan`, which the strip's old `=== "trips"` check skipped while
+ * the rest of the app treated those plans as trips. This reads that same mapping instead of naming groups again.
+ */
+export function stripGroupIsTrip(group: string | null | undefined, occasionSlug?: string | null): boolean {
+  return manifestFor(group, occasionSlug).group === "trip";
+}
