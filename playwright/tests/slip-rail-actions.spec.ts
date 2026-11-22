@@ -360,8 +360,8 @@ test("A8: the tools tray opens the existing tools (surface step 2)", async ({ pa
   await openSlip(page, tripId);
   // A10 fix (Leon, Nov 22 2026): a plan with no occasion resolves to plain_plan, which the app treats as a trip,
   // so the strip is drawn INSTEAD of the tray row. Same tools, same sheets - only the container changed.
-  const tray = page.getByTestId("slip-told-strip");
-  await expect(tray).toBeVisible();
+  const strip = page.getByTestId("slip-told-strip");
+  await expect(strip).toBeVisible();
   // Only live tools render (ledger `2026-10-08-tools-tray-live-only`, sanctioned rewrite): a tool
   // with no existing component draws nothing, and the tray says "coming soon" nowhere.
   await expect(strip).not.toContainText("coming soon");
