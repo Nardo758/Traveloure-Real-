@@ -364,7 +364,9 @@ test("B7 at 1280 a plan with stops opens on 'Days and map'; 'Days only' hides th
   expect(panelBox!.x, "the map is to the right of the days").toBeGreaterThanOrEqual(boardBox!.x + boardBox!.width - 1);
   expect(Math.round(panelBox!.width), "the map column is 320 wide").toBe(320);
   const boardScroll = await board.evaluate((el) => el.scrollWidth - el.clientWidth);
-  expect(boardScroll, "three day columns fit beside the map").toBeLessThanOrEqual(1);
+  // A7 (Leon, Nov 21 2026): three columns plus the 320 map do not always fit; the board then scrolls ITS OWN days.
+  // The rule is that the page never scrolls (asserted below); the board may scroll by up to one day column.
+  expect(boardScroll, "the board scrolls its days, not the page").toBeLessThanOrEqual(264);
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(overflow, "the page itself does not scroll sideways").toBeLessThanOrEqual(0);
 
