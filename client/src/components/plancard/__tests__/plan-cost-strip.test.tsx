@@ -254,7 +254,7 @@ describe("plan cost strip", () => {
     assert.doesNotMatch(before, /experienceGroup ===|isOwner &&/);
     // PLAN-1 (sanctioned edit, ruling Nov 6): the strip is Days-view only — owner map view draws no cost strip.
     // PLAN-1 Phase 3: and never on the guest page (no fee line for a guest).
-    assert.match(before, /\{slipView === "list" && !guest \? \(\s*$/);
+    assert.match(before, /\{slipView === "list" && !guest && !v1Frame \? \(\s*$/);
     assert.doesNotMatch(code.slice(at, code.indexOf("/>", at)), /data-testid/);
     for (const f of [
       "client/src/components/plancard/SlipRail.tsx",

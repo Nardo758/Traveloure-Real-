@@ -428,8 +428,14 @@ export function SlipHeader({
   sketchLine = null,
   guest = null,
   occasion = null,
+  boardFrame = false,
 }: {
   data: SlipData;
+  /**
+   * V1 frame (Leon, Nov 22 2026): on the days board the header is the eyebrow, the title and the menu. The
+   * phase tag belongs to the Trip Card's own view (V15), so it is not drawn here.
+   */
+  boardFrame?: boolean;
   /** E9: the plan's occasion row, so the Who panel asks the same question as the editor's step. */
   occasion?: OccasionSwitchRow | null;
   /** PLAN-1 Phase 3: on the guest page, "Set your dates" / "Who's coming?" write through the guest rail. */
@@ -587,7 +593,7 @@ export function SlipHeader({
             for finding a plan rather than a claim about its state. The transition log's own
             per-entry `v<n>` is likewise untouched: there it labels a row in a history, which is
             exactly what the count is. */}
-        {phase && (
+        {phase && !boardFrame && (
           <span
             className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide border border-border text-muted-foreground"
             data-testid="slip-phase-chip"
@@ -2515,6 +2521,18 @@ export function SlipView({
    */
   const toldStrip =
     isOwner && !!data.trip && slipView === "list" && stripGroupIsTrip(experienceGroup, occasion?.slug ?? null) && desktopWidth;
+  /**
+   * V1 frame (board V1 "Days as a board"; Leon, Nov 22 2026). Where the strip shows and the plan has stops, the
+   * page is the board's: header, strip, the Optimize card, the days, the footer. Four blocks the board does not
+   * draw leave THIS page:
+   *   - the header's phase tag: the Trip Card's own view (V15);
+   *   - the cost strip, the status counts and the Trip Pass offer: the versions page (V8), which already
+   *     carries the Trip Pass offer.
+   * The Trip Card banner and the header's Trip Card link STAY for now: they are the only sign on this page that
+   * a plan is final and the only link from it to its card, so they leave when V15's own entry is built.
+   * Every other viewer, width, occasion and an empty plan keep the page they had. Nothing is deleted.
+   */
+  const v1Frame = toldStrip && allActivities.length > 0;
   const toldDone = {
     dates: (data.trip as any)?.datesConfirmed === true,
     // B-8's rule: a fact nobody stated is never marked answered (no "party 0").
@@ -2615,6 +2633,7 @@ export function SlipView({
       />
       <SlipHeader
         guest={guest}
+        boardFrame={v1Frame}
         occasion={partyRow}
         // UI brief 1: the expert DOOR is the one action row below; this slot stays empty. The old card and its
         // dismissed-state rule are gone with the card.
@@ -2681,7 +2700,7 @@ export function SlipView({
           ) : null}
           {/* PLAN-1 ruling: the cost strip, the tools tray and the where-to-stay panel are Days-view only — owner map view
               is the header, the map band and the map (no layout change). */}
-          {slipView === "list" && !guest ? (
+          {slipView === "list" && !guest && !v1Frame ? (
             <PlanCostStrip activities={allActivities} travelers={data.trip?.travelers ?? null} planEvents={planEvents} isOwner={isOwner} />
           ) : null}
           {/* ── SURFACE STEP 2 · THE TOOLS TRAY (ledger `2026-10-03-surface-step2-tools-tray`) ─────────
@@ -2811,7 +2830,7 @@ export function SlipView({
           <div className="space-y-3" data-testid="slip-state-board">
             <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
               <div className="min-w-0">
-                {allActivities.length > 0 ? (
+                {v1Frame ? null : allActivities.length > 0 ? (
                   <SlipStatusStrip activities={allActivities} />
                 ) : (
                   <p className="text-sm text-muted-foreground" data-testid="slip-viewbar-empty">
@@ -3055,6 +3074,7 @@ export function SlipView({
           trip={data.trip}
           tripId={tripId}
           isOwner={isOwner}
+          tripPassOffer={!v1Frame}
           canEditItems={canEditItems}
           isExpertViewer={isExpertViewer}
           isPrimary={cardReady}

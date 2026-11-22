@@ -147,7 +147,13 @@ test("A2: the view bar is ONE row of view controls — the status counts are the
   const board = page.getByTestId("slip-state-board");
   const bar = page.getByTestId("slip-viewbar");
   await expect(bar).toBeVisible();
+  // V1 frame (Leon, Nov 22 2026 - sanctioned edit): at desktop width the days board draws no status counts;
+  // they belong to the versions page. A phone keeps the page it had, so the strip is read there.
+  await expect(board.getByTestId("slip-status-strip")).toHaveCount(0);
+  await page.setViewportSize({ width: 390, height: 844 });
   await expect(board.getByTestId("slip-status-strip")).toBeVisible();
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await expect(board.getByTestId("slip-status-strip")).toHaveCount(0);
   await expect(bar.getByTestId("slip-view-toggle")).toBeVisible();
   await expect(bar.getByTestId("slip-status-strip")).toHaveCount(0);
   // The toggle WORKS: List is the default. Step 8b-2 (item 10, ruling 2 — sanctioned edit): Map is

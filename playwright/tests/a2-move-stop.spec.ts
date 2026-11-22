@@ -23,7 +23,12 @@
  *      "Days only" takes the map away and writes `beside=none` to the URL, so a reload keeps it; "Days and
  *      map" brings it back. At 390 wide the switch does not offer "Days and map" and no map is beside the days.
  *
- * It writes six screenshots to `playwright/a2-captures/`, uploaded by the workflow as `a2-captures-<sha>`.
+ *   B8 at 1280 wide (V1 frame, part 1): on an owner's plan with stops the strip shows and the page draws no
+ *      cost strip, no status counts, no Trip Pass offer and no phase tag. The action row,
+ *      the Optimize slot and the view switch are still there. At 390 wide the same plan keeps its cost strip.
+ *      The screenshot is the one reviewed beside board V1.
+ *
+ * It writes seven screenshots to `playwright/a2-captures/`, uploaded by the workflow as `a2-captures-<sha>`.
  * Runs against the job's own app and database (a fresh traveler and plan per run); nothing is stubbed.
  */
 import { test, expect, type Page } from "@playwright/test";
@@ -402,4 +407,32 @@ test("B7 at 1280 a plan with stops opens on 'Days and map'; 'Days only' hides th
   await expect(page.getByTestId("button-slip-view-list")).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByTestId("button-slip-view-days-map")).toHaveCount(0);
   await expect(page.getByTestId("slip-days-map")).toHaveCount(0);
+});
+
+test("B8 at 1280 the days board's frame: no cost strip, status counts, Trip Pass offer or phase tag", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const { tripId } = await threeDayPlan(page);
+  await page.goto(`${BASE_URL}/plans/${tripId}`, { waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId("slip-viewbar")).toBeVisible({ timeout: 30_000 });
+
+  // The frame follows the strip: where the strip shows on a plan with stops, the four blocks are not drawn.
+  await expect(page.getByTestId("slip-told-strip")).toBeVisible({ timeout: 20_000 });
+  for (const gone of ["plan-cost-strip", "slip-status-strip", "slip-trip-pass-offer", "slip-phase-chip"]) {
+    await expect(page.getByTestId(gone), `${gone} is not on the days board`).toHaveCount(0);
+  }
+  // Not part of this change: the action row, the Optimize slot, the view switch and the days.
+  await expect(page.getByTestId("slip-action-row")).toBeVisible();
+  await expect(page.getByTestId("slip-optimizer-slot")).toHaveCount(1);
+  await expect(page.getByTestId("button-slip-view-days-map")).toBeVisible();
+  await expect(page.locator('[data-day-layout="columns"]')).toBeVisible();
+  for (const stop of STOPS) await expect(page.getByText(stop.title).first()).toBeVisible();
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.screenshot({ path: path.join(OUT_DIR, "v1-frame-1280.png"), fullPage: true });
+
+  // A phone keeps the page it had: the frame is a desktop days-board rule.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${BASE_URL}/plans/${tripId}`, { waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId("slip-viewbar")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("slip-told-strip")).toHaveCount(0);
+  await expect(page.getByTestId("plan-cost-strip")).toBeVisible();
 });

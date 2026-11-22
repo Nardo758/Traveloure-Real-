@@ -374,11 +374,14 @@ function BuildCard({
   optimizerSlot,
   optimizeActionSlot = null,
   leadCopy = null,
+  tripPassOffer = true,
 }: {
   trip: SlipTrip;
   tripId: string;
   isOwner: boolean;
   leadCopy?: SlipLeadCopy | null;
+  /** V1 frame: false keeps the Trip Pass offer off the plan page; the versions page still carries it. */
+  tripPassOffer?: boolean;
   /** LD 52 (C): the owner, or the delegate who builds the plan for them (browse + add only). */
   canEditItems: boolean;
   activities: PlanCardActivity[];
@@ -717,7 +720,7 @@ function BuildCard({
               is the owner's (LD 52 — a helper never pays). "Included in your Trip Pass" is no longer a
               label: it is the CTA's own state ("Optimize · included · N runs left"). Feedback moved to
               the ⋯ plan menu. */}
-          {isOwner ? (
+          {isOwner && tripPassOffer ? (
             hasRun ? (
               <div data-testid="slip-trip-pass-offer">
                 <TripPassCard tripId={tripId} trip={trip} planName={trip.title || trip.destination} />
@@ -1456,10 +1459,13 @@ export function SlipRail({
   optimizerSlot = null,
   optimizeActionSlot = null,
   leadCopy = null,
+  tripPassOffer = true,
 }: {
   trip: SlipTrip;
   tripId: string;
   isOwner: boolean;
+  /** V1 frame (Leon, Nov 22 2026): the days board draws no Trip Pass offer; it stays on the versions page. */
+  tripPassOffer?: boolean;
   /**
    * The optimizer card's group-specific words (a Moment's title and intro), resolved by `SlipView`
    * from the plan's own facts. Null ⇒ the board's Trip wording.
@@ -1539,6 +1545,7 @@ export function SlipRail({
         optimizerSlot={optimizerSlot}
         optimizeActionSlot={optimizeActionSlot}
         leadCopy={leadCopy}
+        tripPassOffer={tripPassOffer}
       />
     </div>
   );

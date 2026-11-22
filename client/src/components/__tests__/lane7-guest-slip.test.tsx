@@ -55,7 +55,7 @@ describe("Lane 7 guest slip (PLAN-1 Phase 3)", () => {
 
   it("G3 SlipView gates the owner-only surfaces on guest", () => {
     const s = read(SLIP);
-    assert.match(s, /slipView === "list" && !guest \? \(\s*<PlanCostStrip/, "no fee/cost line for a guest");
+    assert.match(s, /slipView === "list" && !guest && !v1Frame \? \(\s*<PlanCostStrip/, "no fee/cost line for a guest");
     assert.match(s, /data\.trip && !guest \? \(\s*<SlipRail/, "no plan rail (expert, engagements, Finish) for a guest");
     assert.match(s, /isPrimary && data\.trip && !guest && <TripCardPrimaryBanner/);
     assert.match(s, /menu=\{\s*data\.trip && !guest \?/, "no header ⋯ menu for a guest");
