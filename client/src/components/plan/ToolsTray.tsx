@@ -23,6 +23,8 @@ import { TOOL_LABEL, manifestFor, toolIsLive, toolSheetTitle, type ToolFlags, ty
 import { readSlipTokensMode, slipTokensAttr } from "@/lib/slip-tokens-mode";
 import type { PlanEvent } from "@/lib/slip-events";
 import { trayPress, type TrayFacts } from "@/lib/tray-stage";
+import { NextQuestion } from "./NextQuestion";
+import type { NextQuestionKey } from "@/lib/next-question";
 
 export interface ToolsTrayProps {
   tripId: string;
@@ -70,6 +72,10 @@ export interface ToolsTrayProps {
     chrome?: "tray" | "strip";
     /** The strip's three answered marks: dates chosen, party stated, a stay chosen. The caller decides. */
     doneChips?: { dates?: boolean; party?: boolean; stay?: boolean };
+    /** A10 part 2: the ONE "Next:" question this visit, or null when the plan has answered all four. */
+    nextQuestion?: NextQuestionKey | null;
+    onNextAnswer?: () => void;
+    onNextSkip?: () => void;
 }
 
 /** The tool → existing component registry. `null` ⇒ no existing component (`coming_soon` in the manifest). */
@@ -197,6 +203,13 @@ export function ToolsTray(props: ToolsTrayProps) {
       return (
         <>
           <section className="space-y-2" data-testid="slip-told-strip">
+            {props.nextQuestion ? (
+              <NextQuestion
+                question={props.nextQuestion}
+                onAnswer={() => props.onNextAnswer?.()}
+                onSkip={() => props.onNextSkip?.()}
+              />
+            ) : null}
             <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[color:var(--slip-on-navy-muted)]" data-testid="slip-told-title">
               What you&#39;ve told us
             </p>

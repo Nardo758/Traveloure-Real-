@@ -117,6 +117,8 @@ import {
 } from "@/components/plan/AnchorRow";
 import { absorbedTravelItemId, flightTimeConflictLine } from "@shared/getting-there";
 import { ToolsTray } from "@/components/plan/ToolsTray";
+import { NextQuestion } from "@/components/plan/NextQuestion";
+import { nextQuestion, type NextQuestionKey } from "@/lib/next-question";
 import { SlipPartyRoster } from "./SlipPartyRoster";
 import { PlanCostStrip } from "@/components/plan/PlanCostStrip";
 import { SlipEmptyGuestStart, SlipEmptyStart } from "@/components/plan/SlipEmptyStart";
@@ -2516,6 +2518,21 @@ export function SlipView({
     party: Number((data.trip as any)?.numberOfTravelers ?? (data.trip as any)?.travelers ?? 0) > 0,
     stay: stayChosen,
   };
+  // A10 part 2: ONE question at a time - dates, then party, then stay, then flight - each skippable for THIS VISIT.
+  // Nothing is stored: a skipped question returns on the next visit, which is what "no Skip memory" means.
+  const [skippedNext, setSkippedNext] = useState<NextQuestionKey[]>([]);
+  const nextQuestionFacts = {
+    datesConfirmed: (data.trip as any)?.datesConfirmed === true,
+    travelers: Number((data.trip as any)?.numberOfTravelers ?? (data.trip as any)?.travelers ?? 0) || null,
+    stayChosen,
+    // A flight counts as answered when the plan already carries one; the predicate is deliberately loose because
+    // the day rows name flights in more than one way (TODO: read the one flight authority when part 3 defines it).
+    flightKnown: allActivities.some((a) => /flight/i.test(String(a.type ?? "")) || /flight/i.test(String(a.name ?? ""))),
+  } as const;
+  let nextKey = toldStrip ? nextQuestion(nextQuestionFacts) : null;
+  while (nextKey && skippedNext.includes(nextKey)) {
+    nextKey = nextQuestion({ ...nextQuestionFacts, [nextKey]: true } as any);
+  }
   const doneTools = useMemo(() => {
     const done = new Set<ToolKey>();
     if (momentAnchor) done.add("the_reservation");
@@ -2704,6 +2721,14 @@ export function SlipView({
             <div className="flex flex-wrap items-center gap-2" data-testid="slip-tools-row">
               {isOwner && slipView === "list" ? (
               <ToolsTray
+                nextQuestion={nextKey}
+                onNextAnswer={() => {
+                  if (nextKey === "dates") setTrayChip("dates");
+                  else if (nextKey === "party") setTrayChip("who");
+                  else if (nextKey === "stay") setOpenTool("where_to_stay");
+                  else setOpenTool("getting_there");
+                }}
+                onNextSkip={() => nextKey && setSkippedNext((s) => [...s, nextKey])}
                 chrome={toldStrip ? "strip" : "tray"}
                 doneChips={toldDone}
                 tripId={tripId}
