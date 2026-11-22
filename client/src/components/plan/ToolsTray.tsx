@@ -66,6 +66,10 @@ export interface ToolsTrayProps {
   facts?: TrayFacts;
   onNeedDates?: () => void;
   onNeedParty?: () => void;
+    /** A10 (Leon, Nov 21 2026): on a trip the tool row is replaced by the "What you've told us" strip. */
+    chrome?: "tray" | "strip";
+    /** The strip's three answered marks: dates chosen, party stated, a stay chosen. The caller decides. */
+    doneChips?: { dates?: boolean; party?: boolean; stay?: boolean };
 }
 
 /** The tool → existing component registry. `null` ⇒ no existing component (`coming_soon` in the manifest). */
@@ -170,6 +174,43 @@ export function ToolsTray(props: ToolsTrayProps) {
     </Sheet>
   );
   // An empty tray draws nothing of its own — no chips, no wrapper — only the sheet.
+    // A10: on a trip the strip REPLACES the tray row. Three chips - dates, party, stay - each opening what the tray
+    // opened: the dates and party panels through the same callbacks, the stay sheet through the same registry.
+    if (props.chrome === "strip") {
+      const pressStay = () => {
+        const route = props.facts ? trayPress("where_to_stay", props.facts) : "sheet";
+        if (route === "dates") props.onNeedDates?.();
+        else setOpen("where_to_stay");
+      };
+      const chip = (key: string, label: string, done: boolean, press: () => void) => (
+        <button
+          key={key}
+          type="button"
+          data-testid={`slip-told-${key}`}
+          onClick={press}
+          className="inline-flex items-center gap-1.5 rounded-full border border-white/25 px-3 py-1.5 text-[13px] font-medium text-white"
+        >
+          {label}
+          {done ? <span aria-hidden="true">{"\u2713"}</span> : null}
+        </button>
+      );
+      return (
+        <>
+          <section className="space-y-2" data-testid="slip-told-strip">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[color:var(--slip-on-navy-muted)]" data-testid="slip-told-title">
+              What you&#39;ve told us
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              {chip("dates", "Dates", props.doneChips?.dates === true, () => props.onNeedDates?.())}
+              {chip("party", TOOL_LABEL.travel_party, props.doneChips?.party === true, () => props.onNeedParty?.())}
+              {chip("stay", TOOL_LABEL.where_to_stay, props.doneChips?.stay === true, pressStay)}
+            </div>
+          </section>
+          {sheet}
+        </>
+      );
+    }
+
   if (tools.length === 0) return sheet;
   return (
     // The boards' tray: one horizontal row of pills that scrolls rather than wraps (ruling 7, "the tray

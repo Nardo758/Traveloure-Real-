@@ -2608,7 +2608,7 @@ export function SlipView({
         }
         data={data}
         eventCount={countPlanEvents(planEvents)}
-        partyLabel={partyLabel}
+        partyLabel={toldStrip ? "" : partyLabel}
         isHidden={occasionIsHidden}
         isOwner={isOwner}
         /* S6/S7 — resolved ONCE above and handed to BOTH surfaces that state them (this header and
@@ -2704,6 +2704,8 @@ export function SlipView({
             <div className="flex flex-wrap items-center gap-2" data-testid="slip-tools-row">
               {isOwner && slipView === "list" ? (
               <ToolsTray
+                chrome={toldStrip ? "strip" : "tray"}
+                doneChips={toldDone}
                 tripId={tripId}
                 group={experienceGroup}
                 occasionSlug={occasion?.slug ?? null}
