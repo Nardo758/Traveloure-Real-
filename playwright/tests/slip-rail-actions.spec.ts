@@ -358,7 +358,9 @@ test("A8: the tools tray opens the existing tools (surface step 2)", async ({ pa
   // contract board left the rail; the group manifest's tools open them from the slip's tray.
   const tripId = await registerAndCreateTrip(page, "plan");
   await openSlip(page, tripId);
-  const tray = page.getByTestId("slip-tools-tray");
+  // A10 fix (Leon, Nov 22 2026): a plan with no occasion resolves to plain_plan, which the app treats as a trip,
+  // so the strip is drawn INSTEAD of the tray row. Same tools, same sheets - only the container changed.
+  const tray = page.getByTestId("slip-told-strip");
   await expect(tray).toBeVisible();
   // Only live tools render (ledger `2026-10-08-tools-tray-live-only`, sanctioned rewrite): a tool
   // with no existing component draws nothing, and the tray says "coming soon" nowhere.
