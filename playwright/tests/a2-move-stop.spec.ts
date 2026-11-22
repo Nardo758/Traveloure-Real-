@@ -18,8 +18,12 @@
  *   B5 at 1280 wide (A3): the owner's stop menu has Details, Move and Remove and NO "Move up" / "Move down" -
  *      the owner reorders by drag. B6: a ONE-day plan, which has no days board, still has drag handles, and a
  *      stop dragged below the other one stays there after a reload.
+ *   B7 at 1280 wide (A7 part 1): a plan with stops opens on "Days and map" - a pins-only map to the right of
+ *      the days board, with "All days" and one chip per day, and the three day columns still fit beside it.
+ *      "Days only" takes the map away and writes `beside=none` to the URL, so a reload keeps it; "Days and
+ *      map" brings it back. At 390 wide the switch does not offer "Days and map" and no map is beside the days.
  *
- * It writes five screenshots to `playwright/a2-captures/`, uploaded by the workflow as `a2-captures-<sha>`.
+ * It writes six screenshots to `playwright/a2-captures/`, uploaded by the workflow as `a2-captures-<sha>`.
  * Runs against the job's own app and database (a fresh traveler and plan per run); nothing is stubbed.
  */
 import { test, expect, type Page } from "@playwright/test";
@@ -322,4 +326,78 @@ test("B6 a one-day plan has no days board and still reorders by drag", async ({ 
   await expect(page.getByTestId("slip-action-row")).toBeVisible({ timeout: 30_000 });
   await expect(rows.nth(0)).toContainText("Nishiki Market");
   await expect(rows.nth(1)).toContainText("Fushimi Inari Shrine");
+});
+
+test("B7 at 1280 a plan with stops opens on 'Days and map'; 'Days only' hides the map; a phone is not offered it", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const { tripId } = await threeDayPlan(page);
+  await page.goto(`${BASE_URL}/plans/${tripId}`, { waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId("slip-action-row")).toBeVisible({ timeout: 30_000 });
+
+  // The default at desktop width: the map is beside the days, and the switch says so.
+  const daysAndMap = page.getByTestId("button-slip-view-days-map");
+  const daysOnly = page.getByTestId("button-slip-view-list");
+  const panel = page.getByTestId("slip-days-map");
+  await expect(panel).toBeVisible({ timeout: 20_000 });
+  await expect(daysAndMap).toHaveText("Days and map");
+  await expect(daysAndMap).toHaveAttribute("aria-pressed", "true");
+  await expect(daysOnly).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByTestId("button-slip-view-map")).toHaveAttribute("aria-pressed", "false");
+  expect(new URL(page.url()).searchParams.get("beside"), "the default needs no word in the URL").toBeNull();
+  expect(new URL(page.url()).searchParams.get("view")).toBe("days");
+
+  // The chips: All days first and chosen, then the plan's three days.
+  await expect(page.getByTestId("slip-days-map-chip-all")).toHaveText("All days");
+  await expect(page.getByTestId("slip-days-map-chip-all")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator('[data-testid^="slip-days-map-chip-"]')).toHaveCount(4);
+  await expect(page.getByTestId("slip-days-map-chip-1")).toHaveText("Thu");
+  await expect(page.getByTestId("slip-days-map-browse")).toHaveText("Browse nearby");
+
+  // The days board is still there; the map stands to its right, and three day columns fit without scrolling.
+  const board = page.locator('[data-day-layout="columns"]');
+  await expect(board).toBeVisible();
+  for (const stop of STOPS) await expect(page.getByText(stop.title).first()).toBeVisible();
+  await panel.scrollIntoViewIfNeeded();
+  const boardBox = await board.boundingBox();
+  const panelBox = await panel.boundingBox();
+  expect(boardBox && panelBox, "both have a box").toBeTruthy();
+  expect(panelBox!.x, "the map is to the right of the days").toBeGreaterThanOrEqual(boardBox!.x + boardBox!.width - 1);
+  expect(Math.round(panelBox!.width), "the map column is 320 wide").toBe(320);
+  const boardScroll = await board.evaluate((el) => el.scrollWidth - el.clientWidth);
+  expect(boardScroll, "three day columns fit beside the map").toBeLessThanOrEqual(1);
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  expect(overflow, "the page itself does not scroll sideways").toBeLessThanOrEqual(0);
+
+  // A day chip narrows the map to that day and says so on the chip.
+  await page.getByTestId("slip-days-map-chip-2").click();
+  await expect(page.getByTestId("slip-days-map-chip-2")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("slip-days-map-chip-2")).toHaveText("Fri 2");
+  await expect(panel).toHaveAttribute("data-days-map-key", "2");
+  await page.getByTestId("slip-days-map-chip-all").click();
+  await page.screenshot({ path: path.join(OUT_DIR, "days-and-map-1280.png"), fullPage: true });
+
+  // Days only hides the map, says so in the URL, and a reload keeps it.
+  await daysOnly.click();
+  await expect(panel).toHaveCount(0);
+  await expect(daysOnly).toHaveAttribute("aria-pressed", "true");
+  await expect(daysAndMap).toHaveAttribute("aria-pressed", "false");
+  expect(new URL(page.url()).searchParams.get("beside")).toBe("none");
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId("slip-action-row")).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator('[data-day-layout="columns"]')).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByTestId("slip-days-map")).toHaveCount(0);
+  await expect(page.getByTestId("button-slip-view-list")).toHaveAttribute("aria-pressed", "true");
+
+  // Days and map brings it back and clears the word.
+  await page.getByTestId("button-slip-view-days-map").click();
+  await expect(page.getByTestId("slip-days-map")).toBeVisible();
+  expect(new URL(page.url()).searchParams.get("beside")).toBeNull();
+
+  // A phone has no room for both: the switch does not offer it and no map is beside the days.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${BASE_URL}/plans/${tripId}`, { waitUntil: "domcontentloaded" });
+  await expect(page.getByTestId("slip-action-row")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("button-slip-view-list")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("button-slip-view-days-map")).toHaveCount(0);
+  await expect(page.getByTestId("slip-days-map")).toHaveCount(0);
 });
