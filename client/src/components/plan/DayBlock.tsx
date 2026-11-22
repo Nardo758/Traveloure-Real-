@@ -8,6 +8,7 @@
  * rows arrive with step 3/9 — the day's legs render where the caller puts them today.
  */
 import { useState, type ReactNode } from "react";
+import { useDayDropZone } from "@/components/plan/StopDrag";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { usePlanRowLook } from "./row-look";
 import { feasibilityLine, type DayFeasibility } from "@shared/plan-feasibility";
@@ -52,16 +53,55 @@ export interface DayBlockProps {
   fixControl?: ReactNode;
   /** FB-1: the "With local picks" section, drawn last in the open day (the slip's owner view only). */
   hook?: ReactNode;
+  /**
+   * A1 (Leon, Nov 20, 2026): the day is one COLUMN of the desktop days board - always open, with a plain header
+   * in place of the toggle. The phone and every other mount keep the collapsible card.
+   */
+  column?: boolean;
+  /** A2 part 2: this day's number and its last stop, for a stop dragged onto the column (days board only). */
+  dropDay?: { dayNumber: number | null; lastItemId: string | null } | null;
   children: ReactNode;
 }
 
-export function DayBlock({ dayKey, heading, stats, defaultOpen = false, open, onOpenChange, photo = null, aside = null, domId, thumb = null, feasibility = null, localTeaser = null, busyBus = null, fixControl = null, hook = null, children }: DayBlockProps) {
+/**
+ * A column's width on the days board: up to four share the row, a fifth makes the row scroll sideways
+ * (`DAY_COLUMNS_ROW_CLASS` in the slip).
+ */
+/**
+ * A CLOSED day a dragged stop would land on is ringed: its stops are not drawn, so the dashed landing box
+ * that marks the place in an open day has nowhere to appear (A3; the stacked day cards). The board look
+ * only, and only where drag is on: the plain look carries no slip colour.
+ */
+const DAY_DROP_OVER_CLASS =
+  "data-[drop-over=true]:data-[open=false]:ring-2 data-[drop-over=true]:data-[open=false]:ring-[color:var(--slip-navy)]";
+const DAY_COLUMN_CLASS = "min-w-[264px] flex-1 basis-0 self-start";
+
+/** The day's header: the toggle on a collapsible card, a plain header on an always-open column. */
+function DayHeader({ column, dayKey, isOpen, onToggle, className, children }: { column: boolean; dayKey: string; isOpen: boolean; onToggle: () => void; className: string; children: ReactNode }) {
+  if (column) {
+    return (
+      <div className={className} data-testid={`slip-day-header-${dayKey}`}>
+        {children}
+      </div>
+    );
+  }
+  return (
+    <button type="button" className={className} onClick={onToggle} aria-expanded={isOpen} data-testid={`slip-day-toggle-${dayKey}`}>
+      {children}
+    </button>
+  );
+}
+
+export function DayBlock({ dayKey, heading, stats, defaultOpen = false, open, onOpenChange, photo = null, aside = null, domId, thumb = null, feasibility = null, localTeaser = null, busyBus = null, fixControl = null, hook = null, column = false, dropDay = null, children }: DayBlockProps) {
+  // A2 part 2: on the desktop days board the day is a drop zone for a dragged stop; off it this is {}.
+  const dropZone = useDayDropZone(dropDay?.dayNumber ?? null, dropDay?.lastItemId ?? null);
   const feasibilityText = feasibilityLine(feasibility);
   const teaserText = localTeaserLine(localTeaser);
   const busyBusText = busyBus?.reason && busyBus.cityName ? busyBusDayLine(busyBus) : null;
   const look = usePlanRowLook();
   const [ownOpen, setOwnOpen] = useState(defaultOpen);
-  const isOpen = open ?? ownOpen;
+  // A column is always open: its open state is not the traveler's to toggle, so neither prop nor press closes it.
+  const isOpen = column ? true : open ?? ownOpen;
   const toggle = () => {
     const next = !isOpen;
     if (open === undefined) setOwnOpen(next);
@@ -74,18 +114,14 @@ export function DayBlock({ dayKey, heading, stats, defaultOpen = false, open, on
     return (
       <section
         id={domId}
-        className="mb-3 overflow-hidden rounded-[var(--slip-radius-card)] border border-[color:var(--slip-line)] bg-[color:var(--slip-card)]"
+        className={`${column ? DAY_COLUMN_CLASS : "mb-3"} ${dropZone["data-drop-column"] != null ? DAY_DROP_OVER_CLASS : ""} overflow-hidden rounded-[var(--slip-radius-card)] border border-[color:var(--slip-line)] bg-[color:var(--slip-card)]`}
         data-testid={`slip-day-${dayKey}`}
         data-open={isOpen ? "true" : "false"}
+        data-column={column ? "true" : undefined}
+        {...dropZone}
       >
         {isOpen && photo ? <div data-testid={`slip-day-band-${dayKey}`}>{photo}</div> : null}
-        <button
-          type="button"
-          className="flex w-full items-center gap-3 px-4 pt-3.5 pb-2.5 text-left"
-          onClick={toggle}
-          aria-expanded={isOpen}
-          data-testid={`slip-day-toggle-${dayKey}`}
-        >
+        <DayHeader column={column} dayKey={dayKey} isOpen={isOpen} onToggle={toggle} className="flex w-full items-center gap-3 px-4 pt-3.5 pb-2.5 text-left">
           {!isOpen && thumb ? <span className="flex-shrink-0">{thumb}</span> : null}
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <span className="slip-display text-xl font-semibold text-[color:var(--slip-ink)]" data-testid={`slip-day-heading-${dayKey}`}>
@@ -97,8 +133,8 @@ export function DayBlock({ dayKey, heading, stats, defaultOpen = false, open, on
               </span>
             ) : null}
           </span>
-          <Chevron className="h-5 w-5 flex-shrink-0 text-[color:var(--slip-muted)]" aria-hidden="true" />
-        </button>
+          {column ? null : <Chevron className="h-5 w-5 flex-shrink-0 text-[color:var(--slip-muted)]" aria-hidden="true" />}
+        </DayHeader>
         {aside ? <div className="px-4 pb-2 text-xs" data-testid={`slip-day-aside-${dayKey}`}>{aside}</div> : null}
         {isOpen ? (
           <div className="pb-1" data-testid={`slip-day-body-${dayKey}`}>
@@ -114,15 +150,10 @@ export function DayBlock({ dayKey, heading, stats, defaultOpen = false, open, on
     );
   }
   return (
-    <section id={domId} className="py-2 first:pt-0 last:pb-0" data-testid={`slip-day-${dayKey}`} data-open={isOpen ? "true" : "false"}>
-      <button
-        type="button"
-        className="flex w-full items-start gap-1.5 px-3 pt-1 pb-0.5 text-left"
-        onClick={toggle}
-        aria-expanded={isOpen}
-        data-testid={`slip-day-toggle-${dayKey}`}
-      >
-        <Chevron className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-muted-foreground" aria-hidden="true" />
+    <section id={domId} className={column ? `${DAY_COLUMN_CLASS} py-2` : "py-2 first:pt-0 last:pb-0"} data-testid={`slip-day-${dayKey}`} data-open={isOpen ? "true" : "false"} data-column={column ? "true" : undefined}
+        {...dropZone}>
+      <DayHeader column={column} dayKey={dayKey} isOpen={isOpen} onToggle={toggle} className="flex w-full items-start gap-1.5 px-3 pt-1 pb-0.5 text-left">
+        {column ? null : <Chevron className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-muted-foreground" aria-hidden="true" />}
         <span className="min-w-0">
           <span
             className="block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground"
@@ -136,7 +167,7 @@ export function DayBlock({ dayKey, heading, stats, defaultOpen = false, open, on
             </span>
           ) : null}
         </span>
-      </button>
+      </DayHeader>
       {aside ? <div className="px-3 pl-8 text-xs" data-testid={`slip-day-aside-${dayKey}`}>{aside}</div> : null}
       {isOpen ? (
         <div data-testid={`slip-day-body-${dayKey}`}>

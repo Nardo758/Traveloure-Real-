@@ -506,7 +506,11 @@ test.describe("2 · where are you staying", () => {
     expect(after.reason).toBe("no_draft");
     expect(after.dismissed).toBe(true);
     // …and the tray's "Where to stay" chip still opens the full chooser.
-    await testid(page, "tool-chip-where_to_stay").click();
+    // A10 (Leon, Nov 21 2026): on an owner's trip at desktop width the tray row is replaced by the
+    // "What you've told us" strip, so the stay control is slip-told-stay inside slip-told-strip. It opens
+    // the same full chooser the tray chip opened; only the control's home changed.
+    await expect(testid(page, "slip-told-strip")).toBeVisible({ timeout: 20_000 });
+    await testid(page, "slip-told-stay").click();
     const chooser = testid(page, "tool-sheet-where_to_stay").getByTestId("anchor-panel-chooser");
     await expect(chooser).toBeVisible({ timeout: 20_000 });
     await expect(chooser.getByTestId("slip-anchor-compare")).toHaveText("Add places I'm considering");
@@ -603,7 +607,10 @@ test.describe("2 · where are you staying", () => {
     // Smoke 8 item 5: the departure row is the last row inside the last day, ABOVE its add control.
     // TEST EDIT (QA round 3 major 8, Leon, Nov 11, 2026): this fixture's dates are confirmed, so the plan draws every
     // day of its window and the last day is no longer day 1. The list opens its first day only; open the last one.
-    await page.locator('[data-testid^="slip-day-toggle-"]').last().click();
+    // TEST EDIT (A1; Leon, Nov 20, 2026): at this desktop width the days are always-open columns, so the last day
+    // is already open and there is no header toggle to press.
+    await expect(page.locator('[data-day-layout="columns"]')).toBeVisible();
+    await expect(page.locator('[data-testid^="slip-day-toggle-"]')).toHaveCount(0);
     const departure = testid(page, "slip-travel-anchor-departure");
     await expect(departure).toBeVisible();
     const order = await departure.evaluate((dep) => {
@@ -1001,9 +1008,12 @@ test.describe("4 · free draft around the set", () => {
     expect(ok2xx(skip), `skip answered ${skip}`).toBe(true);
     await page.reload();
     await expect(testid(page, "slip-header")).toBeVisible({ timeout: 20_000 });
-    // Surface step 1: only the first day opens by default; day 2 is opened by its header.
-    await testid(page, "slip-day-toggle-2").click();
-    await expect(page.getByText("Stop on day 2")).toBeVisible({ timeout: 20_000 });
+    // TEST EDIT (A1; Leon, Nov 20, 2026): at this desktop width every day is an always-open column, so day 2's stop
+    // shows without pressing its header (which is no longer a toggle).
+    await expect(testid(page, "slip-day-toggle-2")).toHaveCount(0);
+    // A7 (Leon, Nov 21 2026): the stop's name now also appears in the map panel's fallback list, so the
+    // lookup is scoped to the slip row instead of the whole page. Test-only change; no app code.
+    await expect(page.getByTestId(/^slip-item-name-/).filter({ hasText: "Stop on day 2" })).toBeVisible({ timeout: 20_000 });
     await expect(testid(page, "where-to-stay-panel")).toHaveCount(0);
     await expect(testid(page, "anchor-panel-collapsed")).toHaveCount(0);
     await expect(testid(page, "slip-lodging-entry")).toHaveCount(0);

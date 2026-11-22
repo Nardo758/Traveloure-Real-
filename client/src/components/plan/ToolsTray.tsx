@@ -23,6 +23,8 @@ import { TOOL_LABEL, manifestFor, toolIsLive, toolSheetTitle, type ToolFlags, ty
 import { readSlipTokensMode, slipTokensAttr } from "@/lib/slip-tokens-mode";
 import type { PlanEvent } from "@/lib/slip-events";
 import { trayPress, type TrayFacts } from "@/lib/tray-stage";
+import { NextQuestion } from "./NextQuestion";
+import type { NextQuestionKey } from "@/lib/next-question";
 
 export interface ToolsTrayProps {
   tripId: string;
@@ -66,6 +68,20 @@ export interface ToolsTrayProps {
   facts?: TrayFacts;
   onNeedDates?: () => void;
   onNeedParty?: () => void;
+    /** A10 (Leon, Nov 21 2026): on a trip the tool row is replaced by the "What you've told us" strip. */
+    chrome?: "tray" | "strip";
+    /** The strip's three answered marks: dates chosen, party stated, a stay chosen. The caller decides. */
+    doneChips?: { dates?: boolean; party?: boolean; stay?: boolean };
+    /** A10 part 2: the ONE "Next:" question this visit, or null when the plan has answered all four. */
+    nextQuestion?: NextQuestionKey | null;
+    /**
+     * A10 part 3 (Leon, Nov 22 2026): the further answers the strip draws after dates, party and stay - Getting there,
+     * Getting around, Pace. Each one presses exactly what the tray's chip pressed: the dates/party panel when that fact
+     * is missing, its own sheet once the plan can answer it, and nothing while its gate is shut.
+     */
+    extraChips?: readonly ToolKey[];
+    onNextAnswer?: () => void;
+    onNextSkip?: () => void;
 }
 
 /** The tool → existing component registry. `null` ⇒ no existing component (`coming_soon` in the manifest). */
@@ -170,6 +186,62 @@ export function ToolsTray(props: ToolsTrayProps) {
     </Sheet>
   );
   // An empty tray draws nothing of its own — no chips, no wrapper — only the sheet.
+    // A10: on a trip the strip REPLACES the tray row. Three chips - dates, party, stay - each opening what the tray
+    // opened: the dates and party panels through the same callbacks, the stay sheet through the same registry.
+    if (props.chrome === "strip") {
+      const pressStay = () => {
+        const route = props.facts ? trayPress("where_to_stay", props.facts) : "sheet";
+        if (route === "dates") props.onNeedDates?.();
+        else setOpen("where_to_stay");
+      };
+      const chip = (key: string, label: string, done: boolean, press: () => void) => (
+        <button
+          key={key}
+          type="button"
+          data-testid={`slip-told-${key}`}
+          onClick={press}
+          className="inline-flex items-center gap-1.5 rounded-full border border-white/25 px-3 py-1.5 text-[13px] font-medium text-white"
+        >
+          {label}
+          {done ? <span aria-hidden="true">{"\u2713"}</span> : null}
+        </button>
+      );
+      return (
+        <>
+          <section className="space-y-2" data-testid="slip-told-strip">
+            {props.nextQuestion ? (
+              <NextQuestion
+                question={props.nextQuestion}
+                onAnswer={() => props.onNextAnswer?.()}
+                onSkip={() => props.onNextSkip?.()}
+              />
+            ) : null}
+            <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[color:var(--slip-on-navy-muted)]" data-testid="slip-told-title">
+              What you&#39;ve told us
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              {chip("dates", "Dates", props.doneChips?.dates === true, () => props.onNeedDates?.())}
+              {chip("party", TOOL_LABEL.travel_party, props.doneChips?.party === true, () => props.onNeedParty?.())}
+              {chip("stay", TOOL_LABEL.where_to_stay, props.doneChips?.stay === true, pressStay)}
+              {(props.extraChips ?? []).map((key) => {
+                const route = props.facts ? trayPress(key, props.facts) : "sheet";
+                // A shut gate draws nothing, exactly as the tray's own filter does.
+                if (route === "hidden") return null;
+                const press =
+                  route === "dates"
+                    ? () => props.onNeedDates?.()
+                    : route === "party"
+                      ? () => props.onNeedParty?.()
+                      : () => setOpen(key);
+                return chip(key, TOOL_LABEL[key], props.doneTools?.has(key) === true, press);
+              })}
+            </div>
+          </section>
+          {sheet}
+        </>
+      );
+    }
+
   if (tools.length === 0) return sheet;
   return (
     // The boards' tray: one horizontal row of pills that scrolls rather than wraps (ruling 7, "the tray

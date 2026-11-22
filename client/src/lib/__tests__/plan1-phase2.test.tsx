@@ -45,7 +45,8 @@ describe("PLAN-1 Phase 2 — the planner toggle", () => {
 
   it("V2 the toggle saves server-side; nothing in localStorage", () => {
     const slip = read("client/src/components/plancard/SlipView.tsx");
-    assert.match(slip, /onClick=\{\(\) => chooseView\("list"\)\}\s*aria-pressed=\{slipView === "list"\}/);
+    // A7: "Days only" is pressed only while the map is not beside the days.
+    assert.match(slip, /onClick=\{\(\) => chooseView\("list"\)\}\s*aria-pressed=\{slipView === "list" && !besideMap\}/);
     assert.match(slip, /onClick=\{\(\) => chooseView\("map"\)\}\s*aria-pressed=\{slipView === "map"\}/);
     assert.match(slip, /const chooseView = \(v: "list" \| "map"\) => \{\s*setSlipView\(v\);\s*(?:\/\/[^\n]*\n\s*)?if \(!isGuest\) void savePlanView\(v === "map" \? "map" : "days"\);/);
     const pref = read("client/src/lib/plan-view-preference.ts");

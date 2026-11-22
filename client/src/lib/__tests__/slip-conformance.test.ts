@@ -265,6 +265,9 @@ const ALLOWED_ADDITIONS = {
   "slip-tools-row": "UI brief 1 ? the one tools row: ToolsTray and Ask AI (no handler of its own)",
   "slip-foot": "UI brief 1 ? Finalize in flow at the foot, the bar's audience and view (no handler of its own)",
   "slip-days-expand-all": "Main board (rows) — Expand all / Collapse all: opens or closes every day through the same day-open state each day's own toggle writes",
+  // A7 part 1 (board R3_DaysBoard; Leon's go, Nov 21 2026): the view switch gains "Days and map" at desktop width.
+  // Its panel lives in `components/plan/DaysMapPanel.tsx`, outside this inventory's file set, and writes nothing.
+  "button-slip-view-days-map": "A7 — 'Days and map': the list view with a pins-only map beside the days (desktop width, a plan with stops; the default there)",
 } as const;
 
 /**
@@ -459,9 +462,13 @@ describe("0 — the relayout lost nothing and re-wired nothing", () => {
 // one home. The pins below hold the NEW homes; every testid the old ones held is still asserted.
 
 describe("1 — one centered column; the rail's pieces each have one home", () => {
-  it("the slip is one column at most 680px wide, and the map view keeps its own width", () => {
+  it("the slip is one column at most 680px wide, except the desktop days board; the map view keeps its own width", () => {
     assert.match(viewCode, /data-testid="slip-columns"/, "the plan column container is still addressable");
-    assert.match(viewCode, /slipView === "map" \? "max-w-6xl" : "max-w-\[680px\]"/, "ruling 7: 680px, map unchanged");
+    // A1 (sanctioned edit; Leon, Nov 20, 2026: "desktop shows every day as an always-open column"): ruling 7's 680px
+    // column still holds on a phone, on a one-day plan and on an empty plan. Only the desktop days board is wider.
+    assert.match(viewCode, /slipView === "map" \|\| dayColumns \|\| besideMap \? "max-w-6xl" : "max-w-\[680px\]"/, "ruling 7: 680px, except the map, the days board and the map beside the days (A7)");
+    assert.match(viewCode, /const besideOffered = desktopWidth && allActivities\.length > 0;\s*const besideMap = besideOffered && slipView === "list" && mapBeside;/, "the map beside the days needs a desktop width, a stop to map and the list view");
+    assert.match(viewCode, /const dayColumns = desktopWidth && slipView === "list" && daySlots\.length > 1;/, "the board needs a desktop width, the list view and more than one day");
     assert.doesNotMatch(viewCode, /lg:flex-row/, "no second column at lg");
     assert.doesNotMatch(viewCode, /lg:w-80/, "no 320px rail track");
   });

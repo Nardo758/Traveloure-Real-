@@ -54,6 +54,9 @@ let userA: FixtureUser;
 let userB: FixtureUser;
 let userBTripId: string;
 let userBItemId: string;
+let userATripId: string;
+let userAItemIds: string[] = [];
+let userABookedItemId: string;
 let originalBTrip: { id: string; userId: string | null; title: string | null; destination: string };
 
 /**
@@ -188,11 +191,33 @@ before(async () => {
     routingStatus: "in_planning",
   } as any).returning({ id: itineraryItems.id });
   userBItemId = item.id;
+  // Reorder body rule (Leon, Nov 20, 2026): User A's OWN plan - two stops on day 1, one on day 2.
+  const [aTrip] = await db.insert(trips).values({
+    userId: userA.id,
+    title: `A-own-${runId}`,
+    destination: "Authorization Fixture City",
+    startDate: "2031-02-10",
+    endDate: "2031-02-12",
+    status: "draft",
+  }).returning({ id: trips.id });
+  userATripId = aTrip.id;
+  const aItems = await db.insert(itineraryItems).values([
+    { tripId: userATripId, title: `A-day1-first-${runId}`, dayNumber: 1, sortOrder: 0, routingStatus: "in_planning" },
+    { tripId: userATripId, title: `A-day1-second-${runId}`, dayNumber: 1, sortOrder: 1, routingStatus: "in_planning" },
+    { tripId: userATripId, title: `A-day2-${runId}`, dayNumber: 2, sortOrder: 0, routingStatus: "in_planning" },
+  ] as any).returning({ id: itineraryItems.id });
+  userAItemIds = aItems.map((row) => row.id);
+  // Booked-move refusal (Leon, Nov 20, 2026): a money-committed stop on day 2 of User A's own plan.
+  const [booked] = await db.insert(itineraryItems).values({
+    tripId: userATripId, title: `A-booked-${runId}`, dayNumber: 2, sortOrder: 1, routingStatus: "purchased",
+  } as any).returning({ id: itineraryItems.id });
+  userABookedItemId = booked.id;
 });
 
 after(async () => {
   if (!enabled || createdUserIds.length === 0) return;
   await db.delete(trips).where(eq(trips.id, userBTripId));
+  if (userATripId) await db.delete(trips).where(eq(trips.id, userATripId));
   for (const userId of createdUserIds) {
     await db.execute(sql`
       DELETE FROM sessions
@@ -301,4 +326,64 @@ test("every selected trip-scoped User A → User B mutation is forbidden before 
     [],
     `These trip-scoped endpoints did not prove owner rejection before validation: ${JSON.stringify(notProven)}`,
   );
+});
+// THE REORDER BODY RULE (Leon, Nov 20, 2026). The generic loop above proves User A cannot call reorder on User
+// B's PLAN. This proves the other half: on a plan User A MAY write, the ids in the body are still checked - a
+// stop from another plan, or from another day of the same plan, is refused and nothing is written.
+test("reorder refuses a stop from another plan or another day, and writes nothing", { skip: !enabled }, async () => {
+  const path = `/api/trips/${userATripId}/itinerary/reorder`;
+  const [first, second, dayTwo] = userAItemIds;
+  const orders = async () =>
+    Object.fromEntries(
+      (await db.select({ id: itineraryItems.id, sortOrder: itineraryItems.sortOrder }).from(itineraryItems)
+        .where(inArray(itineraryItems.id, [...userAItemIds, userBItemId]))).map((row) => [row.id, row.sortOrder]),
+    );
+  const before = await orders();
+
+  for (const [caseName, itemIds] of [
+    ["a stop on User B's plan", [second, first, userBItemId]],
+    ["a stop on another day of the same plan", [second, dayTwo]],
+    ["the same stop twice", [second, second]],
+  ] as const) {
+    const refused = await request(path, { method: "POST", cookie: userA.cookie, body: { dayNumber: 1, itemIds } });
+    console.log(`[mutation-auth evidence] ${JSON.stringify({ endpoint: "POST /api/trips/:tripId/itinerary/reorder", case: caseName, actor: "User A (owner)", status: refused.status })}`);
+    assert.equal(refused.status, 400, `${caseName}: must be refused; status=${refused.status}`);
+    assert.deepEqual(await orders(), before, `${caseName}: a refused reorder wrote a sort order`);
+  }
+
+  // The discriminator: the same owner, the same day, only that day's own stops - accepted and written.
+  const ok = await request(path, { method: "POST", cookie: userA.cookie, body: { dayNumber: 1, itemIds: [second, first] } });
+  assert.equal(ok.status, 200, `the owner's own-day reorder must pass; status=${ok.status} body=${await ok.text()}`);
+  const after = await orders();
+  assert.equal(after[second], 0);
+  assert.equal(after[first], 1);
+  assert.equal(after[dayTwo], before[dayTwo], "the other day's stop is untouched");
+  assert.equal(after[userBItemId], before[userBItemId], "User B's stop is untouched");
+});
+
+// A BOOKED STOP DOES NOT CHANGE DAY (Leon, Nov 20, 2026) - the server's refusal behind the Move sheet's
+// sentence, on the owner's own plan. The item update refuses the move itself; the reorder route cannot carry
+// one, because it takes only the stops already on the day sent.
+test("a booked stop is refused a move to another day, on the item update and on reorder", { skip: !enabled }, async () => {
+  const dayOf = async (id: string) =>
+    (await db.select({ dayNumber: itineraryItems.dayNumber }).from(itineraryItems).where(eq(itineraryItems.id, id)))[0]?.dayNumber;
+  const itemPath = (id: string) => `/api/trips/${userATripId}/itinerary-items/${id}`;
+
+  const moved = await request(itemPath(userABookedItemId), { method: "PATCH", cookie: userA.cookie, body: { dayNumber: 1 } });
+  assert.equal(moved.status, 409, `a booked stop's move must be refused; status=${moved.status}`);
+  assert.deepEqual(await moved.json(), { code: "item_booked", message: "This stop is booked. Change the booking to move it." });
+  assert.equal(await dayOf(userABookedItemId), 2, "the booked stop stayed on its day");
+
+  const viaReorder = await request(`/api/trips/${userATripId}/itinerary/reorder`, {
+    method: "POST", cookie: userA.cookie, body: { dayNumber: 1, itemIds: [userAItemIds[0], userABookedItemId] },
+  });
+  assert.equal(viaReorder.status, 400, `reorder cannot pull a booked stop onto another day; status=${viaReorder.status}`);
+  assert.equal(await dayOf(userABookedItemId), 2);
+
+  // The discriminators: naming the day it is already on is not a move, and an unbooked stop still moves.
+  const sameDay = await request(itemPath(userABookedItemId), { method: "PATCH", cookie: userA.cookie, body: { dayNumber: 2 } });
+  assert.equal(sameDay.status, 200, `the booked stop's own day is not a move; status=${sameDay.status} body=${await sameDay.text()}`);
+  const free = await request(itemPath(userAItemIds[2]), { method: "PATCH", cookie: userA.cookie, body: { dayNumber: 3 } });
+  assert.equal(free.status, 200, `an unbooked stop still moves; status=${free.status} body=${await free.text()}`);
+  assert.equal(await dayOf(userAItemIds[2]), 3);
 });
