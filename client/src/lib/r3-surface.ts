@@ -79,7 +79,17 @@ export function r3Columns(data: any): Array<{ day: number; label: string; stops:
   return days.map((d: any, i: number) => {
     const day = Number(d?.dayNumber ?? i + 1);
     const raw = d?.date ?? d?.dayDate ?? null;
-    const date = typeof raw === "string" && raw ? new Date(`${raw.slice(0, 10)}T00:00:00`) : null;
+    // A day row need not carry its own date: the plan's start date plus the day's offset is the same answer, and the
+    // board's heading is the DATE, never "Day N" (Leon, Nov 23 2026).
+    const start = (data as any)?.trip?.startDate;
+    let date = typeof raw === "string" && raw ? new Date(`${raw.slice(0, 10)}T00:00:00`) : null;
+    if (!date && typeof start === "string" && start) {
+      const base = new Date(`${start.slice(0, 10)}T00:00:00`);
+      if (!Number.isNaN(base.getTime())) {
+        base.setDate(base.getDate() + (day - 1));
+        date = base;
+      }
+    }
     const label = date && !Number.isNaN(date.getTime())
       ? `${WEEKDAY[date.getDay()]} \u00b7 ${date.getDate()} ${MONTH[date.getMonth()]}`
       : `Day ${day}`;

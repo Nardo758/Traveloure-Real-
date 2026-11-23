@@ -2,7 +2,7 @@ import { SidebarProvider, SidebarTrigger, useSidebar } from "@/components/ui/sid
 import { useTranslation } from "react-i18next";
 import { DashboardSidebar } from "@/components/dashboard-sidebar";
 import * as React from "react";
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { UserMenu } from "@/components/user-menu";
 import { NotificationBell } from "@/components/notification-bell";
 import { TraveloureLogo } from "@/components/ui/traveloure-logo";
@@ -42,8 +42,9 @@ export function DashboardLayout({ children, subheader }: DashboardLayoutProps) {
   // U1 item 8 (Leon, Nov 23 2026): a real collapse mode. It starts COLLAPSED on an R3 plan page and EXPANDED on every
   // other page; a toggle the traveler makes is remembered for them alone (localStorage, per user id), so no other page
   // changes and a manual choice survives a reload.
-  const [location] = useLocation();
-  const r3Page = useR3SurfaceOn(location.includes("?") ? location.slice(location.indexOf("?")) : "");
+  // `useLocation` is the PATH only; the switch lives in the query, so the query is what decides the default.
+  const search = useSearch();
+  const r3Page = useR3SurfaceOn(search);
   const { user } = useAuth();
   const storageKey = sidebarStorageKey((user as any)?.id ?? null);
   const [open, setOpen] = React.useState<boolean>(() => {

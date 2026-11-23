@@ -17,13 +17,14 @@ const BASE_URL = process.env.BASE_URL ?? "http://localhost:5000";
 const OUT_DIR = path.join(process.cwd(), "playwright", "r3-captures");
 const uid = () => Math.random().toString(36).slice(2, 10);
 
+// Real Kyoto coordinates: a stop with none is a day entry but never a pin, and the map count has to say so.
 const STOPS = [
-  { title: "Fushimi Inari Shrine", dayNumber: 1, startTime: "09:00" },
-  { title: "Tofuku-ji", dayNumber: 1, startTime: "14:00" },
-  { title: "Arashiyama Bamboo Grove", dayNumber: 2, startTime: "09:30" },
-  { title: "Tenryu-ji", dayNumber: 2, startTime: "13:00" },
-  { title: "Kiyomizu-dera", dayNumber: 3, startTime: "09:00" },
-  { title: "Ginkaku-ji", dayNumber: 3, startTime: "15:00" },
+  { title: "Fushimi Inari Shrine", dayNumber: 1, startTime: "09:00", lat: 34.9671, lng: 135.7727 },
+  { title: "Tofuku-ji", dayNumber: 1, startTime: "14:00", lat: 34.9761, lng: 135.7735 },
+  { title: "Arashiyama Bamboo Grove", dayNumber: 2, startTime: "09:30", lat: 35.0169, lng: 135.6716 },
+  { title: "Tenryu-ji", dayNumber: 2, startTime: "13:00", lat: 35.0158, lng: 135.6738 },
+  { title: "Kiyomizu-dera", dayNumber: 3, startTime: "09:00", lat: 34.9949, lng: 135.785 },
+  { title: "Ginkaku-ji", dayNumber: 3, startTime: "15:00", lat: 35.027, lng: 135.7982 },
 ];
 
 async function sixStopTrip(page: Page): Promise<string> {
@@ -94,6 +95,16 @@ test("R3 P0: the surface mounts with ?surface=r3 and is captured at 1280 and 390
   await expect(page.getByTestId("r3-map")).toBeVisible();
   const order = await page.locator('[data-testid="r3-days-board"] > section').evaluateAll((els) => els.map((e) => e.getAttribute("data-testid")));
   expect(order[0], "Ideas is the first column").toBe("r3-ideas-column");
+  // The rail is COLLAPSED on this page, so the board has room: the map's own chrome is one row, and its caption and
+  // single count line sit INSIDE the canvas.
+  await expect(page.locator('[data-state="collapsed"]')).toHaveCount(1);
+  await expect(page.getByTestId("r3-map-chip-all")).toBeVisible();
+  await expect(page.getByTestId("r3-map-chip-day")).toHaveCount(3);
+  await expect(page.getByTestId("r3-map-browse")).toBeVisible();
+  await expect(page.getByTestId("r3-map-caption")).toBeVisible();
+  await expect(page.getByTestId("r3-map-count")).toBeVisible();
+  const content = await page.locator("main").boundingBox();
+  expect(content?.width ?? 0, "the content column is ~1224px with the rail collapsed").toBeGreaterThan(1100);
   await maskEmails(page);
   await page.screenshot({ path: path.join(OUT_DIR, "v1-1280.png"), fullPage: true });
 

@@ -40,9 +40,14 @@ export interface DaysMapPanelProps {
   emptyNote: string | null;
   /** Opens the map view's Browse layer. Absent: no button (a viewer who cannot add). */
   onBrowse?: (() => void) | null;
+  /**
+   * "full" is every caller today: the panel's own chips row and its count/legend footer. "bare" is the R3 surface
+   * (Leon, Nov 23 2026), which draws ONE chrome row and puts the caption and count INSIDE the map itself.
+   */
+  chrome?: "full" | "bare";
 }
 
-export function DaysMapPanel({ tripId, days, anchor, fallbackCenter = null, emptyNote, onBrowse = null }: DaysMapPanelProps) {
+export function DaysMapPanel({ tripId, days, anchor, fallbackCenter = null, emptyNote, onBrowse = null, chrome = "full" }: DaysMapPanelProps) {
   const [chosen, setChosen] = useState<DaysMapKey>("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const key = daysMapKey(days, chosen);
@@ -82,7 +87,7 @@ export function DaysMapPanel({ tripId, days, anchor, fallbackCenter = null, empt
       data-map-renderer={renderer}
       data-days-map-key={String(key)}
     >
-      {chips.length > 0 || onBrowse ? (
+      {chrome === "full" && (chips.length > 0 || onBrowse) ? (
         <div className="flex flex-wrap items-center gap-1.5 border-b border-[color:var(--slip-line)] px-3 py-2">
           {chips.length > 0 ? (
             <div className="flex flex-wrap gap-1.5" role="group" aria-label={DAYS_MAP_COPY.view} data-testid="slip-days-map-chips">
@@ -147,7 +152,7 @@ export function DaysMapPanel({ tripId, days, anchor, fallbackCenter = null, empt
           </p>
         ) : null}
       </div>
-      {countLine || legendAnchor ? (
+      {chrome === "full" && (countLine || legendAnchor) ? (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2 text-xs text-[color:var(--slip-muted)]">
           {countLine ? <span data-testid="slip-days-map-count">{countLine}</span> : null}
           {anchorNamedOnly ? (

@@ -33,6 +33,7 @@ const BOARD = {
   fill: "var(--r3-board-fill)",
   border: "var(--r3-board-border)",
   line: "var(--r3-board-line)",
+  column: "var(--r3-board-col)",
   ink: "var(--r3-board-ink)",
 } as const;
 const boardOutline = { borderColor: BOARD.border, backgroundColor: BOARD.fill, color: BOARD.text } as const;
@@ -193,29 +194,32 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
         <div className="flex items-start gap-3">
           <DaysBoard data={data} />
           <div className="min-w-0 flex-1" data-testid="r3-map">
-            {/* Board V1's map chrome: the day chips, "Browse nearby", the pins panel, then its caption and count. */}
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <div className="flex flex-wrap items-center gap-1.5" data-testid="r3-map-chips">
-                <button type="button" className="rounded-full border px-3 py-1 text-[12px] font-medium" style={{ borderColor: BOARD.border, backgroundColor: BOARD.fill, color: BOARD.text }} data-testid="r3-map-chip-all">
-                  All days
+            {/* ONE chrome row (board V1): All days, the weekdays, then Browse nearby. */}
+            <div className="mb-2 flex flex-wrap items-center gap-1.5" data-testid="r3-map-chips">
+              <button type="button" className="rounded-full border px-3 py-1 text-[12px] font-medium" style={{ borderColor: BOARD.border, backgroundColor: BOARD.fill, color: BOARD.text }} data-testid="r3-map-chip-all">
+                All days
+              </button>
+              {columns.map((c) => (
+                <button key={c.day} type="button" className="rounded-full border px-3 py-1 text-[12px] font-medium text-foreground" style={{ borderColor: BOARD.line }} data-testid="r3-map-chip-day" data-day={c.day}>
+                  {c.label.split(" ")[0]}
                 </button>
-                {columns.map((c) => (
-                  <button key={c.day} type="button" className="rounded-full border px-3 py-1 text-[12px] font-medium text-foreground" style={{ borderColor: BOARD.line }} data-testid="r3-map-chip-day" data-day={c.day}>
-                    {c.label.split(" ")[0]}
-                  </button>
-                ))}
-              </div>
-              <button type="button" className="rounded-full border px-3 py-1 text-[12px] font-medium text-foreground" style={{ borderColor: BOARD.line }} data-testid="r3-map-browse">
+              ))}
+              <button type="button" className="ml-auto rounded-full border px-3 py-1 text-[12px] font-medium text-foreground" style={{ borderColor: BOARD.line }} data-testid="r3-map-browse">
                 Browse nearby
               </button>
             </div>
-            <DaysMapPanel tripId={tripId} days={((data as any)?.days ?? []) as any} anchor={null} emptyNote={null} />
-            <p className="mt-2 rounded-lg px-2 py-1 text-[11px] text-muted-foreground" data-testid="r3-map-caption">
-              Pins only. Numbers follow the days, left to right.
-            </p>
-            <p className="mt-2 text-[12px] text-muted-foreground" data-testid="r3-map-count">
-              {`${countLine ?? ""}${countLine ? " \u00b7 " : ""}the ring is where you're staying \u00b7 Ideas aren't shown until they have a day`}
-            </p>
+            {/* the chart itself: beige panel, pins and the stay ring, with the caption bottom-left and the ONE count line bottom-right */}
+            <div className="relative overflow-hidden rounded-xl" style={{ backgroundColor: BOARD.column }} data-testid="r3-map-canvas-wrap">
+              <DaysMapPanel tripId={tripId} days={((data as any)?.days ?? []) as any} anchor={null} emptyNote={null} chrome="bare" />
+              <p className="pointer-events-none absolute bottom-2 left-3 z-[600] rounded bg-white/85 px-2 py-0.5 text-[11px] text-muted-foreground" data-testid="r3-map-caption">
+                Pins only. Numbers follow the days, left to right.
+              </p>
+              {countLine ? (
+                <p className="pointer-events-none absolute bottom-2 right-3 z-[600] rounded bg-white/85 px-2 py-0.5 text-[11px] text-muted-foreground" data-testid="r3-map-count">
+                  {countLine}
+                </p>
+              ) : null}
+            </div>
           </div>
         </div>
       </section>
