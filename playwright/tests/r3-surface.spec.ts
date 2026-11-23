@@ -19,12 +19,12 @@ const uid = () => Math.random().toString(36).slice(2, 10);
 
 // Real Kyoto coordinates: a stop with none is a day entry but never a pin, and the map count has to say so.
 const STOPS = [
-  { title: "Fushimi Inari Shrine", dayNumber: 1, startTime: "09:00", latitude: 34.9671, longitude: 135.7727 },
-  { title: "Tofuku-ji", dayNumber: 1, startTime: "14:00", latitude: 34.9761, longitude: 135.7735 },
-  { title: "Arashiyama Bamboo Grove", dayNumber: 2, startTime: "09:30", latitude: 35.0169, longitude: 135.6716 },
-  { title: "Tenryu-ji", dayNumber: 2, startTime: "13:00", latitude: 35.0158, longitude: 135.6738 },
-  { title: "Kiyomizu-dera", dayNumber: 3, startTime: "09:00", latitude: 34.9949, longitude: 135.785 },
-  { title: "Ginkaku-ji", dayNumber: 3, startTime: "15:00", latitude: 35.027, longitude: 135.7982 },
+  { title: "Fushimi Inari Shrine", dayNumber: 1, startTime: "09:00", latitude: "34.9671", longitude: "135.7727" },
+  { title: "Tofuku-ji", dayNumber: 1, startTime: "14:00", latitude: "34.9761", longitude: "135.7735" },
+  { title: "Arashiyama Bamboo Grove", dayNumber: 2, startTime: "09:30", latitude: "35.0169", longitude: "135.6716" },
+  { title: "Tenryu-ji", dayNumber: 2, startTime: "13:00", latitude: "35.0158", longitude: "135.6738" },
+  { title: "Kiyomizu-dera", dayNumber: 3, startTime: "09:00", latitude: "34.9949", longitude: "135.785" },
+  { title: "Ginkaku-ji", dayNumber: 3, startTime: "15:00", latitude: "35.027", longitude: "135.7982" },
 ];
 
 async function sixStopTrip(page: Page): Promise<string> {
