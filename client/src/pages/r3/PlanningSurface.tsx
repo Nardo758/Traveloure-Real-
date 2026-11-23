@@ -19,7 +19,7 @@ import { OCCASION_GROUP_LABELS } from "@shared/experience-group";
 import { planEyebrowLabel } from "@shared/plan-dates";
 import { DaysBoard } from "@/components/r3/DaysBoard";
 import { DaysMapPanel } from "@/components/plan/DaysMapPanel";
-import { r3IdeaCount, r3Stops } from "@/lib/r3-surface";
+import { r3Columns, r3IdeaCount, r3Stops } from "@/lib/r3-surface";
 
 const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTH = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -63,6 +63,7 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
   const desktop = useMinWidth(1024);
   const trip: any = (data as any)?.trip ?? {};
   const stops = r3Stops(data);
+  const columns = r3Columns(data);
   const ideas = r3IdeaCount(data);
   const lodging = stops.find((s) => /lodging|hotel|stay/i.test(String(s?.type ?? ""))) ??
     stops.find((s) => /lodging|hotel|stay/i.test(String(s?.kind ?? "")));
@@ -189,7 +190,29 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
         <div className="flex items-start gap-3">
           <DaysBoard data={data} />
           <div className="min-w-0 flex-1" data-testid="r3-map">
+            {/* Board V1's map chrome: the day chips, "Browse nearby", the pins panel, then its caption and count. */}
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-1.5" data-testid="r3-map-chips">
+                <button type="button" className="rounded-full border px-3 py-1 text-[12px] font-medium" style={{ borderColor: BOARD.border, backgroundColor: BOARD.fill, color: BOARD.text }} data-testid="r3-map-chip-all">
+                  All days
+                </button>
+                {columns.map((c) => (
+                  <button key={c.day} type="button" className="rounded-full border px-3 py-1 text-[12px] font-medium text-foreground" style={{ borderColor: BOARD.line }} data-testid="r3-map-chip-day" data-day={c.day}>
+                    {c.label.split(" ")[0]}
+                  </button>
+                ))}
+              </div>
+              <button type="button" className="rounded-full border px-3 py-1 text-[12px] font-medium text-foreground" style={{ borderColor: BOARD.line }} data-testid="r3-map-browse">
+                Browse nearby
+              </button>
+            </div>
             <DaysMapPanel tripId={tripId} days={((data as any)?.days ?? []) as any} anchor={null} emptyNote={null} />
+            <p className="mt-2 rounded-lg px-2 py-1 text-[11px] text-muted-foreground" data-testid="r3-map-caption">
+              Pins only. Numbers follow the days, left to right.
+            </p>
+            <p className="mt-2 text-[12px] text-muted-foreground" data-testid="r3-map-count">
+              {`${stops.length} of ${stops.length} stops on the map \u00b7 the ring is where you're staying \u00b7 Ideas aren't shown until they have a day`}
+            </p>
           </div>
         </div>
       </section>

@@ -4,7 +4,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { r3Columns, r3IdeaCount, r3Ideas, r3Stops, r3SurfaceOn } from "../r3-surface";
+import { r3Columns, r3IdeaCount, r3Ideas, r3Stops, r3SurfaceOn, sidebarStartsCollapsed, sidebarStorageKey } from "../r3-surface";
 
 test("flag OFF ignores ?surface=r3 - the parameter alone changes nothing", () => {
   assert.equal(r3SurfaceOn("?surface=r3", false), false);
@@ -67,4 +67,13 @@ test("column grouping: one column per day, its own stops, in the plan's order", 
   assert.equal(cols.reduce((n, c) => n + c.stops.length, 0), 3, "every stop lands in exactly one column");
   assert.equal(r3Ideas(plan).length, 1, "ideas are their own column, never a day");
   assert.deepEqual(r3Columns({}), [], "no day rows, no board");
+});
+
+test("the sidebar is expanded on every page that is not an R3 plan page", () => {
+  assert.equal(sidebarStartsCollapsed({ r3Page: false, stored: null }), false, "non-R3 page: expanded");
+  assert.equal(sidebarStartsCollapsed({ r3Page: true, stored: null }), true, "R3 plan page: collapsed");
+  assert.equal(sidebarStartsCollapsed({ r3Page: false, stored: true }), true, "a traveler's own choice wins over the default");
+  assert.equal(sidebarStartsCollapsed({ r3Page: true, stored: false }), false, "and wins on an R3 page too");
+  assert.equal(sidebarStorageKey(7), "dsh.sidebar.collapsed.7", "persisted per traveler");
+  assert.equal(sidebarStorageKey(null), "dsh.sidebar.collapsed.anon");
 });

@@ -91,3 +91,18 @@ export function r3Ideas(data: any): any[] {
   if (Array.isArray(ideas)) return ideas;
   return [];
 }
+
+/**
+ * The sidebar's starting state (Leon, Nov 23 2026): COLLAPSED on an R3 plan page, EXPANDED on every other page. A stored
+ * choice for this traveler wins over both, so a manual toggle survives a reload. Pure, so the rule is testable without
+ * a browser or a provider.
+ */
+export function sidebarStartsCollapsed(input: { r3Page: boolean; stored: boolean | null }): boolean {
+  if (typeof input.stored === "boolean") return input.stored;
+  return input.r3Page;
+}
+
+/** Per-traveler key, so two accounts on one browser do not share a sidebar state. */
+export function sidebarStorageKey(userId: string | number | null | undefined): string {
+  return `dsh.sidebar.collapsed.${userId ?? "anon"}`;
+}
