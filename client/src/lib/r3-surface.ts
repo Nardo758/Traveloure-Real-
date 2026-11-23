@@ -148,6 +148,9 @@ export function r3MapCounts(data: any): { located: number; total: number } {
     planAnchor: null,
     layers: { plan: true, nearby: false, ideas: false },
   } as any);
-  const located = scene.list.filter((s: any) => s.located).length;
+  // The scene also lists the STAY (it draws as the ring), so the pins are counted against the plan's stop ids - never
+  // against everything the canvas holds, or the line reads "7 of 6".
+  const stopIds = new Set(days.flatMap((d: any) => (Array.isArray(d?.activities) ? d.activities : [])).filter((a: any) => !isStayItem(a)).map((a: any) => String(a.id)));
+  const located = scene.list.filter((s: any) => s.located && stopIds.has(String(s.id))).length;
   return { located, total };
 }
