@@ -45,10 +45,14 @@ export interface DaysMapPanelProps {
    * (Leon, Nov 23 2026), which draws ONE chrome row and puts the caption and count INSIDE the map itself.
    */
   chrome?: "full" | "bare";
+  /** A caller's day filter (the R3 surface's own chips). Absent: the panel keeps its own state. */
+  dayKey?: DaysMapKey;
+  onDayKeyChange?: (key: DaysMapKey) => void;
 }
 
-export function DaysMapPanel({ tripId, days, anchor, fallbackCenter = null, emptyNote, onBrowse = null, chrome = "full" }: DaysMapPanelProps) {
-  const [chosen, setChosen] = useState<DaysMapKey>("all");
+export function DaysMapPanel({ tripId, days, anchor, fallbackCenter = null, emptyNote, onBrowse = null, chrome = "full", dayKey, onDayKeyChange }: DaysMapPanelProps) {
+  const [ownChosen, setOwnChosen] = useState<DaysMapKey>("all");
+  const chosen = dayKey ?? ownChosen;
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const key = daysMapKey(days, chosen);
   const chips = daysMapChips(days, key);
@@ -97,7 +101,8 @@ export function DaysMapPanel({ tripId, days, anchor, fallbackCenter = null, empt
                   type="button"
                   aria-pressed={c.key === key}
                   onClick={() => {
-                    setChosen(c.key);
+                    setOwnChosen(c.key);
+                    onDayKeyChange?.(c.key);
                     setSelectedId(null);
                   }}
                   className={`h-8 rounded-full border px-3 text-[13px] font-semibold ${c.key === key ? "border-[color:var(--slip-navy)] bg-[color:var(--slip-navy)] text-white" : "border-[color:var(--slip-line)] bg-[color:var(--slip-card)] text-[color:var(--slip-navy)]"}`}
@@ -145,7 +150,7 @@ export function DaysMapPanel({ tripId, days, anchor, fallbackCenter = null, empt
         ) : (
           <div className="h-full bg-[color:var(--slip-wash)]" aria-hidden="true" />
         )}
-        {renderer === "leaflet" && center && leafletMapAllowed ? (
+        {chrome === "full" && renderer === "leaflet" && center && leafletMapAllowed ? (
           // Top right: at this width the canvas's own attribution fills the bottom edge.
           <p className="absolute right-1 top-1 z-[500] rounded bg-card/90 px-1.5 py-0.5 text-[10px] text-muted-foreground" data-testid="slip-days-map-osm">
             {MAP_FALLBACK_NOTICE}

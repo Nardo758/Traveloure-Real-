@@ -86,6 +86,7 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
     stay: facts.stayChosen,
     flight: facts.flightKnown,
   };
+  const [mapDay, setMapDay] = useState<"all" | number>("all");
   const [skipped, setSkipped] = useState<NextQuestionKey[]>([]);
   const question = order.find((k) => !answered[k] && !skipped.includes(k)) ?? null;
   const copy = question ? NEXT_QUESTION_COPY[question] : null;
@@ -196,11 +197,27 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
           <div className="min-w-0 flex-1" data-testid="r3-map">
             {/* ONE chrome row (board V1): All days, the weekdays, then Browse nearby. */}
             <div className="mb-2 flex flex-wrap items-center gap-1.5" data-testid="r3-map-chips">
-              <button type="button" className="rounded-full border px-3 py-1 text-[12px] font-medium" style={{ borderColor: BOARD.border, backgroundColor: BOARD.fill, color: BOARD.text }} data-testid="r3-map-chip-all">
+              <button
+                type="button"
+                aria-pressed={mapDay === "all"}
+                onClick={() => setMapDay("all")}
+                className="rounded-full border px-3 py-1 text-[12px] font-medium"
+                style={mapDay === "all" ? { borderColor: BOARD.border, backgroundColor: BOARD.fill, color: BOARD.text } : { borderColor: BOARD.line, color: BOARD.ink }}
+                data-testid="r3-map-chip-all"
+              >
                 All days
               </button>
               {columns.map((c) => (
-                <button key={c.day} type="button" className="rounded-full border px-3 py-1 text-[12px] font-medium text-foreground" style={{ borderColor: BOARD.line }} data-testid="r3-map-chip-day" data-day={c.day}>
+                <button
+                  key={c.day}
+                  type="button"
+                  aria-pressed={mapDay === c.day}
+                  onClick={() => setMapDay(c.day)}
+                  className="rounded-full border px-3 py-1 text-[12px] font-medium"
+                  style={mapDay === c.day ? { borderColor: BOARD.border, backgroundColor: BOARD.fill, color: BOARD.text } : { borderColor: BOARD.line, color: BOARD.ink }}
+                  data-testid="r3-map-chip-day"
+                  data-day={c.day}
+                >
                   {c.label.split(" ")[0]}
                 </button>
               ))}
@@ -210,7 +227,7 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
             </div>
             {/* the chart itself: beige panel, pins and the stay ring, with the caption bottom-left and the ONE count line bottom-right */}
             <div className="relative overflow-hidden rounded-xl" style={{ backgroundColor: BOARD.column }} data-testid="r3-map-canvas-wrap">
-              <DaysMapPanel tripId={tripId} days={((data as any)?.days ?? []) as any} anchor={null} emptyNote={null} chrome="bare" />
+              <DaysMapPanel tripId={tripId} days={((data as any)?.days ?? []) as any} anchor={null} emptyNote={null} chrome="bare" dayKey={mapDay === "all" ? ("all" as any) : (mapDay as any)} />
               <p className="pointer-events-none absolute bottom-2 left-3 z-[600] rounded bg-white/85 px-2 py-0.5 text-[11px] text-muted-foreground" data-testid="r3-map-caption">
                 Pins only. Numbers follow the days, left to right.
               </p>
