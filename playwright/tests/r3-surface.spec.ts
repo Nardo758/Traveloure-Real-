@@ -43,7 +43,7 @@ async function sixStopTrip(page: Page): Promise<string> {
   expect(trip.status(), await trip.text()).toBe(201);
   const { id: tripId } = await trip.json();
   for (const stop of STOPS) {
-    const res = await page.request.post(`${BASE_URL}/api/trips/${tripId}/items`, { data: stop });
+    const res = await page.request.post(`${BASE_URL}/api/trips/${tripId}/itinerary-items`, { data: stop });
     expect([200, 201], await res.text()).toContain(res.status());
   }
   return tripId as string;
