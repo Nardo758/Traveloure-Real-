@@ -53,6 +53,13 @@ test("R3 P0: the surface mounts with ?surface=r3 and is captured at 1280 and 390
   fs.mkdirSync(OUT_DIR, { recursive: true });
   const tripId = await sixStopTrip(page);
 
+  // The switch is a RUNTIME read: the server answers one boolean from its own env. Assert the server half first, so a
+  // red run says which half is wrong (server not answering, or client not switching) instead of just "not found".
+  const flagRes = await page.request.get(`${BASE_URL}/api/public/r3-surface`);
+  expect(flagRes.status(), await flagRes.text()).toBe(200);
+  const flag = (await flagRes.json()) as { on?: boolean };
+  expect(flag.on, "the server must report R3_SURFACE=1 in this job").toBe(true);
+
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3`);
   // The R3 frame, not the old page: this is the assertion that makes the picture meaningful.
