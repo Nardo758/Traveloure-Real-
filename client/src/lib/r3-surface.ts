@@ -69,6 +69,7 @@ export function r3IdeaCount(data: any): number {
 }
 
 const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTH = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /** One column per day, in the plan's own order, each holding the stops the day rows name for it. */
 export function r3Columns(data: any): Array<{ day: number; label: string; stops: any[] }> {
@@ -78,7 +79,7 @@ export function r3Columns(data: any): Array<{ day: number; label: string; stops:
     const raw = d?.date ?? d?.dayDate ?? null;
     const date = typeof raw === "string" && raw ? new Date(`${raw.slice(0, 10)}T00:00:00`) : null;
     const label = date && !Number.isNaN(date.getTime())
-      ? `${WEEKDAY[date.getDay()]} ${date.getDate()}`
+      ? `${WEEKDAY[date.getDay()]} \u00b7 ${date.getDate()} ${MONTH[date.getMonth()]}`
       : `Day ${day}`;
     return { day, label, stops: Array.isArray(d?.activities) ? d.activities : [] };
   });

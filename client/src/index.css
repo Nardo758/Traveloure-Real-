@@ -11,6 +11,7 @@
   --r3-board-border: #d8cfee;
   --r3-board-ink: #1a1a18;
   --r3-board-line: #dad9d1;
+  --r3-board-column: #faf9f6;
 
   /* Cut-list #1 header fix v2: the traveler chrome's nav height — the nav's own height AND the
      Trip Strip's sticky offset read this one value, so the two cannot drift. */

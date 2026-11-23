@@ -63,7 +63,7 @@ test("column grouping: one column per day, its own stops, in the plan's order", 
   assert.equal(cols[0].stops.length, 2);
   assert.equal(cols[1].stops.length, 1);
   assert.equal(cols[2].stops.length, 0, "a day with no stops keeps its column");
-  assert.equal(cols[0].label, "Thu 1");
+  assert.equal(cols[0].label, "Thu \u00b7 1 Apr");
   assert.equal(cols.reduce((n, c) => n + c.stops.length, 0), 3, "every stop lands in exactly one column");
   assert.equal(r3Ideas(plan).length, 1, "ideas are their own column, never a day");
   assert.deepEqual(r3Columns({}), [], "no day rows, no board");
