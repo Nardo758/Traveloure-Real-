@@ -85,14 +85,14 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
 
   // The eyebrow is the app's own label (shared/plan-dates.ts:222), never `trip.occasionLabel` and never a hard-coded
   // "Your plan": a plan whose occasion did not resolve reads as the board's "YOUR PLAN · TRIP", anything else reads as
-  // the label it resolves to ("A trip", "Proposal").
+  // the label it resolves to (a group's own label, or an occasion such as Proposal).
   const eyebrowLabel = planEyebrowLabel({
     datesConfirmed: trip?.datesConfirmed,
     occasionName: trip?.occasionName ?? null,
     occasionSlug: trip?.occasionSlug ?? null,
   });
-  // The suffix is the catalog's own word, never a literal: the last word of the trips label ("A trip" -> "trip"), so
-  // the guard that forbids spelling a group label outside the catalog still passes and no new string is added.
+  // The suffix is the catalog's own word, never a literal: the last word of the trips label, so the guard that forbids
+  // spelling a group label outside the catalog still passes and no new string is added.
   const tripWord = OCCASION_GROUP_LABELS.trips.split(/\s+/).pop() ?? "";
   const eyebrow = (eyebrowLabel === "Your plan" ? `${eyebrowLabel} \u00b7 ${tripWord}` : eyebrowLabel).toUpperCase();
 
