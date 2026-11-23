@@ -19,7 +19,8 @@ import { OCCASION_GROUP_LABELS } from "@shared/experience-group";
 import { planEyebrowLabel } from "@shared/plan-dates";
 import { DaysBoard } from "@/components/r3/DaysBoard";
 import { DaysMapPanel } from "@/components/plan/DaysMapPanel";
-import { r3Columns, r3IdeaCount, r3Stops } from "@/lib/r3-surface";
+import { r3Columns, r3IdeaCount, r3MapCounts, r3Stops } from "@/lib/r3-surface";
+import { daysMapCountLine } from "@/lib/days-map";
 
 const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTH = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -64,6 +65,8 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
   const trip: any = (data as any)?.trip ?? {};
   const stops = r3Stops(data);
   const columns = r3Columns(data);
+  const mapCounts = r3MapCounts(data);
+  const countLine = daysMapCountLine(mapCounts.located, mapCounts.total);
   const ideas = r3IdeaCount(data);
   const lodging = stops.find((s) => /lodging|hotel|stay/i.test(String(s?.type ?? ""))) ??
     stops.find((s) => /lodging|hotel|stay/i.test(String(s?.kind ?? "")));
@@ -211,7 +214,7 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
               Pins only. Numbers follow the days, left to right.
             </p>
             <p className="mt-2 text-[12px] text-muted-foreground" data-testid="r3-map-count">
-              {`${stops.length} of ${stops.length} stops on the map \u00b7 the ring is where you're staying \u00b7 Ideas aren't shown until they have a day`}
+              {`${countLine ?? ""}${countLine ? " \u00b7 " : ""}the ring is where you're staying \u00b7 Ideas aren't shown until they have a day`}
             </p>
           </div>
         </div>

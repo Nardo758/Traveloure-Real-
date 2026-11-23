@@ -9,6 +9,8 @@
  * the flag at all, so every other plan load behaves exactly as it did before R3 existed - same requests, same timing.
  */
 import { useEffect, useState } from "react";
+import { daysMapStops } from "@/lib/days-map";
+import { buildMapScene } from "@/lib/map-scene";
 
 /** The rule: the flag must be on AND the URL must ask for it. */
 export function r3SurfaceOn(search: string, flag: boolean): boolean {
@@ -105,4 +107,23 @@ export function sidebarStartsCollapsed(input: { r3Page: boolean; stored: boolean
 /** Per-traveler key, so two accounts on one browser do not share a sidebar state. */
 export function sidebarStorageKey(userId: string | number | null | undefined): string {
   return `dsh.sidebar.collapsed.${userId ?? "anon"}`;
+}
+
+/**
+ * "N of M stops on the map" (Leon, Nov 23 2026): N comes from the SAME predicate the map panel draws by - the scene's
+ * own `located` flag (`DaysMapPanel.tsx:63`) - so the line can never claim more pins than the canvas shows. A stop with
+ * no coordinates is counted in M and not in N.
+ */
+export function r3MapCounts(data: any): { located: number; total: number } {
+  const days = Array.isArray(data?.days) ? data.days : [];
+  const total = days.reduce((n: number, d: any) => n + (Array.isArray(d?.activities) ? d.activities.length : 0), 0);
+  if (total === 0) return { located: 0, total: 0 };
+  const scene = buildMapScene({
+    dayNumber: null,
+    planStops: daysMapStops(days as any, "all"),
+    planAnchor: null,
+    layers: { plan: true, nearby: false, ideas: false },
+  } as any);
+  const located = scene.list.filter((s: any) => s.located).length;
+  return { located, total };
 }

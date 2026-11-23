@@ -4,7 +4,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { r3Columns, r3IdeaCount, r3Ideas, r3Stops, r3SurfaceOn, sidebarStartsCollapsed, sidebarStorageKey } from "../r3-surface";
+import { r3Columns, r3IdeaCount, r3Ideas, r3MapCounts, r3Stops, r3SurfaceOn, sidebarStartsCollapsed, sidebarStorageKey } from "../r3-surface";
 
 test("flag OFF ignores ?surface=r3 - the parameter alone changes nothing", () => {
   assert.equal(r3SurfaceOn("?surface=r3", false), false);
@@ -76,4 +76,13 @@ test("the sidebar is expanded on every page that is not an R3 plan page", () => 
   assert.equal(sidebarStartsCollapsed({ r3Page: true, stored: false }), false, "and wins on an R3 page too");
   assert.equal(sidebarStorageKey(7), "dsh.sidebar.collapsed.7", "persisted per traveler");
   assert.equal(sidebarStorageKey(null), "dsh.sidebar.collapsed.anon");
+});
+
+test("the map count excludes a stop with no coordinates", () => {
+  const located = { id: "a", name: "Fushimi Inari Shrine", lat: 34.9671, lng: 135.7727, startTime: "09:00" };
+  const unlocated = { id: "b", name: "Somewhere unplotted", startTime: "11:00" };
+  const counts = r3MapCounts({ days: [{ dayNumber: 1, activities: [located, unlocated] }] });
+  assert.equal(counts.total, 2, "both stops are on the days");
+  assert.equal(counts.located, 1, "only the one with coordinates is a pin");
+  assert.equal(r3MapCounts({ days: [] }).total, 0, "no days, nothing to count");
 });
