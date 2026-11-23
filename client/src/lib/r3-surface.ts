@@ -1,11 +1,12 @@
 /**
- * R3 planning surface switch (Leon, Nov 22 2026) - RUNTIME, not build-time.
+ * R3 planning surface - the switch and the plan reads, as small pure pieces.
  *
- * The server reads `R3_SURFACE=1` from its own env and answers `GET /api/public/r3-surface` (`{ on: boolean }`); this
- * module reads that answer once per page and combines it with `?surface=r3`. Production has no `R3_SURFACE`, so the
- * flag is false and the query parameter alone changes nothing.
+ * RUNTIME, not build-time (Leon, Nov 22 2026): the server reads `R3_SURFACE=1` from its own env and answers
+ * `GET /api/public/r3-surface` with `{ on: boolean }`. Production has no `R3_SURFACE`, so the flag is false and
+ * `?surface=r3` alone changes nothing.
  *
- * The pure part takes the flag as an argument, so the rule is testable without a browser or a server.
+ * NO REQUEST WITHOUT THE PARAMETER (Leon, Nov 23 2026): a page whose URL does not ask for `?surface=r3` never fetches
+ * the flag at all, so every other plan load behaves exactly as it did before R3 existed - same requests, same timing.
  */
 import { useEffect, useState } from "react";
 
@@ -30,11 +31,7 @@ export function readR3SurfaceFlag(): Promise<boolean> {
 }
 
 /**
- * The flag for this page; false until the one read answers.
- *
- * NO REQUEST WITHOUT THE PARAMETER (Leon, Nov 23 2026): a page whose URL does not ask for `?surface=r3` never fetches
- * `/api/public/r3-surface` at all, so every other plan load behaves exactly as it did before R3 existed - same requests,
- * same timing. The fetch happens only for a URL that asks, and only once per page.
+ * The flag for this page; false until the one read answers. A URL that does not ask for `?surface=r3` makes NO request.
  */
 export function useR3SurfaceOn(search: string): boolean {
   const asked = r3SurfaceOn(search, true); // does the URL ask for it? (flag assumed on, for the question only)
@@ -53,4 +50,20 @@ export function useR3SurfaceOn(search: string): boolean {
     };
   }, [asked]);
   return asked && on;
+}
+
+/**
+ * The plan's stops, read the way `SlipView` reads them (`client/src/components/plancard/SlipView.tsx:1767`):
+ * `data.days[].activities`. NOT `data.items` / `data.activities` - the day rows are the authority for what is on a day,
+ * and the board's footer counts, stay check and flight check all read this one list.
+ */
+export function r3Stops(data: any): any[] {
+  const days = Array.isArray(data?.days) ? data.days : [];
+  return days.flatMap((d: any) => (Array.isArray(d?.activities) ? d.activities : []));
+}
+
+/** Saved ideas: the plan's ideas list when the DTO carries one, else none (never a made-up number). */
+export function r3IdeaCount(data: any): number {
+  const ideas = (data as any)?.ideas;
+  return Array.isArray(ideas) ? ideas.length : 0;
 }
