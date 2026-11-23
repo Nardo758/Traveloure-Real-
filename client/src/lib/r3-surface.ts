@@ -1,12 +1,45 @@
 /**
- * R3 planning surface switch (Leon, Nov 22 2026): `?surface=r3` renders the Revision 3 screen, and ONLY when the build
- * carries the staging flag (VITE_R3_SURFACE=1). Default off - production and every other environment keep the old page,
- * and the query parameter alone never switches anything.
+ * R3 planning surface switch (Leon, Nov 22 2026) - RUNTIME, not build-time.
  *
- * Pure, so the rule is testable without a browser: the flag is passed in, the search string is passed in.
+ * The server reads `R3_SURFACE=1` from its own env and answers `GET /api/public/r3-surface` (`{ on: boolean }`); this
+ * module reads that answer once per page and combines it with `?surface=r3`. Production has no `R3_SURFACE`, so the
+ * flag is false and the query parameter alone changes nothing.
+ *
+ * The pure part takes the flag as an argument, so the rule is testable without a browser or a server.
  */
-export function r3SurfaceOn(search: string, flag: string | undefined = (import.meta as any).env?.VITE_R3_SURFACE): boolean {
-  if (flag !== "1") return false;
+import { useEffect, useState } from "react";
+
+/** The rule: the flag must be on AND the URL must ask for it. */
+export function r3SurfaceOn(search: string, flag: boolean): boolean {
+  if (flag !== true) return false;
   const q = search.startsWith("?") ? search.slice(1) : search;
   return new URLSearchParams(q).get("surface") === "r3";
+}
+
+let cached: Promise<boolean> | null = null;
+
+/** One read per page load; any failure is a NO (fail closed - never switch a surface on because a fetch broke). */
+export function readR3SurfaceFlag(): Promise<boolean> {
+  if (!cached) {
+    cached = fetch("/api/public/r3-surface", { credentials: "same-origin" })
+      .then((r) => (r.ok ? r.json() : { on: false }))
+      .then((j: any) => j?.on === true)
+      .catch(() => false);
+  }
+  return cached;
+}
+
+/** The flag for this page; false until the one read answers. */
+export function useR3SurfaceOn(search: string): boolean {
+  const [on, setOn] = useState(false);
+  useEffect(() => {
+    let live = true;
+    readR3SurfaceFlag().then((flag) => {
+      if (live) setOn(flag);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+  return r3SurfaceOn(search, on);
 }

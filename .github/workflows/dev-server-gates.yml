@@ -426,8 +426,10 @@ jobs:
           # Playwright process had the flag; the server it talks to did not, so the door's chooser
           # never saw the fixture and slip-rail A4's availability poll could not turn true.
           SHOW_DEMO_EXPERTS: '1'
+          # R3 planning surface (Leon, Nov 22 2026): the SERVER reads this and answers
+          # GET /api/public/r3-surface, so staging switches the surface without a rebuild.
+          R3_SURFACE: '1'
           # R3 planning surface (Leon, Nov 22 2026): staging-only, and this job is where its screenshots come from.
-          VITE_R3_SURFACE: '1'
           # Loopback-only rate-limit exemption. The cart-redirect gate ran without it; with one
           # login per test it never needed it, and the exemption only removes 429s.
           RATE_LIMIT_LOOPBACK_SKIP: '1'
