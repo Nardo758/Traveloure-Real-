@@ -87,6 +87,10 @@ test("R3 P0: the surface mounts with ?surface=r3 and is captured at 1280 and 390
   const flag = (await flagRes.json()) as { on?: boolean };
   expect(flag.on, "the server must report R3_SURFACE=1 in this job").toBe(true);
 
+  // DIAGNOSTIC (temporary): the plancard DTO this capture is built from, as a JSON attachment on the report.
+  const dtoRes = await page.request.get(`${BASE_URL}/api/trips/${tripId}/plancard`);
+  await test.info().attach("r3-dto.json", { contentType: "application/json", body: await dtoRes.text() });
+
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3`);
   // The R3 frame, not the old page: this is the assertion that makes the picture meaningful.

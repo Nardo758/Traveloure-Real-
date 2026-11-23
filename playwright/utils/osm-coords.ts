@@ -36,7 +36,7 @@ export async function markSeededItemsAsOsm(tripId: string, stayTitle?: string): 
   try {
     const res = await client.query("UPDATE itinerary_items SET coord_source = 'osm' WHERE trip_id = $1", [tripId]);
     if (stayTitle) {
-      await client.query("UPDATE itinerary_items SET item_type = 'lodging' WHERE trip_id = $1 AND title = $2", [tripId, stayTitle]);
+      await client.query("UPDATE itinerary_items SET item_type = 'accommodation' WHERE trip_id = $1 AND title = $2", [tripId, stayTitle]);
     }
     return res.rowCount ?? 0;
   } finally {

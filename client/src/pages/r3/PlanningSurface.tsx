@@ -70,7 +70,9 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
   const countLine = daysMapCountLine(mapCounts.located, mapCounts.total);
   // U1: the plan's own lodging item is the map's anchor, so the stay ring draws when the plan has one (null otherwise).
   const mapAnchor = (() => {
-    const stay = stops.find((s) => /lodging|hotel|stay/i.test(String(s?.type ?? s?.itemType ?? "")));
+    // The stay is the `accommodation` row; the day columns drop it (it is the ring), so it is found in the raw DTO.
+    const rawStops = ((data as any)?.days ?? []).flatMap((d: any) => (Array.isArray(d?.activities) ? d.activities : []));
+    const stay = rawStops.find((s: any) => s?.type === "accommodation" || s?.itemType === "accommodation");
     if (!stay) return null;
     const lat = Number((stay as any)?.lat ?? (stay as any)?.latitude);
     const lng = Number((stay as any)?.lng ?? (stay as any)?.longitude);

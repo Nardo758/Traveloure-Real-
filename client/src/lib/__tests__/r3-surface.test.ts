@@ -87,9 +87,9 @@ test("the map count excludes a stop with no coordinates", () => {
   assert.equal(r3MapCounts({ days: [] }).total, 0, "no days, nothing to count");
 });
 
-test("a stay is the exact DTO shape the plancard sends: type 'lodging', never a stop", () => {
+test("a stay is the exact DTO shape the plancard sends: type 'accommodation', never a stop", () => {
   // `server/services/add-checks.service.ts:81` projects each day stop as `{ ..., type: item.itemType }`.
-  const stay = { id: "s1", name: "Higashiyama inn", type: "lodging", dayNumber: 1, startTime: "18:00" };
+  const stay = { id: "s1", name: "Higashiyama inn", type: "accommodation", dayNumber: 1, startTime: "18:00" };
   const stop = { id: "a1", name: "Fushimi Inari Shrine", type: "activity", dayNumber: 1, startTime: "09:00" };
   assert.equal(isStayItem(stay), true);
   assert.equal(isStayItem(stop), false);
