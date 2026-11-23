@@ -245,7 +245,7 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
             {/* the chart itself: beige panel, pins and the stay ring, with the caption bottom-left and the ONE count line bottom-right */}
             <div className="relative overflow-hidden rounded-xl" style={{ backgroundColor: BOARD.column }} data-testid="r3-map-canvas-wrap">
               <DaysMapPanel tripId={tripId} days={mapDays as any} anchor={mapAnchor as any} emptyNote={null} chrome="bare" dayKey={mapDay === "all" ? ("all" as any) : (mapDay as any)} />
-              <p className="pointer-events-none absolute bottom-2 left-3 z-[600] rounded bg-white/85 px-2 py-0.5 text-[11px] text-muted-foreground" data-testid="r3-map-caption">
+              <p className="pointer-events-none absolute bottom-8 left-3 z-[600] rounded bg-white/85 px-2 py-0.5 text-[11px] text-muted-foreground" data-testid="r3-map-caption">
                 Pins only. Numbers follow the days, left to right.
               </p>
               {countLine ? (
