@@ -612,14 +612,14 @@ jobs:
           path: playwright/r3-captures/
           retention-days: 14
           if-no-files-found: warn
-        - name: Upload the r3-surface Playwright JSON report (the spec-arming gate reads playwright-json*)
-          if: ${{ !cancelled() }}
-          uses: actions/upload-artifact@v4
-          with:
-            name: playwright-json-r3-surface
-            path: reports/r3-surface/json/
-            retention-days: 14
-            if-no-files-found: warn
+      - name: Upload the r3-surface Playwright JSON report (the spec-arming gate reads playwright-json*)
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-json-r3-surface
+          path: reports/r3-surface/json/
+          retention-days: 14
+          if-no-files-found: warn
       - name: "Earn-grammar captures (Lane 2, screenshots — never fails the job)"
         id: earn_captures
         if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
