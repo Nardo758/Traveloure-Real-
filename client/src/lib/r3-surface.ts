@@ -61,7 +61,7 @@ export function useR3SurfaceOn(search: string): boolean {
  */
 export function r3Stops(data: any): any[] {
   const days = Array.isArray(data?.days) ? data.days : [];
-  return days.flatMap((d: any) => (Array.isArray(d?.activities) ? d.activities : []));
+  return days.flatMap((d: any) => (Array.isArray(d?.activities) ? d.activities : [])).filter((a: any) => !isStayItem(a));
 }
 
 /** Saved ideas: the plan's ideas list when the DTO carries one, else none (never a made-up number). */
@@ -71,6 +71,14 @@ export function r3IdeaCount(data: any): number {
 }
 
 const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/**
+ * A stay is the map's RING, not a card (board V1: "5 stops" with the inn as the ring). So the day columns, the footer's
+ * stop count and the map's total all leave the lodging item out; it draws once, as the anchor.
+ */
+export function isStayItem(item: any): boolean {
+  return /lodging|hotel|stay|accommodation/i.test(String(item?.type ?? item?.itemType ?? ""));
+}
 const MONTH = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /** One column per day, in the plan's own order, each holding the stops the day rows name for it. */
@@ -95,7 +103,7 @@ export function r3Columns(data: any): Array<{ day: number; label: string; stops:
     const label = date && !Number.isNaN(date.getTime())
       ? `${WEEKDAY[date.getDay()]} \u00b7 ${date.getDate()} ${MONTH[date.getMonth()]}`
       : `Day ${day}`;
-    return { day, label, stops: Array.isArray(d?.activities) ? d.activities : [] };
+    return { day, label, stops: (Array.isArray(d?.activities) ? d.activities : []).filter((a: any) => !isStayItem(a)) };
   });
 }
 
@@ -128,7 +136,7 @@ export function sidebarStorageKey(userId: string | number | null | undefined): s
  */
 export function r3MapCounts(data: any): { located: number; total: number } {
   const days = Array.isArray(data?.days) ? data.days : [];
-  const total = days.reduce((n: number, d: any) => n + (Array.isArray(d?.activities) ? d.activities.length : 0), 0);
+  const total = days.reduce((n: number, d: any) => n + (Array.isArray(d?.activities) ? d.activities.filter((a: any) => !isStayItem(a)).length : 0), 0);
   if (total === 0) return { located: 0, total: 0 };
   const scene = buildMapScene({
     dayNumber: null,
