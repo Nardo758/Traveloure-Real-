@@ -21,6 +21,16 @@ router.get("/api/public/signup-mode", async (_req, res) => {
 });
 
 /**
+ * R3 planning surface switch (Leon, Nov 22 2026), RUNTIME: the server reads its own env (`R3_SURFACE=1`, default off) and
+ * tells the client, so staging can turn the surface on without rebuilding a bundle. Public and read-only - it exposes
+ * one boolean and no configuration value.
+ */
+router.get("/api/public/r3-surface", (_req, res) => {
+  res.json({ on: process.env.R3_SURFACE === "1" });
+});
+
+
+/**
  * CAP-2 Phase 3 (dispatch ruling 5; ledger `2026-11-06-cap2-phase3-plan-actions`): the public guest-capabilities read
  * PlanActions renders a browse tile from. Unauthenticated, waitlist-aware, and carries NO price, fee or amount.
  *   save — always true (a placeable save is the card's own answer).

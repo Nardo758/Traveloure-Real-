@@ -361,6 +361,7 @@ jobs:
             playwright/tests/f1-ask-chooser.spec.ts \
             playwright/tests/a1-day-columns.spec.ts \
             playwright/tests/a2-move-stop.spec.ts \
+            playwright/tests/r3-surface.spec.ts \
             playwright/tests/earn-captures.spec.ts; do
             if [ ! -f "$f" ]; then
               echo "::error file=.github/workflows/dev-server-gates.yml::Spec file not found: $f"
@@ -425,6 +426,10 @@ jobs:
           # Playwright process had the flag; the server it talks to did not, so the door's chooser
           # never saw the fixture and slip-rail A4's availability poll could not turn true.
           SHOW_DEMO_EXPERTS: '1'
+          # R3 planning surface (Leon, Nov 22 2026): the SERVER reads this and answers
+          # GET /api/public/r3-surface, so staging switches the surface without a rebuild.
+          R3_SURFACE: '1'
+          # R3 planning surface (Leon, Nov 22 2026): staging-only, and this job is where its screenshots come from.
           # Loopback-only rate-limit exemption. The cart-redirect gate ran without it; with one
           # login per test it never needed it, and the exemption only removes 429s.
           RATE_LIMIT_LOOPBACK_SKIP: '1'
@@ -581,6 +586,38 @@ jobs:
         with:
           name: a2-captures-${{ github.sha }}
           path: playwright/a2-captures/
+          retention-days: 14
+          if-no-files-found: warn
+      - name: "r3-surface: the Revision 3 shell, at 1280 and 390, with screenshots"
+        # R3 P0 (Leon, Nov 22 2026): the shell behind ?surface=r3. It asserts r3-surface is on the page, so a
+        # green step is never a picture of the old page.
+        id: r3_surface
+        if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
+        run: npx playwright test r3-surface --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          CI: 'true'
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      - name: Keep the r3-surface reports
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p reports/r3-surface
+          [ -d playwright-report ] && mv playwright-report reports/r3-surface/html || true
+          [ -d playwright-json ] && mv playwright-json reports/r3-surface/json || true
+      - name: Upload the R3 screenshots
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: r3-captures-${{ github.sha }}
+          path: playwright/r3-captures/
+          retention-days: 14
+          if-no-files-found: warn
+      - name: Upload the r3-surface Playwright JSON report (the spec-arming gate reads playwright-json*)
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-json-r3-surface
+          path: reports/r3-surface/json/
           retention-days: 14
           if-no-files-found: warn
       - name: "Earn-grammar captures (Lane 2, screenshots — never fails the job)"
