@@ -586,30 +586,30 @@ jobs:
           path: playwright/a2-captures/
           retention-days: 14
           if-no-files-found: warn
-        - name: "r3-surface: the Revision 3 shell, at 1280 and 390, with screenshots"
-          # R3 P0 (Leon, Nov 22 2026): the shell behind ?surface=r3. It asserts r3-surface is on the page, so a
-          # green step is never a picture of the old page.
-          id: r3_surface
-          if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
-          run: npx playwright test r3-surface --project=chromium
-          env:
-            BASE_URL: http://localhost:5000
-            CI: 'true'
-            DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
-        - name: Keep the r3-surface reports
-          if: ${{ !cancelled() }}
-          run: |
-            mkdir -p reports/r3-surface
-            [ -d playwright-report ] && mv playwright-report reports/r3-surface/html || true
-            [ -d playwright-json ] && mv playwright-json reports/r3-surface/json || true
-        - name: Upload the R3 screenshots
-          if: ${{ !cancelled() }}
-          uses: actions/upload-artifact@v4
-          with:
-            name: r3-captures-${{ github.sha }}
-            path: playwright/r3-captures/
-            retention-days: 14
-            if-no-files-found: warn
+      - name: "r3-surface: the Revision 3 shell, at 1280 and 390, with screenshots"
+        # R3 P0 (Leon, Nov 22 2026): the shell behind ?surface=r3. It asserts r3-surface is on the page, so a
+        # green step is never a picture of the old page.
+        id: r3_surface
+        if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
+        run: npx playwright test r3-surface --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          CI: 'true'
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      - name: Keep the r3-surface reports
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p reports/r3-surface
+          [ -d playwright-report ] && mv playwright-report reports/r3-surface/html || true
+          [ -d playwright-json ] && mv playwright-json reports/r3-surface/json || true
+      - name: Upload the R3 screenshots
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: r3-captures-${{ github.sha }}
+          path: playwright/r3-captures/
+          retention-days: 14
+          if-no-files-found: warn
       - name: "Earn-grammar captures (Lane 2, screenshots — never fails the job)"
         id: earn_captures
         if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
