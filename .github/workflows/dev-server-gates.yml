@@ -361,6 +361,7 @@ jobs:
             playwright/tests/f1-ask-chooser.spec.ts \
             playwright/tests/a1-day-columns.spec.ts \
             playwright/tests/a2-move-stop.spec.ts \
+            playwright/tests/r3-surface.spec.ts \
             playwright/tests/earn-captures.spec.ts; do
             if [ ! -f "$f" ]; then
               echo "::error file=.github/workflows/dev-server-gates.yml::Spec file not found: $f"
