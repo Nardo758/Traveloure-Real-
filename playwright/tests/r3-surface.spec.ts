@@ -49,6 +49,27 @@ async function sixStopTrip(page: Page): Promise<string> {
   return tripId as string;
 }
 
+/** No emails in PR images (Leon, Nov 22 2026): any element showing an address is replaced by a same-size grey bar. */
+async function maskEmails(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const EMAIL = /[\w.+-]+@[\w-]+\.[\w.-]+/;
+    for (const el of Array.from(document.querySelectorAll("body *"))) {
+      const own = Array.from(el.childNodes).some((n) => n.nodeType === Node.TEXT_NODE && EMAIL.test(n.textContent || ""));
+      if (!own) continue;
+      const ctx = el as HTMLElement;
+      const style = getComputedStyle(ctx);
+      const bar = document.createElement("span");
+      bar.setAttribute("data-testid", "r3-email-mask");
+      bar.style.display = "inline-block";
+      bar.style.width = `${Math.max(60, Math.min(ctx.getBoundingClientRect().width, 220))}px`;
+      bar.style.height = `${parseFloat(style.fontSize || "13")}px`;
+      bar.style.background = "#D8CFEE";
+      bar.style.borderRadius = "3px";
+      for (const n of Array.from(ctx.childNodes)) if (n.nodeType === Node.TEXT_NODE) ctx.replaceChild(bar, n);
+    }
+  });
+}
+
 test("R3 P0: the surface mounts with ?surface=r3 and is captured at 1280 and 390", async ({ page }) => {
   fs.mkdirSync(OUT_DIR, { recursive: true });
   const tripId = await sixStopTrip(page);
@@ -64,10 +85,12 @@ test("R3 P0: the surface mounts with ?surface=r3 and is captured at 1280 and 390
   await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3`);
   // The R3 frame, not the old page: this is the assertion that makes the picture meaningful.
   await expect(page.getByTestId("r3-surface")).toBeVisible({ timeout: 30_000 });
+  await maskEmails(page);
   await page.screenshot({ path: path.join(OUT_DIR, "v1-1280.png"), fullPage: true });
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3`);
   await expect(page.getByTestId("r3-surface")).toBeVisible({ timeout: 30_000 });
+  await maskEmails(page);
   await page.screenshot({ path: path.join(OUT_DIR, "v1-390.png"), fullPage: true });
 });

@@ -43,3 +43,19 @@ export function useR3SurfaceOn(search: string): boolean {
   }, []);
   return r3SurfaceOn(search, on);
 }
+
+/**
+ * The plan's stops, read the way `SlipView` reads them (`client/src/components/plancard/SlipView.tsx:1767`):
+ * `data.days[].activities`. NOT `data.items` / `data.activities` - the plancard's day rows are the authority for what is
+ * on a day, and the board's footer counts, stay check and flight check all read this one list.
+ */
+export function r3Stops(data: any): any[] {
+  const days = Array.isArray(data?.days) ? data.days : [];
+  return days.flatMap((d: any) => (Array.isArray(d?.activities) ? d.activities : []));
+}
+
+/** Saved ideas: the plan's ideas list when the DTO carries one, else none (never a made-up number). */
+export function r3IdeaCount(data: any): number {
+  const ideas = (data as any)?.ideas;
+  return Array.isArray(ideas) ? ideas.length : 0;
+}
