@@ -22,6 +22,9 @@ import { ME_PREFERENCES_QUERY_KEY, rememberedPlanView } from "@/lib/plan-view-pr
 export default function SlipViewPage() {
   const { tripId } = useParams<{ tripId: string }>();
   const searchStr = useSearch();
+  // R3 (Leon, Nov 22 2026): the RUNTIME flag from the server plus `?surface=r3`. Off by default everywhere but
+  // staging; the old page is what renders when it is off.
+  const r3On = useR3SurfaceOn(searchStr);
   const highlightItemId = new URLSearchParams(searchStr).get("item");
   // The opening planner (`resolvePlanView`, slip-first ledger `2026-11-07-slip-first-landing`): the URL's `?view=`, else
   // the traveler's remembered view (server-side), else Days.
@@ -50,6 +53,12 @@ export default function SlipViewPage() {
   const initialView = openingView === "map" ? ("map" as const) : ("list" as const);
   // The remembered view is read before the plan opens, so it never flashes the other planner (a failed read ⇒ Days).
   const viewReady = !!urlView || !prefsQ.isLoading;
+
+  // R3 FIRST: before the loading guard, the rate-limit return and the load-error return, so the surface is
+  // reachable even while the old page would still be spinning.
+  if (r3On && data) {
+    return <R3PlanningSurface data={data} tripId={tripId!} />;
+  }
 
   if (isLoading || !viewReady) {
     return (
