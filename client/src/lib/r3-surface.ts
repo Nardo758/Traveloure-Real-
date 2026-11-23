@@ -77,7 +77,9 @@ const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
  * stop count and the map's total all leave the lodging item out; it draws once, as the anchor.
  */
 export function isStayItem(item: any): boolean {
-  return /lodging|hotel|stay|accommodation/i.test(String(item?.type ?? item?.itemType ?? ""));
+  // The plancard's day stops carry `type` = the row's `item_type` (`server/services/add-checks.service.ts:81`), so the
+  // ONE value a stay arrives with is `"lodging"`. No pattern-matching: an unseen value is a stop, not a ring.
+  return item?.type === "lodging" || item?.itemType === "lodging";
 }
 const MONTH = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 

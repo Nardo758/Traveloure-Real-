@@ -4,7 +4,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { r3Columns, r3IdeaCount, r3Ideas, r3MapCounts, r3Stops, r3SurfaceOn, sidebarStartsCollapsed, sidebarStorageKey } from "../r3-surface";
+import { isStayItem, r3Columns, r3IdeaCount, r3Ideas, r3MapCounts, r3Stops, r3SurfaceOn, sidebarStartsCollapsed, sidebarStorageKey } from "../r3-surface";
 
 test("flag OFF ignores ?surface=r3 - the parameter alone changes nothing", () => {
   assert.equal(r3SurfaceOn("?surface=r3", false), false);
@@ -85,4 +85,17 @@ test("the map count excludes a stop with no coordinates", () => {
   assert.equal(counts.total, 2, "both stops are on the days");
   assert.equal(counts.located, 1, "only the one with coordinates is a pin");
   assert.equal(r3MapCounts({ days: [] }).total, 0, "no days, nothing to count");
+});
+
+test("a stay is the exact DTO shape the plancard sends: type 'lodging', never a stop", () => {
+  // `server/services/add-checks.service.ts:81` projects each day stop as `{ ..., type: item.itemType }`.
+  const stay = { id: "s1", name: "Higashiyama inn", type: "lodging", dayNumber: 1, startTime: "18:00" };
+  const stop = { id: "a1", name: "Fushimi Inari Shrine", type: "activity", dayNumber: 1, startTime: "09:00" };
+  assert.equal(isStayItem(stay), true);
+  assert.equal(isStayItem(stop), false);
+  assert.equal(isStayItem({ id: "x", name: "Hotel-ish thing", type: "hotel-ish" }), false, "no pattern-matching");
+  const plan = { days: [{ dayNumber: 1, activities: [stay, stop] }] };
+  assert.equal(r3Columns(plan)[0].stops.length, 1, "the ring is not a card");
+  assert.equal(r3Stops(plan).length, 1, "and not a counted stop");
+  assert.equal(r3MapCounts(plan).total, 1, "nor part of the map's total");
 });

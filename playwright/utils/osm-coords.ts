@@ -25,13 +25,19 @@ export function assertTestDatabase(databaseUrl = process.env.DATABASE_URL, ci = 
   }
 }
 
-/** Marks every item on `tripId` as an OSM-sourced point. Returns how many rows changed. */
-export async function markSeededItemsAsOsm(tripId: string): Promise<number> {
+/**
+ * Marks every item on `tripId` as an OSM-sourced point, and - when `stayTitle` is given - sets that one row's
+ * `item_type` to `lodging`, because the create rail does not accept a lodging type. Returns how many rows changed.
+ */
+export async function markSeededItemsAsOsm(tripId: string, stayTitle?: string): Promise<number> {
   assertTestDatabase();
   const client = new Client({ connectionString: process.env.DATABASE_URL });
   await client.connect();
   try {
     const res = await client.query("UPDATE itinerary_items SET coord_source = 'osm' WHERE trip_id = $1", [tripId]);
+    if (stayTitle) {
+      await client.query("UPDATE itinerary_items SET item_type = 'lodging' WHERE trip_id = $1 AND title = $2", [tripId, stayTitle]);
+    }
     return res.rowCount ?? 0;
   } finally {
     await client.end();

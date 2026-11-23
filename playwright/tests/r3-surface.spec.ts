@@ -51,7 +51,7 @@ async function sixStopTrip(page: Page): Promise<string> {
     expect([200, 201], await res.text()).toContain(res.status());
   }
   // TEST-ONLY: give the plan's points a non-Google source so the OSM canvas may draw them (see utils/osm-coords.ts).
-  await markSeededItemsAsOsm(tripId as string);
+  await markSeededItemsAsOsm(tripId as string, "Higashiyama inn");
   return tripId as string;
 }
 
