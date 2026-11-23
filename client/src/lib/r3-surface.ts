@@ -83,6 +83,8 @@ export function r3Columns(data: any): Array<{ day: number; label: string; stops:
     // board's heading is the DATE, never "Day N" (Leon, Nov 23 2026).
     const start = (data as any)?.trip?.startDate;
     let date = typeof raw === "string" && raw ? new Date(`${raw.slice(0, 10)}T00:00:00`) : null;
+    // A day row may carry a date we cannot parse (or none at all): both are "no date", never a "Day N" heading.
+    if (date && Number.isNaN(date.getTime())) date = null;
     if (!date && typeof start === "string" && start) {
       const base = new Date(`${start.slice(0, 10)}T00:00:00`);
       if (!Number.isNaN(base.getTime())) {
