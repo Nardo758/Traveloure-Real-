@@ -131,7 +131,7 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
               {pill("Days only", false, "r3-view-days")}
               {pill("Map only", false, "r3-view-map")}
               {pill("Calendar", false, "r3-view-calendar")}
-              <button type="button" className="h-11 rounded-lg border px-3 text-[13px] font-medium" style={{ borderColor: BOARD.border, color: BOARD.ink }} data-testid="r3-share">Share</button>
+              <button type="button" className="h-11 rounded-lg border px-3 text-[13px] font-medium" style={{ borderColor: BOARD.line, color: BOARD.ink }} data-testid="r3-share">Share</button>
               <button type="button" aria-label="More" className="h-11 w-11 rounded-lg border" style={{ borderColor: BOARD.line, color: BOARD.ink }} data-testid="r3-menu">
                 <MoreHorizontal className="mx-auto h-4 w-4" />
               </button>
