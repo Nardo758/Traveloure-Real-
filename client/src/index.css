@@ -711,9 +711,10 @@
 [data-r3-map] .leaflet-control-attribution a[href*="leafletjs"] { display: none !important; }
 [data-r3-map] [data-testid="slip-days-map"] { border: 0 !important; }
 [data-r3-map] .leaflet-container { border: 0 !important; background: var(--r3-board-col) !important; }
-/* pins: the board's ink, drawn as a round badge */
-[data-r3-map] [data-pin-state] > div { background: var(--r3-pin-ink) !important; color: var(--r3-pin-text) !important; }
-/* the stay: a hollow ring with the board's purple outline, never a filled square */
-[data-r3-map] [data-anchor-kind] { background: transparent !important; border: 2px solid var(--r3-board-text) !important; border-radius: 50% !important; }
+/* pins: the board's ink, drawn as a round badge (the marker div itself carries the inline background) */
+[data-r3-map] [data-pin-state] { background: var(--r3-pin-ink) !important; color: var(--r3-pin-text) !important; }
+/* the stay: a hollow ring with the board's purple outline, above the pins so it is never hidden by one */
+[data-r3-map] [data-anchor-kind] { background: transparent !important; border: 2px solid var(--r3-board-text) !important; border-radius: 50% !important; width: 30px !important; height: 30px !important; box-shadow: none !important; }
+[data-r3-map] .leaflet-marker-icon:has([data-anchor-kind]) { z-index: 900 !important; }
 /* collapsed rail: icons only - the clipped label letters go */
 [data-state="collapsed"] [data-sidebar="menu-button"] > span:not([data-sidebar-label-icon]) { display: none !important; }
