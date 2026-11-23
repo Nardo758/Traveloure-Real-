@@ -21,7 +21,14 @@ const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTH = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 // The board's palette, as hex, in one place.
-const BOARD = { text: "#5B4B8A", fill: "#EEEAF6", border: "#D8CFEE", ink: "#1B2430" } as const;
+// The board's palette, as tokens: the hex values live in `index.css` as `--r3-board-*`, because the page-hex guard
+// refuses literals in `client/src/pages`.
+const BOARD = {
+  text: "var(--r3-board-text)",
+  fill: "var(--r3-board-fill)",
+  border: "var(--r3-board-border)",
+  ink: "var(--r3-board-ink)",
+} as const;
 const boardOutline = { borderColor: BOARD.border, backgroundColor: BOARD.fill, color: BOARD.text } as const;
 
 /** "Tue 8 \u2013 Thu 10 Dec" from the plan's own dates; "" when the plan has none (the chip is then hidden). */
