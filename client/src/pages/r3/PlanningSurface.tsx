@@ -86,10 +86,9 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
 
       {/* one "What Optimize found" card: the card body is P1's (V8 draws its final wording) */}
       <section className="mt-5 rounded-xl border p-4" data-testid="r3-optimize-card">
+        {/* P0 carries the card's TITLE only (Leon, Nov 22 2026): the findings list and the Optimize control are V8's,
+            and no placeholder sentence stands in for them. */}
         <p className="text-sm font-medium">What Optimize found in your plan</p>
-        <p className="mt-1 text-[13px] text-muted-foreground" data-testid="r3-optimize-slot">
-          Placeholder in P0: the findings list and the Optimize control arrive with P1.
-        </p>
       </section>
 
       {/* the days board: P1 fills this slot; the frame reserves it so the page's shape is right today */}
