@@ -243,17 +243,15 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
               </button>
             </div>
             {/* the chart itself: beige panel, pins and the stay ring, with the caption bottom-left and the ONE count line bottom-right */}
-            <div className="relative overflow-hidden rounded-xl" style={{ backgroundColor: BOARD.column }} data-testid="r3-map-canvas-wrap">
+            <div className="relative overflow-hidden rounded-xl" style={{ backgroundColor: BOARD.column }} data-testid="r3-map-canvas-wrap" data-r3-map>
               <DaysMapPanel tripId={tripId} days={mapDays as any} anchor={mapAnchor as any} emptyNote={null} chrome="bare" dayKey={mapDay === "all" ? ("all" as any) : (mapDay as any)} />
               <p className="pointer-events-none absolute bottom-8 left-3 z-[600] rounded bg-white/85 px-2 py-0.5 text-[11px] text-muted-foreground" data-testid="r3-map-caption">
                 Pins only. Numbers follow the days, left to right.
               </p>
-              {countLine ? (
-                <p className="pointer-events-none absolute bottom-2 right-3 z-[600] rounded bg-white/85 px-2 py-0.5 text-[11px] text-muted-foreground" data-testid="r3-map-count">
-                  {countLine}
-                </p>
-              ) : null}
             </div>
+            <p className="mt-2 text-[12px] text-muted-foreground" data-testid="r3-map-count">
+              {`${countLine ?? ""}${countLine ? " \u00b7 " : ""}the ring is where you're staying${ideas > 0 ? " \u00b7 Ideas aren't shown until they have a day" : ""}`}
+            </p>
           </div>
         </div>
       </section>

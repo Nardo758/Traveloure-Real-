@@ -112,6 +112,9 @@ test("R3 P0: the surface mounts with ?surface=r3 and is captured at 1280 and 390
   await expect(page.getByTestId("r3-map-count")).toContainText("6 of 6");
   const content = await page.locator("main").boundingBox();
   expect(content?.width ?? 0, "the content column is ~1224px with the rail collapsed").toBeGreaterThan(1100);
+  // Let the tiles land before the shot: a capture of an empty canvas proves nothing.
+  await page.waitForFunction(() => document.querySelectorAll(".leaflet-tile-loaded").length > 0, { timeout: 20_000 }).catch(() => {});
+  await page.waitForTimeout(750);
   await maskEmails(page);
   await page.screenshot({ path: path.join(OUT_DIR, "v1-1280.png"), fullPage: true });
 
