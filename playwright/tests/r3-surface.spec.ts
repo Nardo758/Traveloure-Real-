@@ -90,6 +90,10 @@ test("R3 P0: the surface mounts with ?surface=r3 and is captured at 1280 and 390
   await expect(page.getByTestId("r3-day-column")).toHaveCount(3);
   await expect(page.getByTestId("r3-stop-card")).toHaveCount(6);
   await expect(page.getByTestId("r3-ideas-column")).toBeVisible();
+  // U1: the map sits beside the days when "Days and map" is on, and Ideas comes FIRST.
+  await expect(page.getByTestId("r3-map")).toBeVisible();
+  const order = await page.locator('[data-testid="r3-days-board"] > section').evaluateAll((els) => els.map((e) => e.getAttribute("data-testid")));
+  expect(order[0], "Ideas is the first column").toBe("r3-ideas-column");
   await maskEmails(page);
   await page.screenshot({ path: path.join(OUT_DIR, "v1-1280.png"), fullPage: true });
 

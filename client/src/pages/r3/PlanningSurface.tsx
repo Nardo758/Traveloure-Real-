@@ -18,6 +18,7 @@ import { NEXT_QUESTION_COPY, NEXT_QUESTION_SKIP, type NextQuestionFacts, type Ne
 import { OCCASION_GROUP_LABELS } from "@shared/experience-group";
 import { planEyebrowLabel } from "@shared/plan-dates";
 import { DaysBoard } from "@/components/r3/DaysBoard";
+import { DaysMapPanel } from "@/components/plan/DaysMapPanel";
 import { r3IdeaCount, r3Stops } from "@/lib/r3-surface";
 
 const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -185,7 +186,12 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
       </section>
 
       <section className="mt-4" data-testid="r3-days" data-day-count={dayCount} data-stop-count={stops.length}>
-        <DaysBoard data={data} />
+        <div className="flex items-start gap-3">
+          <DaysBoard data={data} />
+          <div className="min-w-0 flex-1" data-testid="r3-map">
+            <DaysMapPanel tripId={tripId} days={((data as any)?.days ?? []) as any} anchor={null} emptyNote={null} />
+          </div>
+        </div>
       </section>
 
       <footer
