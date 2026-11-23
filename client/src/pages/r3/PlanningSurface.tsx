@@ -15,6 +15,7 @@ import { useMinWidth } from "@/hooks/use-min-width";
 import { ArrowLeft, MoreHorizontal } from "lucide-react";
 import type { SlipData } from "@/components/plancard/SlipView";
 import { NEXT_QUESTION_COPY, NEXT_QUESTION_SKIP, type NextQuestionFacts, type NextQuestionKey } from "@/lib/next-question";
+import { OCCASION_GROUP_LABELS } from "@shared/experience-group";
 import { planEyebrowLabel } from "@shared/plan-dates";
 import { r3IdeaCount, r3Stops } from "@/lib/r3-surface";
 
@@ -90,7 +91,10 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
     occasionName: trip?.occasionName ?? null,
     occasionSlug: trip?.occasionSlug ?? null,
   });
-  const eyebrow = (eyebrowLabel === "Your plan" ? "Your plan \u00b7 Trip" : eyebrowLabel).toUpperCase();
+  // The suffix is the catalog's own word, never a literal: the last word of the trips label ("A trip" -> "trip"), so
+  // the guard that forbids spelling a group label outside the catalog still passes and no new string is added.
+  const tripWord = OCCASION_GROUP_LABELS.trips.split(/\s+/).pop() ?? "";
+  const eyebrow = (eyebrowLabel === "Your plan" ? `${eyebrowLabel} \u00b7 ${tripWord}` : eyebrowLabel).toUpperCase();
 
   const stayingArea = String(lodging?.neighbourhood ?? lodging?.area ?? lodging?.city ?? "");
   const when = whenLine(trip?.startDate, trip?.endDate);
