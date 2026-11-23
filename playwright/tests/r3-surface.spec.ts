@@ -85,6 +85,11 @@ test("R3 P0: the surface mounts with ?surface=r3 and is captured at 1280 and 390
   await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3`);
   // The R3 frame, not the old page: this is the assertion that makes the picture meaningful.
   await expect(page.getByTestId("r3-surface")).toBeVisible({ timeout: 30_000 });
+  // P1: the days slot holds the board - three day columns and six stop cards, so the capture is of a FILLED board.
+  await expect(page.getByTestId("r3-days-board")).toBeVisible();
+  await expect(page.getByTestId("r3-day-column")).toHaveCount(3);
+  await expect(page.getByTestId("r3-stop-card")).toHaveCount(6);
+  await expect(page.getByTestId("r3-ideas-column")).toBeVisible();
   await maskEmails(page);
   await page.screenshot({ path: path.join(OUT_DIR, "v1-1280.png"), fullPage: true });
 

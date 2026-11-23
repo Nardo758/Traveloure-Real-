@@ -17,6 +17,7 @@ import type { SlipData } from "@/components/plancard/SlipView";
 import { NEXT_QUESTION_COPY, NEXT_QUESTION_SKIP, type NextQuestionFacts, type NextQuestionKey } from "@/lib/next-question";
 import { OCCASION_GROUP_LABELS } from "@shared/experience-group";
 import { planEyebrowLabel } from "@shared/plan-dates";
+import { DaysBoard } from "@/components/r3/DaysBoard";
 import { r3IdeaCount, r3Stops } from "@/lib/r3-surface";
 
 const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -183,7 +184,9 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
         <p className="text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: BOARD.text }}>What Optimize found in your plan</p>
       </section>
 
-      <section className="mt-4" data-testid="r3-days" data-day-count={dayCount} data-stop-count={stops.length} />
+      <section className="mt-4" data-testid="r3-days" data-day-count={dayCount} data-stop-count={stops.length}>
+        <DaysBoard data={data} />
+      </section>
 
       <footer
         className={desktop ? "mt-6 flex items-center justify-between rounded-xl border border-border bg-card p-4" : "mt-6 flex flex-nowrap items-center justify-between gap-2 rounded-xl border border-border bg-card p-3"}

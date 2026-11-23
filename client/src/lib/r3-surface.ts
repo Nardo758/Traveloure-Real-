@@ -67,3 +67,26 @@ export function r3IdeaCount(data: any): number {
   const ideas = (data as any)?.ideas;
   return Array.isArray(ideas) ? ideas.length : 0;
 }
+
+const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/** One column per day, in the plan's own order, each holding the stops the day rows name for it. */
+export function r3Columns(data: any): Array<{ day: number; label: string; stops: any[] }> {
+  const days = Array.isArray(data?.days) ? data.days : [];
+  return days.map((d: any, i: number) => {
+    const day = Number(d?.dayNumber ?? i + 1);
+    const raw = d?.date ?? d?.dayDate ?? null;
+    const date = typeof raw === "string" && raw ? new Date(`${raw.slice(0, 10)}T00:00:00`) : null;
+    const label = date && !Number.isNaN(date.getTime())
+      ? `${WEEKDAY[date.getDay()]} ${date.getDate()}`
+      : `Day ${day}`;
+    return { day, label, stops: Array.isArray(d?.activities) ? d.activities : [] };
+  });
+}
+
+/** The ideas column: what the plan holds outside every day. */
+export function r3Ideas(data: any): any[] {
+  const ideas = (data as any)?.ideas;
+  if (Array.isArray(ideas)) return ideas;
+  return [];
+}
