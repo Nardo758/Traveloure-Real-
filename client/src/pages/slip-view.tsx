@@ -9,6 +9,8 @@ import { Loader2 } from "lucide-react";
 import { useParams, useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { SlipView, type SlipData } from "@/components/plancard/SlipView";
+import { R3PlanningSurface } from "@/pages/r3/PlanningSurface";
+import { r3SurfaceOn } from "@/lib/r3-surface";
 import { useSlipLegs } from "@/components/plan/useSlipLegs";
 import { ConciergeCard } from "@/components/marketplace/concierge-card";
 import { PLAN_LOAD_RATE_LIMITED, planLoadErrorKind, plancardRefetchInterval } from "@/lib/plancard-refetch";
