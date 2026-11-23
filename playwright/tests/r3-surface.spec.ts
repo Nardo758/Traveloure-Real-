@@ -12,6 +12,7 @@ import { test, expect, type Page } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
 import { registerAndSignIn } from "../utils/auth";
+import { markSeededItemsAsOsm } from "../utils/osm-coords";
 
 const BASE_URL = process.env.BASE_URL ?? "http://localhost:5000";
 const OUT_DIR = path.join(process.cwd(), "playwright", "r3-captures");
@@ -25,6 +26,8 @@ const STOPS = [
   { title: "Tenryu-ji", dayNumber: 2, startTime: "13:00", latitude: "35.0158", longitude: "135.6738" },
   { title: "Kiyomizu-dera", dayNumber: 3, startTime: "09:00", latitude: "34.9949", longitude: "135.785" },
   { title: "Ginkaku-ji", dayNumber: 3, startTime: "15:00", latitude: "35.027", longitude: "135.7982" },
+  // The stay: an anchor item, so the map draws its ring (U1).
+  { title: "Higashiyama inn", dayNumber: 1, startTime: "18:00", itemType: "lodging", latitude: "34.9985", longitude: "135.7805" },
 ];
 
 async function sixStopTrip(page: Page): Promise<string> {
@@ -47,6 +50,8 @@ async function sixStopTrip(page: Page): Promise<string> {
     const res = await page.request.post(`${BASE_URL}/api/trips/${tripId}/itinerary-items`, { data: stop });
     expect([200, 201], await res.text()).toContain(res.status());
   }
+  // TEST-ONLY: give the plan's points a non-Google source so the OSM canvas may draw them (see utils/osm-coords.ts).
+  await markSeededItemsAsOsm(tripId as string);
   return tripId as string;
 }
 

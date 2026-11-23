@@ -68,6 +68,15 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
   const columns = r3Columns(data);
   const mapCounts = r3MapCounts(data);
   const countLine = daysMapCountLine(mapCounts.located, mapCounts.total);
+  // U1: the plan's own lodging item is the map's anchor, so the stay ring draws when the plan has one (null otherwise).
+  const mapAnchor = (() => {
+    const stay = stops.find((s) => /lodging|hotel|stay/i.test(String(s?.type ?? s?.itemType ?? "")));
+    if (!stay) return null;
+    const lat = Number((stay as any)?.lat ?? (stay as any)?.latitude);
+    const lng = Number((stay as any)?.lng ?? (stay as any)?.longitude);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    return { kind: "stay" as const, name: String((stay as any)?.name ?? (stay as any)?.title ?? "Your stay"), lat, lng, coordSource: (stay as any)?.coordSource ?? null };
+  })();
   const ideas = r3IdeaCount(data);
   const lodging = stops.find((s) => /lodging|hotel|stay/i.test(String(s?.type ?? ""))) ??
     stops.find((s) => /lodging|hotel|stay/i.test(String(s?.kind ?? "")));
@@ -227,7 +236,7 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
             </div>
             {/* the chart itself: beige panel, pins and the stay ring, with the caption bottom-left and the ONE count line bottom-right */}
             <div className="relative overflow-hidden rounded-xl" style={{ backgroundColor: BOARD.column }} data-testid="r3-map-canvas-wrap">
-              <DaysMapPanel tripId={tripId} days={((data as any)?.days ?? []) as any} anchor={null} emptyNote={null} chrome="bare" dayKey={mapDay === "all" ? ("all" as any) : (mapDay as any)} />
+              <DaysMapPanel tripId={tripId} days={((data as any)?.days ?? []) as any} anchor={mapAnchor as any} emptyNote={null} chrome="bare" dayKey={mapDay === "all" ? ("all" as any) : (mapDay as any)} />
               <p className="pointer-events-none absolute bottom-2 left-3 z-[600] rounded bg-white/85 px-2 py-0.5 text-[11px] text-muted-foreground" data-testid="r3-map-caption">
                 Pins only. Numbers follow the days, left to right.
               </p>
