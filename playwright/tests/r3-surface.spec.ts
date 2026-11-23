@@ -35,7 +35,7 @@ async function sixStopTrip(page: Page): Promise<string> {
       firstName: "R3",
       lastName: "Surface",
     },
-    { BASE_URL },
+    BASE_URL,
   );
   const trip = await page.request.post(`${BASE_URL}/api/trips`, {
     data: { title: "R3 days board plan", destination: "Kyoto, Japan", startDate: "2027-04-01", endDate: "2027-04-03" },
