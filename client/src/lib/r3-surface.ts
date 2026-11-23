@@ -29,10 +29,21 @@ export function readR3SurfaceFlag(): Promise<boolean> {
   return cached;
 }
 
-/** The flag for this page; false until the one read answers. */
+/**
+ * The flag for this page; false until the one read answers.
+ *
+ * NO REQUEST WITHOUT THE PARAMETER (Leon, Nov 23 2026): a page whose URL does not ask for `?surface=r3` never fetches
+ * `/api/public/r3-surface` at all, so every other plan load behaves exactly as it did before R3 existed - same requests,
+ * same timing. The fetch happens only for a URL that asks, and only once per page.
+ */
 export function useR3SurfaceOn(search: string): boolean {
+  const asked = r3SurfaceOn(search, true); // does the URL ask for it? (flag assumed on, for the question only)
   const [on, setOn] = useState(false);
   useEffect(() => {
+    if (!asked) {
+      setOn(false);
+      return;
+    }
     let live = true;
     readR3SurfaceFlag().then((flag) => {
       if (live) setOn(flag);
@@ -40,22 +51,6 @@ export function useR3SurfaceOn(search: string): boolean {
     return () => {
       live = false;
     };
-  }, []);
-  return r3SurfaceOn(search, on);
-}
-
-/**
- * The plan's stops, read the way `SlipView` reads them (`client/src/components/plancard/SlipView.tsx:1767`):
- * `data.days[].activities`. NOT `data.items` / `data.activities` - the plancard's day rows are the authority for what is
- * on a day, and the board's footer counts, stay check and flight check all read this one list.
- */
-export function r3Stops(data: any): any[] {
-  const days = Array.isArray(data?.days) ? data.days : [];
-  return days.flatMap((d: any) => (Array.isArray(d?.activities) ? d.activities : []));
-}
-
-/** Saved ideas: the plan's ideas list when the DTO carries one, else none (never a made-up number). */
-export function r3IdeaCount(data: any): number {
-  const ideas = (data as any)?.ideas;
-  return Array.isArray(ideas) ? ideas.length : 0;
+  }, [asked]);
+  return asked && on;
 }
