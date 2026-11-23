@@ -15,6 +15,7 @@ import { useMinWidth } from "@/hooks/use-min-width";
 import { ArrowLeft, MoreHorizontal } from "lucide-react";
 import type { SlipData } from "@/components/plancard/SlipView";
 import { NEXT_QUESTION_COPY, NEXT_QUESTION_SKIP, type NextQuestionFacts, type NextQuestionKey } from "@/lib/next-question";
+import { planEyebrowLabel } from "@shared/plan-dates";
 import { r3IdeaCount, r3Stops } from "@/lib/r3-surface";
 
 const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -27,6 +28,7 @@ const BOARD = {
   text: "var(--r3-board-text)",
   fill: "var(--r3-board-fill)",
   border: "var(--r3-board-border)",
+  line: "var(--r3-board-line)",
   ink: "var(--r3-board-ink)",
 } as const;
 const boardOutline = { borderColor: BOARD.border, backgroundColor: BOARD.fill, color: BOARD.text } as const;
@@ -45,7 +47,7 @@ function Chip({ label, value, testId }: { label: string; value: string; testId: 
   return (
     <span
       className="inline-flex items-baseline gap-1 rounded-full border px-3 py-1.5"
-      style={{ borderColor: BOARD.border }}
+      style={{ borderColor: BOARD.line }}
       data-testid={testId}
     >
       <span className="text-[12px] text-muted-foreground">{label}</span>
@@ -80,6 +82,16 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
   const question = order.find((k) => !answered[k] && !skipped.includes(k)) ?? null;
   const copy = question ? NEXT_QUESTION_COPY[question] : null;
 
+  // The eyebrow is the app's own label (shared/plan-dates.ts:222), never `trip.occasionLabel` and never a hard-coded
+  // "Your plan": a plan whose occasion did not resolve reads as the board's "YOUR PLAN · TRIP", anything else reads as
+  // the label it resolves to ("A trip", "Proposal").
+  const eyebrowLabel = planEyebrowLabel({
+    datesConfirmed: trip?.datesConfirmed,
+    occasionName: trip?.occasionName ?? null,
+    occasionSlug: trip?.occasionSlug ?? null,
+  });
+  const eyebrow = (eyebrowLabel === "Your plan" ? "Your plan \u00b7 Trip" : eyebrowLabel).toUpperCase();
+
   const stayingArea = String(lodging?.neighbourhood ?? lodging?.area ?? lodging?.city ?? "");
   const when = whenLine(trip?.startDate, trip?.endDate);
   const where = String(trip?.destination ?? "");
@@ -92,8 +104,8 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
       type="button"
       data-testid={testId}
       data-active={active ? "true" : "false"}
-      className="h-11 rounded-lg border px-3 text-[13px] font-medium"
-      style={active ? boardOutline : { borderColor: BOARD.border, color: BOARD.ink }}
+      className="h-11 rounded-full border px-3 text-[13px] font-medium"
+      style={active ? boardOutline : { borderColor: BOARD.line, color: BOARD.ink }}
     >
       {label}
     </button>
@@ -106,7 +118,7 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
           <>
             <div className="min-w-0">
               <p className="text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: BOARD.text }} data-testid="r3-eyebrow">
-                {trip?.occasionLabel ?? "Your plan"}
+                {eyebrow}
               </p>
               <h1 className="mt-1 text-[34px] font-bold leading-[1.1] text-foreground" data-testid="r3-title">{trip?.title ?? "Your plan"}</h1>
             </div>
@@ -116,7 +128,7 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
               {pill("Map only", false, "r3-view-map")}
               {pill("Calendar", false, "r3-view-calendar")}
               <button type="button" className="h-11 rounded-lg border px-3 text-[13px] font-medium" style={{ borderColor: BOARD.border, color: BOARD.ink }} data-testid="r3-share">Share</button>
-              <button type="button" aria-label="More" className="h-11 w-11 rounded-lg border" style={{ borderColor: BOARD.border, color: BOARD.ink }} data-testid="r3-menu">
+              <button type="button" aria-label="More" className="h-11 w-11 rounded-lg border" style={{ borderColor: BOARD.line, color: BOARD.ink }} data-testid="r3-menu">
                 <MoreHorizontal className="mx-auto h-4 w-4" />
               </button>
             </div>
@@ -125,7 +137,7 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
           <>
             <div className="flex items-center justify-between">
               <button type="button" aria-label="Back" className="p-1 text-foreground" data-testid="r3-back"><ArrowLeft className="h-5 w-5" /></button>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: BOARD.text }} data-testid="r3-eyebrow">{trip?.occasionLabel ?? "Your plan"}</p>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: BOARD.text }} data-testid="r3-eyebrow">{eyebrow}</p>
               <button type="button" aria-label="More" className="p-1 text-foreground" data-testid="r3-menu"><MoreHorizontal className="h-5 w-5" /></button>
             </div>
             <h1 className="text-[26px] font-bold leading-[1.15] text-foreground" data-testid="r3-title">{trip?.title ?? "Your plan"}</h1>
