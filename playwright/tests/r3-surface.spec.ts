@@ -12,7 +12,7 @@ import { test, expect, type Page } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
 import { registerAndSignIn } from "../utils/auth";
-import { clearSeededCoordinates, markSeededItemsAsOsm } from "../utils/osm-coords";
+import { markSeededItemsAsOsm } from "../utils/osm-coords";
 
 const BASE_URL = process.env.BASE_URL ?? "http://localhost:5000";
 const OUT_DIR = path.join(process.cwd(), "playwright", "r3-captures");
@@ -77,13 +77,6 @@ async function maskEmails(page: Page): Promise<void> {
   });
 }
 
-
-/** U2: a plan whose stops have no coordinates, so the optimizer's own preview has something to report. */
-async function unlocatedTrip(page: Page): Promise<string> {
-  const tripId = await sixStopTrip(page);
-  await clearSeededCoordinates(tripId);
-  return tripId;
-}
 
 /** U2: a one-stop plan with nothing to report - the card's empty state. */
 async function quietTrip(page: Page): Promise<string> {
@@ -158,19 +151,35 @@ test("R3 P0: the surface mounts with ?surface=r3 and is captured at 1280 and 390
 test("U2: the Optimize card with findings, and its empty state", async ({ page }) => {
   fs.mkdirSync(OUT_DIR, { recursive: true });
 
-  // with findings: a plan whose stops are unlocated, so the preview reports them
-  const withFindings = await unlocatedTrip(page);
+  // LOOKS CAPTURE ONLY - NOT DATA COVERAGE. The findings state is produced by intercepting the preview request with the
+  // REAL response shape (three findings from the shared `Finding` type), so the card can be photographed without
+  // pretending the seed data reports them. The empty state below runs against the real server, with no intercept.
+  const withFindings = await sixStopTrip(page);
+  await page.route("**/api/optimization-preview", async (route) => {
+    if (route.request().method() !== "POST") return route.continue();
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        findings: [
+          { kind: "leg_unreachable", count: 2, days: [1, 2] },
+          { kind: "closed_on_arrival", count: 1, days: [2] },
+          { kind: "after_last_admission", count: 1, days: [3] },
+        ],
+      }),
+    });
+  });
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`${BASE_URL}/plans/${withFindings}?surface=r3`);
   await expect(page.getByTestId("r3-optimize-card")).toBeVisible({ timeout: 30_000 });
   const findings = page.getByTestId("r3-optimize-finding");
   await expect(findings.first()).toBeVisible({ timeout: 20_000 });
-  const count = await findings.count();
-  expect(count, "the seeded plan reports at least one finding").toBeGreaterThan(0);
+  expect(await findings.count(), "three findings, as the stub returns").toBe(3);
   await expect(page.getByTestId("r3-optimize-cta")).toBeVisible();
   await expect(page.getByTestId("r3-optimize-expert")).toBeVisible();
   await maskEmails(page);
   await page.getByTestId("r3-optimize-card").screenshot({ path: path.join(OUT_DIR, "u2-optimize-1280.png") });
+  await page.unroute("**/api/optimization-preview");
 
   // empty: a quiet plan keeps the card and both buttons, hides the eyebrow and the "fills these" line
   const quiet = await quietTrip(page);
