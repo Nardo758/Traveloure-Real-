@@ -1,16 +1,26 @@
 /**
- * R3 U3 - the phone surface (board V22): the Days / Map tabs, the day strip, and ONE day open under it.
+ * R3 U3 - the phone surface, board V22 v2.
  *
- * Phone only; the desktop board keeps its own layout. Tokens only (no hex here), and the strings below are DRAFT.
+ * Days: the two pills, the strip card, a sideways-scrolling day strip (Ideas first, the open day scrolled into view), the
+ * hint line, the open day's stops with a Move menu, then the Optimize card and the footer.
+ * Map: the pills, the map's own chips in one scrolling row, the map sized to the first screen, the count line, the footer.
+ *
+ * Phone only (<1024). Tokens only - no hex in this file. Every string is listed as DRAFT in the PR body.
  */
-import { GripVertical, MoreHorizontal, Plus } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowLeft, GripVertical, MoreHorizontal, Plus } from "lucide-react";
 import { BOARD_FILL, BOARD_INK, BOARD_LINE, BOARD_TEXT } from "@/components/r3/tokens";
 import type { SlipData } from "@/components/plancard/SlipView";
 import { r3Columns } from "@/lib/r3-surface";
 
+export const PHONE_HINT = "Tap a day to see it. Hold a stop to drag it onto a day above.";
+export const PHONE_ADD = "+ Add to this day";
+
 export type PhoneTab = "days" | "map";
 
-/** "Days" / "Map" - V22's two tabs, drawn as pills under the title. */
+/** 44px hit area on every pill and control (board note 8). */
+const HIT = "h-11 min-h-11";
+
 export function PhoneTabs({ tab, onChange }: { tab: PhoneTab; onChange: (t: PhoneTab) => void }) {
   const pill = (key: PhoneTab, label: string) => (
     <button
@@ -18,12 +28,8 @@ export function PhoneTabs({ tab, onChange }: { tab: PhoneTab; onChange: (t: Phon
       type="button"
       aria-pressed={tab === key}
       onClick={() => onChange(key)}
-      className="h-9 rounded-full border px-4 text-[13px] font-medium"
-      style={
-        tab === key
-          ? { borderColor: BOARD_LINE, backgroundColor: BOARD_FILL, color: BOARD_TEXT }
-          : { borderColor: BOARD_LINE, color: BOARD_INK }
-      }
+      className={`${HIT} rounded-full border px-4 text-[13px] font-medium`}
+      style={tab === key ? { borderColor: BOARD_LINE, backgroundColor: BOARD_FILL, color: BOARD_TEXT } : { borderColor: BOARD_LINE, color: BOARD_INK }}
       data-testid={`r3-phone-tab-${key}`}
     >
       {label}
@@ -37,7 +43,10 @@ export function PhoneTabs({ tab, onChange }: { tab: PhoneTab; onChange: (t: Phon
   );
 }
 
-/** The day strip: Ideas first, then one chip per day, the open day filled with ink. */
+/**
+ * One scrolling row. Cells are equal and fixed, sized so four fit at 390 and five only when the trip is short; a longer
+ * trip scrolls, the last cell cut off at the edge, and the open day is scrolled into view.
+ */
 export function PhoneDayStrip({
   data,
   openDay,
@@ -50,86 +59,124 @@ export function PhoneDayStrip({
   ideas: number;
 }) {
   const columns = r3Columns(data);
+  const total = columns.length + 1;
+  const cell = total <= 4 ? "22%" : total === 5 ? "18%" : "70px";
+  const openRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    openRef.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [openDay]);
+
+  const chip = (day: number, label: string, count: number) => {
+    const active = openDay === day;
+    return (
+      <button
+        key={day}
+        ref={day === openDay ? openRef : undefined}
+        type="button"
+        aria-pressed={active}
+        onClick={() => onOpen(day)}
+        className={`${HIT} shrink-0 rounded-xl border px-2 text-center`}
+        style={{ width: cell === "70px" ? undefined : cell, minWidth: cell === "70px" ? 70 : undefined, borderColor: active ? BOARD_INK : BOARD_LINE, backgroundColor: active ? BOARD_INK : undefined, color: active ? "var(--r3-pin-text)" : BOARD_INK }}
+        data-testid="r3-phone-day-chip"
+        data-day={day}
+      >
+        <span className="block text-[12px] font-semibold">{label}</span>
+        <span className="block text-[11px] opacity-80">{`${count}`}</span>
+      </button>
+    );
+  };
+
   return (
     <div className="mt-3 flex items-stretch gap-2 overflow-x-auto pb-1" data-testid="r3-phone-day-strip">
-      <button
-        type="button"
-        aria-pressed={openDay === 0}
-        onClick={() => onOpen(0)}
-        className="shrink-0 rounded-xl border px-3 py-2 text-center"
-        style={
-          openDay === 0
-            ? { borderColor: BOARD_INK, backgroundColor: BOARD_INK, color: "var(--r3-pin-text)" }
-            : { borderColor: BOARD_LINE, color: BOARD_INK }
-        }
-        data-testid="r3-phone-day-chip"
-        data-day="0"
-      >
-        <span className="block text-[12px] font-semibold">Ideas</span>
-        <span className="block text-[11px] opacity-80">{`${ideas}`}</span>
-      </button>
-      {columns.map((c) => (
-        <button
-          key={c.day}
-          type="button"
-          aria-pressed={openDay === c.day}
-          onClick={() => onOpen(c.day)}
-          className="shrink-0 rounded-xl border px-3 py-2 text-center"
-          style={
-            openDay === c.day
-              ? { borderColor: BOARD_INK, backgroundColor: BOARD_INK, color: "var(--r3-pin-text)" }
-              : { borderColor: BOARD_LINE, color: BOARD_INK }
-          }
-          data-testid="r3-phone-day-chip"
-          data-day={c.day}
-        >
-          <span className="block text-[12px] font-semibold">{c.label.replace(" \u00b7 ", " ")}</span>
-          <span className="block text-[11px] opacity-80">{`${c.stops.length}`}</span>
-        </button>
-      ))}
+      {chip(0, "Ideas", ideas)}
+      {columns.map((c) => chip(c.day, c.label.replace(" \u00b7 ", " "), c.stops.length))}
     </div>
   );
 }
 
-/** The open day's stops, or the ideas list when day 0 is open. */
-export function PhoneDayBody({ data, openDay }: { data: SlipData; openDay: number }) {
+/** The open day's stops (or the ideas list), each with the approved Move entry in its menu. */
+export function PhoneDayBody({
+  data,
+  openDay,
+  onMoveRequested,
+}: {
+  data: SlipData;
+  openDay: number;
+  onMoveRequested: (stop: any) => void;
+}) {
   const columns = r3Columns(data);
   const ideas = ((data as any)?.ideas ?? []) as any[];
   const stops = openDay === 0 ? ideas : columns.find((c) => c.day === openDay)?.stops ?? [];
+  const [menuFor, setMenuFor] = useState<string | null>(null);
+
   return (
     <div className="mt-2 space-y-2" data-testid="r3-phone-day-body" data-day={openDay}>
-      {stops.length === 0 ? (
-        <p className="text-[12px] text-muted-foreground" data-testid="r3-phone-day-empty">
-          {openDay === 0 ? "No ideas saved" : "Nothing here yet"}
-        </p>
-      ) : null}
-      {stops.map((stop: any, i: number) => (
-        <article
-          key={stop?.id ?? `${openDay}-${i}`}
-          className="rounded-xl border bg-card p-3"
-          style={{ borderColor: BOARD_LINE }}
-          data-testid="r3-phone-stop-card"
-        >
-          <div className="flex items-start gap-2">
-            <GripVertical className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-            <div className="min-w-0 flex-1">
-              <p className="text-[12px] text-muted-foreground" data-testid="r3-phone-stop-time">{String(stop?.startTime ?? "").slice(0, 5)}</p>
-              <p className="text-[15px] font-medium leading-snug text-foreground">{String(stop?.name ?? stop?.title ?? "")}</p>
+      {stops.map((stop: any, i: number) => {
+        const id = String(stop?.id ?? `${openDay}-${i}`);
+        return (
+          <article key={id} className="rounded-xl border bg-card p-3" style={{ borderColor: BOARD_LINE }} data-testid="r3-phone-stop-card">
+            <div className="flex items-start gap-2">
+              <GripVertical className="mt-1 h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+              <div className="min-w-0 flex-1">
+                <p className="text-[12px] text-muted-foreground" data-testid="r3-phone-stop-time">{String(stop?.startTime ?? "").slice(0, 5)}</p>
+                <p className="text-[15px] font-medium leading-snug text-foreground" data-testid="r3-phone-stop-name">{String(stop?.name ?? stop?.title ?? "")}</p>
+              </div>
+              <button
+                type="button"
+                aria-label="More"
+                aria-expanded={menuFor === id}
+                onClick={() => setMenuFor((m) => (m === id ? null : id))}
+                className={`${HIT} w-11 shrink-0 rounded-lg text-muted-foreground`}
+                data-testid="r3-phone-stop-menu"
+              >
+                <MoreHorizontal className="mx-auto h-4 w-4" />
+              </button>
             </div>
-            <button type="button" aria-label="More" className="shrink-0 text-muted-foreground" data-testid="r3-phone-stop-menu">
-              <MoreHorizontal className="h-4 w-4" />
-            </button>
-          </div>
-        </article>
-      ))}
+            {menuFor === id ? (
+              <div className="mt-2 border-t pt-2" style={{ borderColor: BOARD_LINE }} data-testid="r3-phone-stop-menu-panel">
+                <button
+                  type="button"
+                  className={`${HIT} w-full rounded-lg px-2 text-left text-[14px] font-medium`}
+                  style={{ color: BOARD_TEXT }}
+                  onClick={() => {
+                    setMenuFor(null);
+                    onMoveRequested(stop);
+                  }}
+                  data-testid="r3-phone-move"
+                >
+                  Move
+                </button>
+              </div>
+            ) : null}
+          </article>
+        );
+      })}
       <button
         type="button"
-        className="flex w-full items-center justify-center gap-1 rounded-xl border border-dashed py-2 text-[13px] text-muted-foreground"
-        style={{ borderColor: BOARD_LINE }}
+        className="flex w-full items-center justify-center rounded-xl border border-dashed py-3 text-[13px] font-medium"
+        style={{ borderColor: BOARD_LINE, color: BOARD_TEXT }}
         data-testid="r3-phone-add"
       >
-        <Plus className="h-3.5 w-3.5" /> Add
+        {PHONE_ADD}
       </button>
     </div>
+  );
+}
+
+/** The hint line under the strip; gone after the first successful move. */
+export function PhoneHint({ show }: { show: boolean }) {
+  if (!show) return null;
+  return (
+    <p className="mt-2 text-[12px] text-muted-foreground" data-testid="r3-phone-hint">
+      {PHONE_HINT}
+    </p>
+  );
+}
+
+export function PhoneBack({ onClick }: { onClick: () => void }) {
+  return (
+    <button type="button" aria-label="Back" onClick={onClick} className={`${HIT} w-11 rounded-lg text-foreground`} data-testid="r3-phone-back">
+      <ArrowLeft className="mx-auto h-5 w-5" />
+    </button>
   );
 }

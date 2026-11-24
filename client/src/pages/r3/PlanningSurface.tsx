@@ -19,7 +19,8 @@ import { OCCASION_GROUP_LABELS } from "@shared/experience-group";
 import { planEyebrowLabel } from "@shared/plan-dates";
 import { DaysBoard } from "@/components/r3/DaysBoard";
 import { OptimizeCard } from "@/components/r3/OptimizeCard";
-import { PhoneDayBody, PhoneDayStrip, PhoneTabs, type PhoneTab } from "@/components/r3/PhoneDays";
+import { PhoneDayBody, PhoneDayStrip, PhoneHint, PhoneTabs, type PhoneTab } from "@/components/r3/PhoneDays";
+import { useQueryClient } from "@tanstack/react-query";
 import { DaysMapPanel } from "@/components/plan/DaysMapPanel";
 import { r3Columns, r3IdeaCount, r3MapCounts, r3Stops } from "@/lib/r3-surface";
 import { daysMapCountLine } from "@/lib/days-map";
@@ -109,6 +110,26 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
   // U3 (board V22): the phone's two tabs and the one open day.
   const [phoneTab, setPhoneTab] = useState<PhoneTab>("days");
   const [openDay, setOpenDay] = useState(1);
+  const [hintShown, setHintShown] = useState(true);
+  const queryClient = useQueryClient();
+  // The approved Move: the same PATCH the old page's move sheet sends. On success the hint goes (first move only).
+  const handleMove = async (stop: any) => {
+    const target = Number(stop?.dayNumber ?? openDay) + 1;
+    try {
+      const res = await fetch(`/api/trips/${tripId}/itinerary-items/${stop.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ dayNumber: target }),
+      });
+      if (res.ok) {
+        setHintShown(false);
+        await queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+      }
+    } catch {
+      /* a failed move leaves the plan and the hint untouched */
+    }
+  };
   const [skipped, setSkipped] = useState<NextQuestionKey[]>([]);
   const question = order.find((k) => !answered[k] && !skipped.includes(k)) ?? null;
   const copy = question ? NEXT_QUESTION_COPY[question] : null;
@@ -217,7 +238,8 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
         {desktop ? null : phoneTab === "days" ? (
           <>
             <PhoneDayStrip data={data} openDay={openDay} onOpen={setOpenDay} ideas={ideas} />
-            <PhoneDayBody data={data} openDay={openDay} />
+            <PhoneDayBody data={data} openDay={openDay} onMoveRequested={handleMove} />
+            <PhoneHint show={hintShown} />
           </>
         ) : null}
         <div className={desktop ? "flex items-start gap-3" : "mt-3 flex flex-col gap-3"}>
