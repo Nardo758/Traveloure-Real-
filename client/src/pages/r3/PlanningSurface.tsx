@@ -17,7 +17,10 @@ import type { SlipData } from "@/components/plancard/SlipView";
 import { NEXT_QUESTION_COPY, NEXT_QUESTION_SKIP, type NextQuestionFacts, type NextQuestionKey } from "@/lib/next-question";
 import { OCCASION_GROUP_LABELS } from "@shared/experience-group";
 import { planEyebrowLabel } from "@shared/plan-dates";
-import { r3IdeaCount, r3Stops } from "@/lib/r3-surface";
+import { DaysBoard } from "@/components/r3/DaysBoard";
+import { DaysMapPanel } from "@/components/plan/DaysMapPanel";
+import { r3Columns, r3IdeaCount, r3MapCounts, r3Stops } from "@/lib/r3-surface";
+import { daysMapCountLine } from "@/lib/days-map";
 
 const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTH = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -30,6 +33,7 @@ const BOARD = {
   fill: "var(--r3-board-fill)",
   border: "var(--r3-board-border)",
   line: "var(--r3-board-line)",
+  column: "var(--r3-board-col)",
   ink: "var(--r3-board-ink)",
 } as const;
 const boardOutline = { borderColor: BOARD.border, backgroundColor: BOARD.fill, color: BOARD.text } as const;
@@ -61,6 +65,26 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
   const desktop = useMinWidth(1024);
   const trip: any = (data as any)?.trip ?? {};
   const stops = r3Stops(data);
+  const columns = r3Columns(data);
+  const mapCounts = r3MapCounts(data);
+  const countLine = daysMapCountLine(mapCounts.located, mapCounts.total);
+  // U1: the plan's own lodging item is the map's anchor, so the stay ring draws when the plan has one (null otherwise).
+  // The stay is the RING, never a numbered pin: the map's day rows drop the accommodation item, and the anchor below
+  // draws it. (Board V1 numbers the stops only.)
+  const mapDays = (((data as any)?.days ?? []) as any[]).map((d: any) => ({
+    ...d,
+    activities: (Array.isArray(d?.activities) ? d.activities : []).filter((a: any) => a?.type !== "accommodation" && a?.itemType !== "accommodation"),
+  }));
+  const mapAnchor = (() => {
+    // The stay is the `accommodation` row; the day columns drop it (it is the ring), so it is found in the raw DTO.
+    const rawStops = ((data as any)?.days ?? []).flatMap((d: any) => (Array.isArray(d?.activities) ? d.activities : []));
+    const stay = rawStops.find((s: any) => s?.type === "accommodation" || s?.itemType === "accommodation");
+    if (!stay) return null;
+    const lat = Number((stay as any)?.lat ?? (stay as any)?.latitude);
+    const lng = Number((stay as any)?.lng ?? (stay as any)?.longitude);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    return { kind: "stay" as const, name: String((stay as any)?.name ?? (stay as any)?.title ?? "Your stay"), lat, lng, coordSource: (stay as any)?.coordSource ?? null };
+  })();
   const ideas = r3IdeaCount(data);
   const lodging = stops.find((s) => /lodging|hotel|stay/i.test(String(s?.type ?? ""))) ??
     stops.find((s) => /lodging|hotel|stay/i.test(String(s?.kind ?? "")));
@@ -79,6 +103,7 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
     stay: facts.stayChosen,
     flight: facts.flightKnown,
   };
+  const [mapDay, setMapDay] = useState<"all" | number>("all");
   const [skipped, setSkipped] = useState<NextQuestionKey[]>([]);
   const question = order.find((k) => !answered[k] && !skipped.includes(k)) ?? null;
   const copy = question ? NEXT_QUESTION_COPY[question] : null;
@@ -183,7 +208,53 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
         <p className="text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: BOARD.text }}>What Optimize found in your plan</p>
       </section>
 
-      <section className="mt-4" data-testid="r3-days" data-day-count={dayCount} data-stop-count={stops.length} />
+      <section className="mt-4" data-testid="r3-days" data-day-count={dayCount} data-stop-count={stops.length}>
+        <div className="flex items-start gap-3">
+          <DaysBoard data={data} />
+          <div className="min-w-0 flex-1" data-testid="r3-map">
+            {/* ONE chrome row (board V1): All days, the weekdays, then Browse nearby. */}
+            <div className="mb-2 flex flex-wrap items-center gap-1.5" data-testid="r3-map-chips">
+              <button
+                type="button"
+                aria-pressed={mapDay === "all"}
+                onClick={() => setMapDay("all")}
+                className="rounded-full border px-3 py-1 text-[12px] font-medium"
+                style={mapDay === "all" ? { borderColor: BOARD.border, backgroundColor: BOARD.fill, color: BOARD.text } : { borderColor: BOARD.line, color: BOARD.ink }}
+                data-testid="r3-map-chip-all"
+              >
+                All days
+              </button>
+              {columns.map((c) => (
+                <button
+                  key={c.day}
+                  type="button"
+                  aria-pressed={mapDay === c.day}
+                  onClick={() => setMapDay(c.day)}
+                  className="rounded-full border px-3 py-1 text-[12px] font-medium"
+                  style={mapDay === c.day ? { borderColor: BOARD.border, backgroundColor: BOARD.fill, color: BOARD.text } : { borderColor: BOARD.line, color: BOARD.ink }}
+                  data-testid="r3-map-chip-day"
+                  data-day={c.day}
+                >
+                  {c.label.split(" ")[0]}
+                </button>
+              ))}
+              <button type="button" className="ml-auto rounded-full border px-3 py-1 text-[12px] font-medium text-foreground" style={{ borderColor: BOARD.line }} data-testid="r3-map-browse">
+                Browse nearby
+              </button>
+            </div>
+            {/* the chart itself: beige panel, pins and the stay ring, with the caption bottom-left and the ONE count line bottom-right */}
+            <div className="relative overflow-hidden rounded-xl" style={{ backgroundColor: BOARD.column }} data-testid="r3-map-canvas-wrap" data-r3-map>
+              <DaysMapPanel tripId={tripId} days={mapDays as any} anchor={mapAnchor as any} emptyNote={null} chrome="bare" r3 dayKey={mapDay === "all" ? ("all" as any) : (mapDay as any)} />
+              <p className="pointer-events-none absolute bottom-8 left-3 z-[600] rounded bg-white/85 px-2 py-0.5 text-[11px] text-muted-foreground" data-testid="r3-map-caption">
+                Pins only. Numbers follow the days, left to right.
+              </p>
+            </div>
+            <p className="mt-2 text-[12px] text-muted-foreground" data-testid="r3-map-count">
+              {`${countLine ?? ""}${countLine ? " \u00b7 " : ""}the ring is where you're staying${ideas > 0 ? " \u00b7 Ideas aren't shown until they have a day" : ""}`}
+            </p>
+          </div>
+        </div>
+      </section>
 
       <footer
         className={desktop ? "mt-6 flex items-center justify-between rounded-xl border border-border bg-card p-4" : "mt-6 flex flex-nowrap items-center justify-between gap-2 rounded-xl border border-border bg-card p-3"}

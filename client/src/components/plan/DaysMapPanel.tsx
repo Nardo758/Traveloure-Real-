@@ -40,10 +40,21 @@ export interface DaysMapPanelProps {
   emptyNote: string | null;
   /** Opens the map view's Browse layer. Absent: no button (a viewer who cannot add). */
   onBrowse?: (() => void) | null;
+  /**
+   * "full" is every caller today: the panel's own chips row and its count/legend footer. "bare" is the R3 surface
+   * (Leon, Nov 23 2026), which draws ONE chrome row and puts the caption and count INSIDE the map itself.
+   */
+  chrome?: "full" | "bare";
+  /** R3 only: pins that coincide are nudged apart, and the ring is drawn above them. Absent: no change. */
+  r3?: boolean;
+  /** A caller's day filter (the R3 surface's own chips). Absent: the panel keeps its own state. */
+  dayKey?: DaysMapKey;
+  onDayKeyChange?: (key: DaysMapKey) => void;
 }
 
-export function DaysMapPanel({ tripId, days, anchor, fallbackCenter = null, emptyNote, onBrowse = null }: DaysMapPanelProps) {
-  const [chosen, setChosen] = useState<DaysMapKey>("all");
+export function DaysMapPanel({ tripId, days, anchor, fallbackCenter = null, emptyNote, onBrowse = null, chrome = "full", dayKey, onDayKeyChange, r3 = false }: DaysMapPanelProps) {
+  const [ownChosen, setOwnChosen] = useState<DaysMapKey>("all");
+  const chosen = dayKey ?? ownChosen;
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const key = daysMapKey(days, chosen);
   const chips = daysMapChips(days, key);
@@ -82,7 +93,7 @@ export function DaysMapPanel({ tripId, days, anchor, fallbackCenter = null, empt
       data-map-renderer={renderer}
       data-days-map-key={String(key)}
     >
-      {chips.length > 0 || onBrowse ? (
+      {chrome === "full" && (chips.length > 0 || onBrowse) ? (
         <div className="flex flex-wrap items-center gap-1.5 border-b border-[color:var(--slip-line)] px-3 py-2">
           {chips.length > 0 ? (
             <div className="flex flex-wrap gap-1.5" role="group" aria-label={DAYS_MAP_COPY.view} data-testid="slip-days-map-chips">
@@ -92,7 +103,8 @@ export function DaysMapPanel({ tripId, days, anchor, fallbackCenter = null, empt
                   type="button"
                   aria-pressed={c.key === key}
                   onClick={() => {
-                    setChosen(c.key);
+                    setOwnChosen(c.key);
+                    onDayKeyChange?.(c.key);
                     setSelectedId(null);
                   }}
                   className={`h-8 rounded-full border px-3 text-[13px] font-semibold ${c.key === key ? "border-[color:var(--slip-navy)] bg-[color:var(--slip-navy)] text-white" : "border-[color:var(--slip-line)] bg-[color:var(--slip-card)] text-[color:var(--slip-navy)]"}`}
@@ -129,6 +141,7 @@ export function DaysMapPanel({ tripId, days, anchor, fallbackCenter = null, empt
               onSelect={setSelectedId}
               onGoogleLoad={onGoogleLoad}
               onGoogleError={onGoogleError}
+              r3={r3}
             />
           </Suspense>
         ) : emptyNote ? (
@@ -140,14 +153,14 @@ export function DaysMapPanel({ tripId, days, anchor, fallbackCenter = null, empt
         ) : (
           <div className="h-full bg-[color:var(--slip-wash)]" aria-hidden="true" />
         )}
-        {renderer === "leaflet" && center && leafletMapAllowed ? (
+        {chrome === "full" && renderer === "leaflet" && center && leafletMapAllowed ? (
           // Top right: at this width the canvas's own attribution fills the bottom edge.
           <p className="absolute right-1 top-1 z-[500] rounded bg-card/90 px-1.5 py-0.5 text-[10px] text-muted-foreground" data-testid="slip-days-map-osm">
             {MAP_FALLBACK_NOTICE}
           </p>
         ) : null}
       </div>
-      {countLine || legendAnchor ? (
+      {chrome === "full" && (countLine || legendAnchor) ? (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2 text-xs text-[color:var(--slip-muted)]">
           {countLine ? <span data-testid="slip-days-map-count">{countLine}</span> : null}
           {anchorNamedOnly ? (

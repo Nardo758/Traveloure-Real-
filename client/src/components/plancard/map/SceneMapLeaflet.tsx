@@ -9,16 +9,17 @@
  * non-Google point (`leafletMountPoints`); otherwise the map shows the day as a list. A Google-derived anchor
  * draws no marker and frames nothing here (`leafletSceneInputs`).
  */
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { MapContainer, Marker, TileLayer, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { MAP_DISTRICT_ZOOM, clampFramingZoom, mapFraming } from "@/lib/map-framing";
+import { spreadPinsPx, STAY_RING_Z } from "@/lib/map-pin-spread";
 import { ANCHOR_COLOR, AREA_PIN_STYLE, BROWSE_TEAL, PIN_STYLE, areaPinLabel, escapeHtml, leafletSceneInputs, sceneMarkers, type MapArea, type MapScene, type MarkerDescriptor } from "@/lib/map-scene";
 import type { SceneMapProps } from "./SceneMapGoogle";
 
-function iconFor(m: MarkerDescriptor, selected: boolean): L.DivIcon {
+function iconFor(m: MarkerDescriptor, selected: boolean, r3 = false): L.DivIcon {
   if (m.kind === "pin") {
     const st = PIN_STYLE[m.state];
     return L.divIcon({
@@ -29,6 +30,15 @@ function iconFor(m: MarkerDescriptor, selected: boolean): L.DivIcon {
     });
   }
   if (m.kind === "anchor") {
+    if (r3) {
+      // R3: the ring carries no glyph (Leon, Nov 23 2026) - a hollow circle, nothing inside.
+      return L.divIcon({
+        className: "",
+        html: `<div data-testid="${m.testId}" data-anchor-kind="${m.anchorKind}" style="width:28px;height:28px;background:transparent;"></div>`,
+        iconSize: [28, 28],
+        iconAnchor: [14, 14],
+      });
+    }
     return L.divIcon({
       className: "",
       html: `<div data-testid="${m.testId}" data-anchor-kind="${m.anchorKind}" style="width:28px;height:28px;border-radius:8px;background:${ANCHOR_COLOR};color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;">★</div>`,
@@ -56,12 +66,26 @@ function areaIcon(a: MapArea): L.DivIcon {
   });
 }
 
-function Framing({ scene }: { scene: MapScene }) {
+function Framing({ scene, r3 = false }: { scene: MapScene; r3?: boolean }) {
   const map = useMap();
   // GC-1 (rows 196/197/218): a Google-derived anchor is not a framing point here (`leafletSceneInputs`).
   const pts = leafletSceneInputs(scene).framePoints;
   const key = pts.map((p) => `${p.lat}:${p.lng}`).join("|");
   useEffect(() => {
+    // The Leaflet project's prefix ("Leaflet |") is dropped in r3; the ODbL text stays.
+    if (r3) map.attributionControl?.setPrefix(false);
+  }, [map, r3]);
+  useEffect(() => {
+    if (r3) {
+      // R3 (Leon, Nov 23 2026): fit the plan's own points, with a margin - no district-wide framing.
+      if (pts.length === 0) return;
+      if (pts.length === 1) {
+        map.setView([pts[0].lat, pts[0].lng], Math.max(map.getZoom(), MAP_DISTRICT_ZOOM));
+        return;
+      }
+      map.fitBounds(L.latLngBounds(pts.map((p) => [p.lat, p.lng] as [number, number])), { padding: [48, 48] });
+      return;
+    }
     const framing = mapFraming(pts);
     if (framing.kind === "center") map.setView([framing.center.lat, framing.center.lng], framing.zoom);
     else if (framing.kind === "bounds") {
@@ -74,27 +98,52 @@ function Framing({ scene }: { scene: MapScene }) {
   return null;
 }
 
-export function SceneMapLeaflet({ scene, center, selectedId, onSelect, onSelectBrowse }: Omit<SceneMapProps, "legs">) {
-  const { data: tiles } = useQuery<{ url: string; attribution: string }>({ queryKey: ["/api/maps/tiles"], staleTime: Infinity });
-  // GC-1: the SAME marker list, minus a Google-derived anchor (named in the legend only).
-  const { markers } = leafletSceneInputs(scene, sceneMarkers(scene));
+function SpreadMarkers({
+  markers,
+  r3,
+  selectedId,
+  onSelect,
+  onSelectBrowse,
+}: {
+  markers: ReturnType<typeof sceneMarkers>;
+  r3: boolean;
+  selectedId: string | null;
+  onSelect: (id: string | null) => void;
+  onSelectBrowse: (id: string) => void;
+}) {
+  const map = useMap();
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    if (!r3) return;
+    const bump = () => setTick((t) => t + 1);
+    map.on("zoomend", bump);
+    map.on("moveend", bump);
+    return () => {
+      map.off("zoomend", bump);
+      map.off("moveend", bump);
+    };
+  }, [map, r3]);
+  const positioned = useMemo(() => {
+    if (!r3) return markers.map((m) => ({ m, position: [m.lat, m.lng] as [number, number] }));
+    const px = markers.map((m) => {
+      const p = map.latLngToContainerPoint([m.lat, m.lng]);
+      return { ...m, x: p.x, y: p.y };
+    });
+    return spreadPinsPx(px).map((m) => {
+      const ll = map.containerPointToLatLng([m.x, m.y]);
+      return { m, position: [ll.lat, ll.lng] as [number, number] };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [markers, r3, map, tick]);
   return (
-    <MapContainer center={[center.lat, center.lng]} zoom={MAP_DISTRICT_ZOOM - 1} style={{ width: "100%", height: "100%" }} scrollWheelZoom={false}>
-      <TileLayer
-        url={tiles?.url ?? "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"}
-        attribution={tiles?.attribution ?? "© OpenStreetMap contributors"}
-      />
-      <Framing scene={scene} />
-      {scene.areas.map((a) => (
-        <Marker key={a.slug} position={[a.lat, a.lng]} icon={areaIcon(a)} title={a.name} interactive={false} keyboard={false} zIndexOffset={-1000} />
-      ))}
-      {/* Row PS-1 (GC-1): pins only — no stop-to-stop line. */}
-      {markers.map((m) => (
+    <>
+      {positioned.map(({ m, position }) => (
         <Marker
           key={m.testId}
-          position={[m.lat, m.lng]}
-          icon={iconFor(m, m.kind === "pin" && selectedId === m.id)}
+          position={position}
+          icon={iconFor(m, m.kind === "pin" && selectedId === m.id, r3)}
           title={m.title}
+          zIndexOffset={r3 && m.kind === "anchor" ? STAY_RING_Z : 0}
           eventHandlers={{
             click: () => {
               if (m.kind === "pin") onSelect(m.state === "ghost" ? null : m.id);
@@ -103,6 +152,34 @@ export function SceneMapLeaflet({ scene, center, selectedId, onSelect, onSelectB
           }}
         />
       ))}
+    </>
+  );
+}
+
+export function SceneMapLeaflet({ scene, center, selectedId, onSelect, onSelectBrowse, r3 = false }: Omit<SceneMapProps, "legs"> & { r3?: boolean }) {
+  const { data: tiles } = useQuery<{ url: string; attribution: string }>({ queryKey: ["/api/maps/tiles"], staleTime: Infinity });
+  // GC-1: the SAME marker list, minus a Google-derived anchor (named in the legend only).
+  const { markers: rawMarkers } = leafletSceneInputs(scene, sceneMarkers(scene));
+  const markers = rawMarkers;
+  return (
+    <MapContainer center={[center.lat, center.lng]} zoom={MAP_DISTRICT_ZOOM - 1} style={{ width: "100%", height: "100%" }} scrollWheelZoom={false}>
+      <TileLayer
+        url={tiles?.url ?? "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"}
+        attribution={tiles?.attribution ?? "© OpenStreetMap contributors"}
+      />
+      <Framing scene={scene} r3={r3} />
+      {scene.areas.map((a) => (
+        <Marker key={a.slug} position={[a.lat, a.lng]} icon={areaIcon(a)} title={a.name} interactive={false} keyboard={false} zIndexOffset={-1000} />
+      ))}
+      {/* Row PS-1 (GC-1): pins only — no stop-to-stop line. */}
+      {/* Row PS-1: pins only. In R3 the markers go through a screen-space pass that re-runs on every zoom/move settle. */}
+        <SpreadMarkers
+          markers={markers}
+          r3={r3}
+          selectedId={selectedId}
+          onSelect={onSelect}
+          onSelectBrowse={onSelectBrowse}
+        />
     </MapContainer>
   );
 }

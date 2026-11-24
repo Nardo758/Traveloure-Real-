@@ -12,18 +12,23 @@ import { test, expect, type Page } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
 import { registerAndSignIn } from "../utils/auth";
+import { markSeededItemsAsOsm } from "../utils/osm-coords";
 
 const BASE_URL = process.env.BASE_URL ?? "http://localhost:5000";
 const OUT_DIR = path.join(process.cwd(), "playwright", "r3-captures");
 const uid = () => Math.random().toString(36).slice(2, 10);
 
+// Real Kyoto coordinates: a stop with none is a day entry but never a pin, and the map count has to say so.
 const STOPS = [
-  { title: "Fushimi Inari Shrine", dayNumber: 1, startTime: "09:00" },
-  { title: "Tofuku-ji", dayNumber: 1, startTime: "14:00" },
-  { title: "Arashiyama Bamboo Grove", dayNumber: 2, startTime: "09:30" },
-  { title: "Tenryu-ji", dayNumber: 2, startTime: "13:00" },
-  { title: "Kiyomizu-dera", dayNumber: 3, startTime: "09:00" },
-  { title: "Ginkaku-ji", dayNumber: 3, startTime: "15:00" },
+  // TEST-ONLY seed spread across Kyoto: every point is at least ~1 km from the next, so no pin needs the R3 offset.
+  { title: "Fushimi Inari Shrine", dayNumber: 1, startTime: "09:00", latitude: "34.9671", longitude: "135.7727" },
+  { title: "Tofuku-ji", dayNumber: 1, startTime: "14:00", latitude: "34.9761", longitude: "135.7735" },
+  { title: "Arashiyama Bamboo Grove", dayNumber: 2, startTime: "09:30", latitude: "35.0094", longitude: "135.6668" },
+  { title: "Tenryu-ji", dayNumber: 2, startTime: "13:00", latitude: "35.0158", longitude: "135.6738" },
+  { title: "Kiyomizu-dera", dayNumber: 3, startTime: "09:00", latitude: "34.9949", longitude: "135.785" },
+  { title: "Ginkaku-ji", dayNumber: 3, startTime: "15:00", latitude: "35.027", longitude: "135.7982" },
+  // The stay: its own point, away from every stop, so the ring never sits under a pin.
+  { title: "Higashiyama inn", dayNumber: 1, startTime: "18:00", itemType: "lodging", latitude: "35.0036", longitude: "135.7788" },
 ];
 
 async function sixStopTrip(page: Page): Promise<string> {
@@ -46,6 +51,8 @@ async function sixStopTrip(page: Page): Promise<string> {
     const res = await page.request.post(`${BASE_URL}/api/trips/${tripId}/itinerary-items`, { data: stop });
     expect([200, 201], await res.text()).toContain(res.status());
   }
+  // TEST-ONLY: give the plan's points a non-Google source so the OSM canvas may draw them (see utils/osm-coords.ts).
+  await markSeededItemsAsOsm(tripId as string, "Higashiyama inn");
   return tripId as string;
 }
 
@@ -85,6 +92,30 @@ test("R3 P0: the surface mounts with ?surface=r3 and is captured at 1280 and 390
   await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3`);
   // The R3 frame, not the old page: this is the assertion that makes the picture meaningful.
   await expect(page.getByTestId("r3-surface")).toBeVisible({ timeout: 30_000 });
+  // P1: the days slot holds the board - three day columns and six stop cards, so the capture is of a FILLED board.
+  await expect(page.getByTestId("r3-days-board")).toBeVisible();
+  await expect(page.getByTestId("r3-day-column")).toHaveCount(3);
+  await expect(page.getByTestId("r3-stop-card")).toHaveCount(6);
+  await expect(page.getByTestId("r3-ideas-column")).toBeVisible();
+  // U1: the map sits beside the days when "Days and map" is on, and Ideas comes FIRST.
+  await expect(page.getByTestId("r3-map")).toBeVisible();
+  const order = await page.locator('[data-testid="r3-days-board"] > section').evaluateAll((els) => els.map((e) => e.getAttribute("data-testid")));
+  expect(order[0], "Ideas is the first column").toBe("r3-ideas-column");
+  // The rail is COLLAPSED on this page, so the board has room: the map's own chrome is one row, and its caption and
+  // single count line sit INSIDE the canvas.
+  await expect(page.locator('[data-state="collapsed"]')).toHaveCount(1);
+  await expect(page.getByTestId("r3-map-chip-all")).toBeVisible();
+  await expect(page.getByTestId("r3-map-chip-day")).toHaveCount(3);
+  await expect(page.getByTestId("r3-map-browse")).toBeVisible();
+  await expect(page.getByTestId("r3-map-caption")).toBeVisible();
+  await expect(page.getByTestId("r3-map-count")).toBeVisible();
+  // A pin per located stop: six stops, six pins, so the count line says "6 of 6".
+  await expect(page.getByTestId("r3-map-count")).toContainText("6 of 6");
+  const content = await page.locator("main").boundingBox();
+  expect(content?.width ?? 0, "the content column is ~1224px with the rail collapsed").toBeGreaterThan(1100);
+  // Let the tiles land before the shot: a capture of an empty canvas proves nothing.
+  await page.waitForFunction(() => document.querySelectorAll(".leaflet-tile-loaded").length > 0, { timeout: 20_000 }).catch(() => {});
+  await page.waitForTimeout(750);
   await maskEmails(page);
   await page.screenshot({ path: path.join(OUT_DIR, "v1-1280.png"), fullPage: true });
 

@@ -4,7 +4,8 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { r3IdeaCount, r3Stops, r3SurfaceOn } from "../r3-surface";
+import { spreadPins, spreadPinsPx } from "../map-pin-spread";
+import { isStayItem, r3Columns, r3IdeaCount, r3Ideas, r3MapCounts, r3Stops, r3SurfaceOn, sidebarStartsCollapsed, sidebarStorageKey } from "../r3-surface";
 
 test("flag OFF ignores ?surface=r3 - the parameter alone changes nothing", () => {
   assert.equal(r3SurfaceOn("?surface=r3", false), false);
@@ -46,4 +47,102 @@ test("a plan with no days has no stops, and ideas are never invented", () => {
   assert.equal(r3Stops({ items: [{ name: "x" }] }).length, 0, "top-level items are not stops");
   assert.equal(r3IdeaCount({}), 0);
   assert.equal(r3IdeaCount({ ideas: [1, 2] }), 2);
+});
+
+test("column grouping: one column per day, its own stops, in the plan's order", () => {
+  const plan = {
+    days: [
+      { dayNumber: 1, date: "2027-04-01", activities: [{ id: "a", name: "Fushimi Inari Shrine", startTime: "09:00" }, { id: "b", name: "Tofuku-ji" }] },
+      { dayNumber: 2, date: "2027-04-02", activities: [{ id: "c", name: "Arashiyama" }] },
+      { dayNumber: 3, date: "2027-04-03", activities: [] },
+    ],
+    ideas: [{ id: "i1", name: "Nishiki Market" }],
+  };
+  const cols = r3Columns(plan);
+  assert.equal(cols.length, 3, "three day rows, three columns");
+  assert.deepEqual(cols.map((c) => c.day), [1, 2, 3]);
+  assert.equal(cols[0].stops.length, 2);
+  assert.equal(cols[1].stops.length, 1);
+  assert.equal(cols[2].stops.length, 0, "a day with no stops keeps its column");
+  assert.equal(cols[0].label, "Thu \u00b7 1 Apr");
+  assert.equal(cols.reduce((n, c) => n + c.stops.length, 0), 3, "every stop lands in exactly one column");
+  assert.equal(r3Ideas(plan).length, 1, "ideas are their own column, never a day");
+  assert.deepEqual(r3Columns({}), [], "no day rows, no board");
+});
+
+test("the sidebar is expanded on every page that is not an R3 plan page", () => {
+  assert.equal(sidebarStartsCollapsed({ r3Page: false, stored: null }), false, "non-R3 page: expanded");
+  assert.equal(sidebarStartsCollapsed({ r3Page: true, stored: null }), true, "R3 plan page: collapsed");
+  assert.equal(sidebarStartsCollapsed({ r3Page: false, stored: true }), true, "a traveler's own choice wins over the default");
+  assert.equal(sidebarStartsCollapsed({ r3Page: true, stored: false }), false, "and wins on an R3 page too");
+  assert.equal(sidebarStorageKey(7), "dsh.sidebar.collapsed.7", "persisted per traveler");
+  assert.equal(sidebarStorageKey(null), "dsh.sidebar.collapsed.anon");
+});
+
+test("the map count excludes a stop with no coordinates", () => {
+  const located = { id: "a", name: "Fushimi Inari Shrine", lat: 34.9671, lng: 135.7727, startTime: "09:00" };
+  const unlocated = { id: "b", name: "Somewhere unplotted", startTime: "11:00" };
+  const counts = r3MapCounts({ days: [{ dayNumber: 1, activities: [located, unlocated] }] });
+  assert.equal(counts.total, 2, "both stops are on the days");
+  assert.equal(counts.located, 1, "only the one with coordinates is a pin");
+  assert.equal(r3MapCounts({ days: [] }).total, 0, "no days, nothing to count");
+});
+
+test("a stay is the exact DTO shape the plancard sends: type 'accommodation', never a stop", () => {
+  // `server/services/add-checks.service.ts:81` projects each day stop as `{ ..., type: item.itemType }`.
+  const stay = { id: "s1", name: "Higashiyama inn", type: "accommodation", dayNumber: 1, startTime: "18:00" };
+  const stop = { id: "a1", name: "Fushimi Inari Shrine", type: "activity", dayNumber: 1, startTime: "09:00" };
+  assert.equal(isStayItem(stay), true);
+  assert.equal(isStayItem(stop), false);
+  assert.equal(isStayItem({ id: "x", name: "Hotel-ish thing", type: "hotel-ish" }), false, "no pattern-matching");
+  const plan = { days: [{ dayNumber: 1, activities: [stay, stop] }] };
+  assert.equal(r3Columns(plan)[0].stops.length, 1, "the ring is not a card");
+  assert.equal(r3Stops(plan).length, 1, "and not a counted stop");
+  assert.equal(r3MapCounts(plan).total, 1, "nor part of the map's total");
+});
+
+test("spreadPins: two stops at the same point get distinct, deterministic positions in stop order", () => {
+  const point = { lat: 35.0, lng: 135.77 };
+  const markers = [
+    { kind: "pin", id: "a", ...point },
+    { kind: "pin", id: "b", ...point },
+    { kind: "anchor", id: "stay", ...point },
+    { kind: "browse", id: "nearby", ...point },
+  ];
+  const once = spreadPins(markers);
+  const twice = spreadPins(markers);
+  assert.deepEqual(once, twice, "the same input gives the same positions on every render");
+  assert.deepEqual({ lat: once[0].lat, lng: once[0].lng }, point, "the first pin keeps its own point");
+  assert.notDeepEqual({ lat: once[1].lat, lng: once[1].lng }, point, "the second pin is nudged off it");
+  const gap = Math.hypot(once[0].lat - once[1].lat, once[0].lng - once[1].lng);
+  assert.ok(gap > 0.0015, `the two pins are apart (gap ${gap})`);
+  assert.deepEqual({ lat: once[2].lat, lng: once[2].lng }, point, "the stay ring is never moved");
+  assert.deepEqual({ lat: once[3].lat, lng: once[3].lng }, point, "a browse dot is never moved");
+  assert.equal(spreadPins(markers).length, markers.length, "nothing is dropped or added");
+});
+
+test("spreadPinsPx: two near pins whose 26px icons overlap are moved apart, in stop order, deterministically", () => {
+  // ~1 km apart at a zoom where the icons overlap: 18px on screen, inside the 26px icon.
+  const items = [
+    { kind: "pin", id: "a", x: 100, y: 100 },
+    { kind: "pin", id: "b", x: 118, y: 100 },
+    { kind: "browse", id: "nearby", x: 400, y: 400 },
+  ];
+  const once = spreadPinsPx(items);
+  assert.deepEqual(once, spreadPinsPx(items), "the same input gives the same positions");
+  assert.deepEqual({ x: once[0].x, y: once[0].y }, { x: 100, y: 100 }, "the first pin keeps its point");
+  const gap = Math.hypot(once[0].x - once[1].x, once[0].y - once[1].y);
+  assert.ok(gap >= 26, `the two icons no longer overlap (gap ${gap})`);
+  assert.deepEqual({ x: once[2].x, y: once[2].y }, { x: 400, y: 400 }, "a browse dot is never moved");
+});
+
+test("spreadPinsPx: a pin on the stay ring moves off it - the ring itself never moves", () => {
+  const items = [
+    { kind: "anchor", id: "stay", x: 100, y: 100 },
+    { kind: "pin", id: "a", x: 109, y: 100 },
+  ];
+  const once = spreadPinsPx(items);
+  assert.deepEqual({ x: once[0].x, y: once[0].y }, { x: 100, y: 100 }, "the ring stays exactly where it is");
+  const gap = Math.hypot(once[0].x - once[1].x, once[0].y - once[1].y);
+  assert.ok(gap >= 26, `the pin is clear of the ring (gap ${gap})`);
 });
