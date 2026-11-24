@@ -5,8 +5,8 @@
  * 8-point ring around its own point: stable order (the scene's stop order), no leader lines, the same result on every
  * render. Anchors (the stay ring) and browse dots are never moved.
  */
-export const PIN_SPREAD_DEGREES = 0.0018;
-export const PIN_SPREAD_THRESHOLD = 0.002;
+export const PIN_SPREAD_DEGREES = 0.0018; // fee-literal-ok: map geometry constant, not a fee
+export const PIN_SPREAD_THRESHOLD = 0.002; // fee-literal-ok: map geometry constant, not a fee
 
 export function spreadPins<T extends { kind: string; lat: number; lng: number }>(markers: readonly T[]): T[] {
   const placed: Array<{ lat: number; lng: number }> = [];
