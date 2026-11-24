@@ -59,10 +59,10 @@ export function OptimizeCard({ tripId, enabled, isOwner }: { tripId: string; ena
             {shown.length ? OPTIMIZE_SENTENCE : OPTIMIZE_EMPTY_LINE}
           </p>
         </div>
-        <div className="flex shrink-0 flex-wrap items-center gap-2">
+        <div className="flex w-full shrink-0 flex-col items-stretch gap-2 md:w-auto md:flex-row md:items-center">
           <Link
             href={`/itinerary-comparison/${tripId}`}
-            className="h-11 rounded-lg px-4 text-[13px] font-semibold leading-[44px] text-white"
+            className="h-11 w-full rounded-lg px-4 text-center text-[13px] font-semibold leading-[44px] text-white md:w-auto"
             style={{ backgroundColor: BOARD_CTA }}
             data-testid="r3-optimize-cta"
           >
@@ -70,7 +70,7 @@ export function OptimizeCard({ tripId, enabled, isOwner }: { tripId: string; ena
           </Link>
           <Link
             href="/experts"
-            className="h-11 rounded-lg border bg-card px-4 text-[13px] font-medium leading-[44px]"
+            className="h-11 w-full rounded-lg border bg-card px-4 text-center text-[13px] font-medium leading-[44px] md:w-auto"
             style={{ borderColor: BOARD_BORDER, color: BOARD_INK }}
             data-testid="r3-optimize-expert"
           >

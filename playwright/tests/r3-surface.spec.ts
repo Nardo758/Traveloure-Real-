@@ -255,12 +255,14 @@ test("U3: the phone surface - days, map, ideas, an empty day and a long trip", a
   await expect(page.getByTestId("r3-phone-hint")).toBeVisible();
   await expect(page.getByTestId("r3-phone-day-body")).toBeVisible();
   await expect(page.getByTestId("r3-optimize-card")).toBeVisible();
+  await page.evaluate(() => window.scrollTo(0, 0));
   await maskEmails(page);
   await page.screenshot({ path: path.join(OUT_DIR, "u3-days-390.png"), fullPage: true });
 
   // Ideas: the first chip opens the ideas list.
   await page.getByTestId("r3-phone-day-chip").first().click();
   await expect(page.getByTestId("r3-phone-day-body")).toHaveAttribute("data-day", "0");
+  await page.evaluate(() => window.scrollTo(0, 0));
   await maskEmails(page);
   await page.screenshot({ path: path.join(OUT_DIR, "u3-ideas-390.png"), fullPage: true });
 
@@ -271,8 +273,11 @@ test("U3: the phone surface - days, map, ideas, an empty day and a long trip", a
   await expect(page.getByTestId("r3-map-chips")).toBeVisible();
   await expect(page.getByTestId("r3-map-count")).toBeVisible();
   await page.waitForFunction(() => document.querySelectorAll(".leaflet-tile-loaded").length > 0, { timeout: 20_000 }).catch(() => {});
-  await expect(page.locator("[data-pin-state]").first()).toBeVisible({ timeout: 15_000 });
+  // 3: the map must really draw - at least one pin AND the stay ring, or the test fails.
+  await expect(page.locator("[data-pin-state]").first()).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator("[data-anchor-kind]").first()).toBeVisible({ timeout: 20_000 });
   await page.waitForTimeout(600);
+  await page.evaluate(() => window.scrollTo(0, 0));
   await maskEmails(page);
   await page.screenshot({ path: path.join(OUT_DIR, "u3-map-390.png"), fullPage: true });
 
@@ -284,6 +289,7 @@ test("U3: the phone surface - days, map, ideas, an empty day and a long trip", a
   await page.getByTestId("r3-phone-day-chip").last().click();
   await expect(page.getByTestId("r3-phone-day-body")).toHaveAttribute("data-day", "7");
   await expect(page.getByTestId("r3-phone-add")).toBeVisible();
+  await page.evaluate(() => window.scrollTo(0, 0));
   await maskEmails(page);
   await page.screenshot({ path: path.join(OUT_DIR, "u3-empty-day-390.png"), fullPage: true });
 
@@ -292,6 +298,7 @@ test("U3: the phone surface - days, map, ideas, an empty day and a long trip", a
   await expect(page.getByTestId("r3-phone-stop-card").first()).toBeVisible();
   await page.getByTestId("r3-phone-stop-menu").first().click();
   await expect(page.getByTestId("r3-phone-move")).toBeVisible();
+  await page.evaluate(() => window.scrollTo(0, 0));
   await maskEmails(page);
   await page.screenshot({ path: path.join(OUT_DIR, "u3-long-trip-390.png"), fullPage: true });
 
@@ -308,6 +315,7 @@ test("U3: the phone surface - days, map, ideas, an empty day and a long trip", a
   await expect(page.getByTestId("r3-surface")).toBeVisible({ timeout: 30_000 });
   await expect(page.getByTestId("r3-phone-tabs")).toBeVisible();
   await expect(page.getByTestId("r3-optimize-card")).toHaveCount(0);
+  await page.evaluate(() => window.scrollTo(0, 0));
   await maskEmails(page);
   await page.screenshot({ path: path.join(OUT_DIR, "u3-guest-390.png"), fullPage: true });
   await page.unroute(`**/api/trips/${tripId}/plancard**`);

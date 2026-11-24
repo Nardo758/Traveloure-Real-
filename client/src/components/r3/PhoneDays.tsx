@@ -61,7 +61,9 @@ export function PhoneDayStrip({
 }) {
   const columns = r3Columns(data);
   const total = columns.length + 1;
-  const cell = total <= 4 ? "22%" : total === 5 ? "18%" : "70px";
+  // <= 5 cells: they share the width (the row fills the screen). Longer trips: fixed cells that scroll, Ideas pinned.
+  const fill = total <= 5;
+  const cell = fill ? undefined : "70px";
   const openRef = useRef<HTMLButtonElement | null>(null);
   useEffect(() => {
     openRef.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
@@ -77,7 +79,14 @@ export function PhoneDayStrip({
         aria-pressed={active}
         onClick={() => onOpen(day)}
         className={`${HIT} shrink-0 rounded-xl border px-2 text-center`}
-        style={{ width: cell === "70px" ? undefined : cell, minWidth: cell === "70px" ? 70 : undefined, borderColor: active ? BOARD_INK : BOARD_LINE, backgroundColor: active ? BOARD_INK : undefined, color: active ? "var(--r3-pin-text)" : BOARD_INK }}
+        style={{
+          flex: fill ? "1 1 0" : "0 0 auto",
+          minWidth: fill ? 0 : 70,
+          borderColor: active ? BOARD_INK : BOARD_LINE,
+          backgroundColor: active ? BOARD_INK : day === 0 ? BOARD_FILL : undefined,
+          color: active ? "var(--r3-pin-text)" : BOARD_INK,
+          ...(day === 0 ? { position: "sticky", left: 0, zIndex: 5 } : {}),
+        }}
         data-testid="r3-phone-day-chip"
         data-day={day}
       >
@@ -117,7 +126,7 @@ export function PhoneDayBody({
       {stops.map((stop: any, i: number) => {
         const id = String(stop?.id ?? `${openDay}-${i}`);
         return (
-          <article key={id} className="rounded-xl border bg-card p-3" style={{ borderColor: BOARD_LINE }} data-testid="r3-phone-stop-card">
+          <article key={id} className="relative rounded-xl border bg-card p-3" style={{ borderColor: BOARD_LINE }} data-testid="r3-phone-stop-card">
             <div className="flex items-start gap-2">
               <GripVertical className="mt-1 h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
               <div className="min-w-0 flex-1">
@@ -136,7 +145,7 @@ export function PhoneDayBody({
               </button>
             </div>
             {menuFor === id ? (
-              <div className="mt-2 border-t pt-2" style={{ borderColor: BOARD_LINE }} data-testid="r3-phone-stop-menu-panel">
+              <div className="absolute right-2 top-12 z-20 w-44 rounded-lg border bg-card p-1 shadow-lg" style={{ borderColor: BOARD_LINE }} data-testid="r3-phone-stop-menu-panel">
                 <button
                   type="button"
                   className={`${HIT} w-full rounded-lg px-2 text-left text-[14px] font-medium`}
@@ -174,10 +183,10 @@ export function PhoneDayBody({
       <button
         type="button"
         className="flex w-full items-center justify-center rounded-xl border border-dashed py-3 text-[13px] font-medium"
-        style={{ borderColor: BOARD_LINE, color: BOARD_TEXT }}
+        style={{ borderColor: BOARD_LINE }}
         data-testid="r3-phone-add"
       >
-        {PHONE_ADD}
+        {openDay === 0 ? "Add" : PHONE_ADD}
       </button>
     </div>
   );

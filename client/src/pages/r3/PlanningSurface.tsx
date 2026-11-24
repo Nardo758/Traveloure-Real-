@@ -202,12 +202,13 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
 
       {desktop ? null : <PhoneTabs tab={phoneTab} onChange={setPhoneTab} />}
 
-      <section className="mt-5 rounded-xl border border-border bg-card p-4" data-testid="r3-strip">
+      {desktop || phoneTab === "days" ? (
+<section className="mt-5 rounded-xl border border-border bg-card p-4" data-testid="r3-strip">
         <div className="flex items-start justify-between gap-3">
           <p className="text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground" data-testid="r3-strip-title">What you've told us</p>
           <button type="button" className="text-[13px] font-medium underline-offset-2 hover:underline" style={{ color: BOARD.text }} data-testid="r3-strip-change">Change any of these</button>
         </div>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
+        <div className="mt-3 flex flex-nowrap items-center gap-2 overflow-x-auto" data-testid="r3-strip-chips">
           {where ? <Chip label="Where" value={where} testId="r3-chip-where" /> : null}
           {when ? <Chip label="When" value={when} testId="r3-chip-when" /> : null}
           {who ? <Chip label="Who" value={who} testId="r3-chip-who" /> : null}
@@ -220,7 +221,7 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
             <p className="text-[13px] text-foreground">
               <span className="font-semibold">Next:</span> {copy.sentence.replace(/^Next:\s*/, "")}
             </p>
-            <div className="flex items-center gap-2">
+            <div className="ml-auto flex items-center gap-2">
               <button type="button" className="h-11 rounded-lg border px-3 text-[13px] font-semibold" style={boardOutline} data-testid="r3-question-action">
                 {copy.action}
               </button>
@@ -231,20 +232,20 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
           </div>
         ) : null}
       </section>
-
-      <OptimizeCard tripId={tripId} enabled={desktop || !desktop} isOwner={(data as any)?.tripRole === "owner"} />
+      ) : null}
 
       <section className="mt-4" data-testid="r3-days" data-day-count={dayCount} data-stop-count={stops.length}>
         {desktop ? null : phoneTab === "days" ? (
           <>
             <PhoneDayStrip data={data} openDay={openDay} onOpen={setOpenDay} ideas={ideas} />
+            <PhoneHint show={hintShown && openDay >= 1 && (columns.find((c) => c.day === openDay)?.stops.length ?? 0) > 0} />
             <PhoneDayBody data={data} openDay={openDay} onMoveRequested={handleMove} />
-            <PhoneHint show={hintShown} />
           </>
         ) : null}
         <div className={desktop ? "flex items-start gap-3" : "mt-3 flex flex-col gap-3"}>
           {desktop ? <DaysBoard data={data} /> : null}
-          <div className={desktop || phoneTab === "map" ? "min-w-0 flex-1" : "hidden"} data-testid="r3-map">
+          {desktop || phoneTab === "map" ? (
+          <div className="min-w-0 flex-1" data-testid="r3-map">
             {/* ONE chrome row (board V1): All days, the weekdays, then Browse nearby. */}
             <div className="mb-2 flex flex-wrap items-center gap-1.5" data-testid="r3-map-chips">
               <button
@@ -286,8 +287,11 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
               {`${countLine ?? ""}${countLine ? " \u00b7 " : ""}the ring is where you're staying${ideas > 0 ? " \u00b7 Ideas aren't shown until they have a day" : ""}`}
             </p>
           </div>
+          ) : null}
         </div>
       </section>
+
+      <OptimizeCard tripId={tripId} enabled={desktop || !desktop} isOwner={(data as any)?.tripRole === "owner"} />
 
       <footer
         className={desktop ? "mt-6 flex items-center justify-between rounded-xl border border-border bg-card p-4" : "mt-6 flex flex-nowrap items-center justify-between gap-2 rounded-xl border border-border bg-card p-3"}
