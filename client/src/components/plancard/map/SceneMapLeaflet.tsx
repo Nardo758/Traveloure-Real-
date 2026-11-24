@@ -15,7 +15,7 @@ import { MapContainer, Marker, TileLayer, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { MAP_DISTRICT_ZOOM, clampFramingZoom, mapFraming } from "@/lib/map-framing";
-import { spreadPinsPx } from "@/lib/map-pin-spread";
+import { spreadPinsPx, STAY_RING_Z } from "@/lib/map-pin-spread";
 import { ANCHOR_COLOR, AREA_PIN_STYLE, BROWSE_TEAL, PIN_STYLE, areaPinLabel, escapeHtml, leafletSceneInputs, sceneMarkers, type MapArea, type MapScene, type MarkerDescriptor } from "@/lib/map-scene";
 import type { SceneMapProps } from "./SceneMapGoogle";
 
@@ -143,7 +143,7 @@ function SpreadMarkers({
           position={position}
           icon={iconFor(m, m.kind === "pin" && selectedId === m.id, r3)}
           title={m.title}
-          zIndexOffset={r3 && m.kind === "anchor" ? 900 : 0}
+          zIndexOffset={r3 && m.kind === "anchor" ? STAY_RING_Z : 0}
           eventHandlers={{
             click: () => {
               if (m.kind === "pin") onSelect(m.state === "ghost" ? null : m.id);

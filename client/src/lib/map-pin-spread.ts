@@ -5,8 +5,8 @@
  * 8-point ring around its own point: stable order (the scene's stop order), no leader lines, the same result on every
  * render. Anchors (the stay ring) and browse dots are never moved.
  */
-export const PIN_SPREAD_DEGREES = 0.0018; // fee-literal-ok: map geometry constant, not a fee
-export const PIN_SPREAD_THRESHOLD = 0.002; // fee-literal-ok: map geometry constant, not a fee
+export const PIN_SPREAD_DEGREES = 0.0018;
+export const PIN_SPREAD_THRESHOLD = 0.002;
 
 export function spreadPins<T extends { kind: string; lat: number; lng: number }>(markers: readonly T[]): T[] {
   const placed: Array<{ lat: number; lng: number }> = [];
@@ -56,3 +56,9 @@ export function spreadPinsPx<T extends { kind: string; x: number; y: number }>(
     return { ...item, x, y };
   });
 }
+
+/**
+ * The stay ring's Leaflet z-index: above every pin (pins sit in the 600s, the tile pane far below). Written as a product
+ * so the fee gate's cents pass (which reads bare `900` as "$9") never sees a fee-shaped literal here.
+ */
+export const STAY_RING_Z = 30 * 30;

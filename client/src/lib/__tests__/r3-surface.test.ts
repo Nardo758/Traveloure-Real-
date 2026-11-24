@@ -80,7 +80,7 @@ test("the sidebar is expanded on every page that is not an R3 plan page", () => 
 });
 
 test("the map count excludes a stop with no coordinates", () => {
-  const located = { id: "a", name: "Fushimi Inari Shrine", lat: 34.9671, lng: 135.7727, startTime: "09:00" }; // fee-literal-ok: test coordinates, not a fee
+  const located = { id: "a", name: "Fushimi Inari Shrine", lat: 34.9671, lng: 135.7727, startTime: "09:00" };
   const unlocated = { id: "b", name: "Somewhere unplotted", startTime: "11:00" };
   const counts = r3MapCounts({ days: [{ dayNumber: 1, activities: [located, unlocated] }] });
   assert.equal(counts.total, 2, "both stops are on the days");
@@ -102,7 +102,7 @@ test("a stay is the exact DTO shape the plancard sends: type 'accommodation', ne
 });
 
 test("spreadPins: two stops at the same point get distinct, deterministic positions in stop order", () => {
-  const point = { lat: 35.0, lng: 135.77 }; // fee-literal-ok: test coordinates, not a fee
+  const point = { lat: 35.0, lng: 135.77 };
   const markers = [
     { kind: "pin", id: "a", ...point },
     { kind: "pin", id: "b", ...point },
@@ -115,7 +115,7 @@ test("spreadPins: two stops at the same point get distinct, deterministic positi
   assert.deepEqual({ lat: once[0].lat, lng: once[0].lng }, point, "the first pin keeps its own point");
   assert.notDeepEqual({ lat: once[1].lat, lng: once[1].lng }, point, "the second pin is nudged off it");
   const gap = Math.hypot(once[0].lat - once[1].lat, once[0].lng - once[1].lng);
-  assert.ok(gap > 0.0015, `the two pins are apart (gap ${gap})`); // fee-literal-ok: test coordinates, not a fee
+  assert.ok(gap > 0.0015, `the two pins are apart (gap ${gap})`);
   assert.deepEqual({ lat: once[2].lat, lng: once[2].lng }, point, "the stay ring is never moved");
   assert.deepEqual({ lat: once[3].lat, lng: once[3].lng }, point, "a browse dot is never moved");
   assert.equal(spreadPins(markers).length, markers.length, "nothing is dropped or added");

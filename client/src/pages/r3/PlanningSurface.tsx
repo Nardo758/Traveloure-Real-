@@ -146,7 +146,7 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
         {desktop ? (
           <>
             <div className="min-w-0">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: BOARD.text }} data-testid="r3-eyebrow"> // fee-literal-ok: layout constant, not a fee
+              <p className="text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: BOARD.text }} data-testid="r3-eyebrow">
                 {eyebrow}
               </p>
               <h1 className="mt-1 text-[34px] font-bold leading-[1.1] text-foreground" data-testid="r3-title">{trip?.title ?? "Your plan"}</h1>
@@ -166,17 +166,17 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
           <>
             <div className="flex items-center justify-between">
               <button type="button" aria-label="Back" className="p-1 text-foreground" data-testid="r3-back"><ArrowLeft className="h-5 w-5" /></button>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: BOARD.text }} data-testid="r3-eyebrow">{eyebrow}</p> // fee-literal-ok: layout constant, not a fee
+              <p className="text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: BOARD.text }} data-testid="r3-eyebrow">{eyebrow}</p>
               <button type="button" aria-label="More" className="p-1 text-foreground" data-testid="r3-menu"><MoreHorizontal className="h-5 w-5" /></button>
             </div>
-            <h1 className="text-[26px] font-bold leading-[1.15] text-foreground" data-testid="r3-title">{trip?.title ?? "Your plan"}</h1> // fee-literal-ok: layout constant, not a fee
+            <h1 className="text-[26px] font-bold leading-[1.15] text-foreground" data-testid="r3-title">{trip?.title ?? "Your plan"}</h1>
           </>
         )}
       </header>
 
       <section className="mt-5 rounded-xl border border-border bg-card p-4" data-testid="r3-strip">
         <div className="flex items-start justify-between gap-3">
-          <p className="text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground" data-testid="r3-strip-title">What you've told us</p> // fee-literal-ok: layout constant, not a fee
+          <p className="text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground" data-testid="r3-strip-title">What you've told us</p>
           <button type="button" className="text-[13px] font-medium underline-offset-2 hover:underline" style={{ color: BOARD.text }} data-testid="r3-strip-change">Change any of these</button>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -205,7 +205,7 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
       </section>
 
       <section className="mt-4 rounded-xl border p-4" style={{ backgroundColor: BOARD.fill, borderColor: BOARD.border }} data-testid="r3-optimize-card">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: BOARD.text }}>What Optimize found in your plan</p> // fee-literal-ok: layout constant, not a fee
+        <p className="text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: BOARD.text }}>What Optimize found in your plan</p>
       </section>
 
       <section className="mt-4" data-testid="r3-days" data-day-count={dayCount} data-stop-count={stops.length}>
