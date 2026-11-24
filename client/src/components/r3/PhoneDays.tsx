@@ -12,6 +12,7 @@ import { ArrowLeft, GripVertical, MoreHorizontal, Plus } from "lucide-react";
 import { BOARD_FILL, BOARD_INK, BOARD_LINE, BOARD_TEXT } from "@/components/r3/tokens";
 import type { SlipData } from "@/components/plancard/SlipView";
 import { r3Columns } from "@/lib/r3-surface";
+import { MoveStopSheet } from "@/components/plan/MoveStopSheet";
 
 export const PHONE_HINT = "Tap a day to see it. Hold a stop to drag it onto a day above.";
 export const PHONE_ADD = "+ Add to this day";
@@ -108,6 +109,8 @@ export function PhoneDayBody({
   const ideas = ((data as any)?.ideas ?? []) as any[];
   const stops = openDay === 0 ? ideas : columns.find((c) => c.day === openDay)?.stops ?? [];
   const [menuFor, setMenuFor] = useState<string | null>(null);
+  const [sheetFor, setSheetFor] = useState<any | null>(null);
+  const days = columns.map((c) => ({ dayNumber: c.day, label: c.label, count: c.stops.length }));
 
   return (
     <div className="mt-2 space-y-2" data-testid="r3-phone-day-body" data-day={openDay}>
@@ -140,7 +143,7 @@ export function PhoneDayBody({
                   style={{ color: BOARD_TEXT }}
                   onClick={() => {
                     setMenuFor(null);
-                    onMoveRequested(stop);
+                    setSheetFor(stop);
                   }}
                   data-testid="r3-phone-move"
                 >
@@ -151,6 +154,23 @@ export function PhoneDayBody({
           </article>
         );
       })}
+      {sheetFor ? (
+        <MoveStopSheet
+          itemId={String(sheetFor.id)}
+          stopName={String(sheetFor.name ?? sheetFor.title ?? "")}
+          currentDay={Number(sheetFor.dayNumber ?? openDay)}
+          time={String(sheetFor.startTime ?? "") || null}
+          timeEditable={false}
+          booked={false}
+          days={days as any}
+          pending={false}
+          onMove={(body) => {
+            onMoveRequested({ ...sheetFor, dayNumber: body.dayNumber, startTime: body.startTime ?? sheetFor.startTime });
+            setSheetFor(null);
+          }}
+          onClose={() => setSheetFor(null)}
+        />
+      ) : null}
       <button
         type="button"
         className="flex w-full items-center justify-center rounded-xl border border-dashed py-3 text-[13px] font-medium"

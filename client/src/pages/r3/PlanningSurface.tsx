@@ -232,7 +232,7 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
         ) : null}
       </section>
 
-      <OptimizeCard tripId={tripId} enabled={desktop} />
+      <OptimizeCard tripId={tripId} enabled={desktop || !desktop} isOwner={(data as any)?.tripRole === "owner"} />
 
       <section className="mt-4" data-testid="r3-days" data-day-count={dayCount} data-stop-count={stops.length}>
         {desktop ? null : phoneTab === "days" ? (

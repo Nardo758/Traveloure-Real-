@@ -294,4 +294,21 @@ test("U3: the phone surface - days, map, ideas, an empty day and a long trip", a
   await expect(page.getByTestId("r3-phone-move")).toBeVisible();
   await maskEmails(page);
   await page.screenshot({ path: path.join(OUT_DIR, "u3-long-trip-390.png"), fullPage: true });
+
+  // Guest: LOOKS CAPTURE ONLY - NOT DATA COVERAGE. The slip response is rewritten to a non-owner role so the hidden
+  // Optimize card can be photographed; nothing in production changes.
+  await page.unroute("**/api/optimization-preview**");
+  await page.route(`**/api/trips/${tripId}/plancard**`, async (route) => {
+    const res = await route.fetch();
+    const json = await res.json();
+    json.tripRole = "guest";
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(json) });
+  });
+  await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3`);
+  await expect(page.getByTestId("r3-surface")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("r3-phone-tabs")).toBeVisible();
+  await expect(page.getByTestId("r3-optimize-card")).toHaveCount(0);
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OUT_DIR, "u3-guest-390.png"), fullPage: true });
+  await page.unroute(`**/api/trips/${tripId}/plancard**`);
 });

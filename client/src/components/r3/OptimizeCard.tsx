@@ -9,6 +9,7 @@
  */
 import { Link } from "wouter";
 import { useOptimizerLeadData } from "@/components/plan/use-optimizer-lead-data";
+import { useSignupMode } from "@/lib/signup-mode";
 import { findingBadge, optimizeCtaLabel } from "@/components/plan/OptimizerLead";
 import { BOARD_BORDER, BOARD_CTA, BOARD_FILL, BOARD_INK, BOARD_SLATE, BOARD_TEXT } from "@/components/r3/tokens";
 
@@ -19,9 +20,14 @@ const EXPERT_CTA = "Get help from a local expert";
 const OPTIMIZE_EMPTY_LINE =
   "Optimize checks real travel times and builds three versions to compare. Your pinned stops stay where they are.";
 
-export function OptimizeCard({ tripId, enabled }: { tripId: string; enabled: boolean }) {
-  const { findings, fee } = useOptimizerLeadData(tripId, enabled);
+export function OptimizeCard({ tripId, enabled, isOwner }: { tripId: string; enabled: boolean; isOwner: boolean }) {
+  // V22 note 6 (Leon, Nov 24 2026): the whole card is hidden for anyone who is not the owner, and in waitlist mode.
+  // The mode is the ONE the app already reads for priced controls (`useSignupMode`, `lib/signup-mode.ts`).
+  const { mode } = useSignupMode();
+  const waitlist = mode === "waitlist";
+  const { findings, fee } = useOptimizerLeadData(tripId, enabled && isOwner && !waitlist);
   const shown = (findings ?? []).slice(0, 3);
+  if (!isOwner || waitlist) return null;
 
   return (
     <section
