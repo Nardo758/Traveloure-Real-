@@ -116,7 +116,13 @@ test("R3 P0: the surface mounts with ?surface=r3 and is captured at 1280 and 390
   // Let the tiles land before the shot: a capture of an empty canvas proves nothing.
   await page.waitForFunction(() => document.querySelectorAll(".leaflet-tile-loaded").length > 0, { timeout: 20_000 }).catch(() => {});
   await page.waitForTimeout(750);
+  // U2: the Optimize card's body - its findings, the sentence and the two buttons - beside its own board crop.
+  await expect(page.getByTestId("r3-optimize-card")).toBeVisible();
+  await expect(page.getByTestId("r3-optimize-sentence")).toBeVisible();
+  await expect(page.getByTestId("r3-optimize-cta")).toBeVisible();
+  await expect(page.getByTestId("r3-optimize-expert")).toBeVisible();
   await maskEmails(page);
+  await page.getByTestId("r3-optimize-card").screenshot({ path: path.join(OUT_DIR, "u2-optimize-1280.png") });
   await page.screenshot({ path: path.join(OUT_DIR, "v1-1280.png"), fullPage: true });
 
   await page.setViewportSize({ width: 390, height: 844 });
