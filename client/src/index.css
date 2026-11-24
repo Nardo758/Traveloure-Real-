@@ -16,7 +16,7 @@
   --r3-pin-ink: #1a1a18;
   --r3-pin-text: #ffffff;
   /* the muted ground: the board's own beige, laid over the tiles so ink reads */
-  --r3-map-veil: rgba(250, 249, 246, 0.55); /* fee-literal-ok: map styling opacity, not a fee */
+  --r3-map-veil: rgba(250, 249, 246, 0.55); /* fee-literal-ok: R3 map styling value, not a fee */
 
   /* Cut-list #1 header fix v2: the traveler chrome's nav height — the nav's own height AND the
      Trip Strip's sticky offset read this one value, so the two cannot drift. */
@@ -28,14 +28,14 @@
   /* Coral is three named colours with ONE token each (ledger `2026-10-05-coral-three-tokens`, R337;
      `2026-10-05-coral-fill-contrast`, R333): the FILL behind white text, coral TEXT on a light
      ground, and the ACCENT for outlines and focus rings. The accent is never a background behind
-     white text (3.43:1). The dark theme is not ruled and keeps its own values below. */ /* fee-literal-ok: map styling opacity, not a fee */
-  --coral-fill: #C8443D; /* white on it 4.83:1 */ /* fee-literal-ok: map styling opacity, not a fee */
-  --coral-text: #B8403A; /* 5.48:1 on white */ /* fee-literal-ok: map styling opacity, not a fee */
+     white text (3.43:1). The dark theme is not ruled and keeps its own values below. */
+  --coral-fill: #C8443D; /* white on it 4.83:1 */
+  --coral-text: #B8403A; /* 5.48:1 on white */
   --coral-accent: #E85D55; /* outlines and rings only */
 
-  --primary: 3 55.8% 51.2%; /* #C8443D = --coral-fill (white on it 4.83:1) */ /* fee-literal-ok: map styling opacity, not a fee */
+  --primary: 3 55.8% 51.2%; /* #C8443D = --coral-fill (white on it 4.83:1) */
   --primary-foreground: 0 0% 100%;
-  --primary-hover: 3 55.8% 45%; /* #B33933 — the fill, darkened; white on it 5.92:1 */ /* fee-literal-ok: map styling opacity, not a fee */
+  --primary-hover: 3 55.8% 45%; /* #B33933 — the fill, darkened; white on it 5.92:1 */
 
   /* Secondary: kept at its pre-ruling value. It is read app-wide (123 files, the consoles and admin
      included) and .console-scope does not override it, so moving it would restyle console buttons
@@ -108,13 +108,13 @@
   --earn-border-dash: #D5D0C8;
   --earn-teal: #2E8B8B;
   --earn-teal-ink: #226B6B;
-  --earn-teal-wash: rgba(46, 139, 139, 0.10); /* fee-literal-ok: map styling opacity, not a fee */
+  --earn-teal-wash: rgba(46, 139, 139, 0.10);
   --earn-gold: #E8B339;
   --earn-gold-ink: #8A6414;
-  --earn-gold-wash: rgba(232, 179, 57, 0.15); /* fee-literal-ok: map styling opacity, not a fee */
+  --earn-gold-wash: rgba(232, 179, 57, 0.15);
   --earn-green: #5DCAA5;
   --earn-green-ink: #2F7D63;
-  --earn-green-wash: rgba(93, 202, 165, 0.15); /* fee-literal-ok: map styling opacity, not a fee */
+  --earn-green-wash: rgba(93, 202, 165, 0.15);
   --earn-coral-bg: #FFF4F4;
   --earn-coral-border: #FCCACA;
   --earn-coral-ink: #E85D55;
@@ -251,15 +251,15 @@
   --earn-border-dash: #3E4045;
   --earn-teal: #43A5A5;
   --earn-teal-ink: #83D6D6;
-  --earn-teal-wash: rgba(67, 165, 165, 0.16); /* fee-literal-ok: map styling opacity, not a fee */
+  --earn-teal-wash: rgba(67, 165, 165, 0.16);
   --earn-gold: #E8B339;
   --earn-gold-ink: #E2BB60;
-  --earn-gold-wash: rgba(232, 179, 57, 0.16); /* fee-literal-ok: map styling opacity, not a fee */
+  --earn-gold-wash: rgba(232, 179, 57, 0.16);
   --earn-green: #5DCAA5;
   --earn-green-ink: #82DBBB;
-  --earn-green-wash: rgba(93, 202, 165, 0.16); /* fee-literal-ok: map styling opacity, not a fee */
-  --earn-coral-bg: rgba(232, 93, 85, 0.13); /* fee-literal-ok: map styling opacity, not a fee */
-  --earn-coral-border: rgba(232, 93, 85, 0.36); /* fee-literal-ok: map styling opacity, not a fee */
+  --earn-green-wash: rgba(93, 202, 165, 0.16);
+  --earn-coral-bg: rgba(232, 93, 85, 0.13);
+  --earn-coral-border: rgba(232, 93, 85, 0.36);
   --earn-coral-ink: #F0908A;
   --earn-navy: #E9ECF1;
   --earn-ink: #E6E8EB;
@@ -310,7 +310,7 @@
     @apply transition-all duration-100;
   }
   .active-elevate-2:active {
-    @apply brightness-90 dark:brightness-125 scale-[0.98]; /* fee-literal-ok: map styling opacity, not a fee */
+    @apply brightness-90 dark:brightness-125 scale-[0.98];
   }
   .toggle-elevate {
     @apply transition-all duration-200;
@@ -469,7 +469,7 @@
 .itinerary-comparison-page.review-board h1 {
   font-family: var(--review-display);
   font-weight: 600;
-  letter-spacing: -0.025em; /* fee-literal-ok: map styling opacity, not a fee */
+  letter-spacing: -0.025em;
 }
 
 .itinerary-comparison-page.review-board .review-mono {
@@ -490,12 +490,12 @@
   border-color: var(--earn-border);
   border-radius: 14px;
   background: var(--earn-card);
-  box-shadow: 0 8px 24px rgba(31, 39, 51, 0.06); /* fee-literal-ok: map styling opacity, not a fee */
+  box-shadow: 0 8px 24px rgba(31, 39, 51, 0.06);
 }
 
 .itinerary-comparison-page.review-board .review-card--recommended {
   border-color: var(--earn-teal);
-  box-shadow: 0 12px 30px rgba(46, 139, 139, 0.13); /* fee-literal-ok: map styling opacity, not a fee */
+  box-shadow: 0 12px 30px rgba(46, 139, 139, 0.13);
 }
 
 .itinerary-comparison-page.review-board .review-card--baseline {
@@ -702,13 +702,13 @@
   }
   
   .img-hover-bright:hover img {
-    filter: brightness(1.05); /* fee-literal-ok: map styling opacity, not a fee */
+    filter: brightness(1.05);
   }
 }
 
 /* R3 map, scoped by the wrapper the R3 surface puts around the shared panel. Nothing here touches the old page. */
 [data-r3-map] .leaflet-control-zoom { display: none !important; }
-[data-r3-map] .leaflet-control-attribution { font-size: 10px !important; background: rgba(255,255,255,0.85) !important; } /* fee-literal-ok: map styling opacity, not a fee */
+[data-r3-map] .leaflet-control-attribution { font-size: 10px !important; background: rgba(255,255,255,0.85) !important; } /* fee-literal-ok: R3 map styling value, not a fee */
 /* ODbL attribution stays; the Leaflet project's prefix link goes. */
 [data-r3-map] .leaflet-control-attribution a[href*="leafletjs"] { display: none !important; }
 [data-r3-map] [data-testid="slip-days-map"] { border: 0 !important; }
@@ -721,7 +721,7 @@
 /* collapsed rail: icons only - the clipped label letters go */
 [data-state="collapsed"] [data-sidebar="menu-button"] > span:not([data-sidebar-label-icon]) { display: none !important; }
 
-[data-r3-map] .leaflet-tile-pane { opacity: 0.55; filter: saturate(0.45) contrast(0.85); } /* fee-literal-ok: map styling opacity, not a fee */
+[data-r3-map] .leaflet-tile-pane { opacity: 0.55; filter: saturate(0.45) contrast(0.85); } /* fee-literal-ok: R3 map styling value, not a fee */
 /* The veil is painted INTO the tile pane, so markers, the ring and the caption chip stay full strength. */
 [data-r3-map] .leaflet-tile-pane::after {
   content: "";
