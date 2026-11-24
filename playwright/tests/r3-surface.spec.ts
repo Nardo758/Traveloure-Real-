@@ -263,6 +263,19 @@ test("U3: the phone surface - days, map, ideas, an empty day and a long trip", a
   const alpha = sticky.bg.startsWith("rgba(") ? Number(sticky.bg.split(",")[3]?.replace(")", "") ?? "1") : 1;
   expect(alpha, `the sticky cell's computed background must be opaque (got ${sticky.bg})`).toBe(1);
   expect(sticky.w, "the sticky cell is as wide as a day cell").toBeGreaterThanOrEqual(Math.floor(sticky.dayW) - 1);
+  // A short trip fits the row: no cell clipped, no horizontal scroll.
+  const row = await page.getByTestId("r3-phone-day-strip").evaluate((el) => {
+    const cells = Array.from(el.querySelectorAll('[data-testid="r3-phone-day-chip"]')) as HTMLElement[];
+    const last = cells[cells.length - 1];
+    return {
+      rowRight: el.getBoundingClientRect().right,
+      lastRight: last ? last.getBoundingClientRect().right : 0,
+      scrollWidth: el.scrollWidth,
+      clientWidth: el.clientWidth,
+    };
+  });
+  expect(row.lastRight, "the last day cell ends inside the row").toBeLessThanOrEqual(Math.ceil(row.rowRight));
+  expect(row.scrollWidth, "a short trip's strip does not scroll").toBe(row.clientWidth);
   await expect(page.getByTestId("r3-phone-day-body")).toBeVisible();
   await expect(page.getByTestId("r3-optimize-card")).toBeVisible();
   await page.evaluate(() => window.scrollTo(0, 0));

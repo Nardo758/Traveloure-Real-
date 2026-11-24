@@ -82,7 +82,7 @@ export function PhoneDayStrip({
         style={{
           flex: fill ? "1 1 0" : "0 0 84px",
           width: fill ? undefined : 84,
-          minWidth: 84,
+          minWidth: fill ? 0 : 84,
           flexShrink: 0,
           borderColor: active ? BOARD_INK : BOARD_LINE,
           backgroundColor: active ? BOARD_INK : day === 0 ? BOARD_CELL : undefined,
@@ -99,7 +99,7 @@ export function PhoneDayStrip({
   };
 
   return (
-    <div className="mt-3 flex items-stretch gap-2 overflow-x-auto pb-1" data-testid="r3-phone-day-strip">
+    <div className={fill ? "mt-3 flex items-stretch gap-2 pb-1" : "mt-3 flex items-stretch gap-2 overflow-x-auto pb-1"} data-testid="r3-phone-day-strip">
       {chip(0, "Ideas", ideas)}
       {columns.map((c) => chip(c.day, c.shortLabel, c.stops.length))}
     </div>
