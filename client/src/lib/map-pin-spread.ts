@@ -26,3 +26,33 @@ export function spreadPins<T extends { kind: string; lat: number; lng: number }>
     return { ...m, lat, lng };
   });
 }
+
+/**
+ * Screen-space pass (Leon, Nov 23 2026): pins whose 26px icons would overlap are nudged apart ON SCREEN, which is what a
+ * reader needs. Anchors (the stay ring) never move - pins move around them - and the order is the scene's stop order, so
+ * the result is the same on every render at the same zoom.
+ */
+export const PIN_ICON_PX = 26;
+export const PIN_GAP_PX = PIN_ICON_PX;
+
+export function spreadPinsPx<T extends { kind: string; x: number; y: number }>(
+  items: readonly T[],
+  gapPx: number = PIN_GAP_PX,
+): T[] {
+  const fixed = items.filter((i) => i.kind !== "pin").map((i) => ({ x: i.x, y: i.y }));
+  const placed = [...fixed];
+  return items.map((item) => {
+    if (item.kind !== "pin") return item;
+    let { x, y } = item;
+    let step = 0;
+    const clashes = () => placed.some((q) => Math.hypot(q.x - x, q.y - y) < gapPx);
+    while (clashes() && step < 12) {
+      step += 1;
+      const angle = (Math.PI * 2 * step) / 12;
+      x = item.x + Math.cos(angle) * gapPx;
+      y = item.y + Math.sin(angle) * gapPx;
+    }
+    placed.push({ x, y });
+    return { ...item, x, y };
+  });
+}

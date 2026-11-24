@@ -4,7 +4,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { spreadPins } from "../map-pin-spread";
+import { spreadPins, spreadPinsPx } from "../map-pin-spread";
 import { isStayItem, r3Columns, r3IdeaCount, r3Ideas, r3MapCounts, r3Stops, r3SurfaceOn, sidebarStartsCollapsed, sidebarStorageKey } from "../r3-surface";
 
 test("flag OFF ignores ?surface=r3 - the parameter alone changes nothing", () => {
@@ -119,4 +119,30 @@ test("spreadPins: two stops at the same point get distinct, deterministic positi
   assert.deepEqual({ lat: once[2].lat, lng: once[2].lng }, point, "the stay ring is never moved");
   assert.deepEqual({ lat: once[3].lat, lng: once[3].lng }, point, "a browse dot is never moved");
   assert.equal(spreadPins(markers).length, markers.length, "nothing is dropped or added");
+});
+
+test("spreadPinsPx: two near pins whose 26px icons overlap are moved apart, in stop order, deterministically", () => {
+  // ~1 km apart at a zoom where the icons overlap: 18px on screen, inside the 26px icon.
+  const items = [
+    { kind: "pin", id: "a", x: 100, y: 100 },
+    { kind: "pin", id: "b", x: 118, y: 100 },
+    { kind: "browse", id: "nearby", x: 400, y: 400 },
+  ];
+  const once = spreadPinsPx(items);
+  assert.deepEqual(once, spreadPinsPx(items), "the same input gives the same positions");
+  assert.deepEqual({ x: once[0].x, y: once[0].y }, { x: 100, y: 100 }, "the first pin keeps its point");
+  const gap = Math.hypot(once[0].x - once[1].x, once[0].y - once[1].y);
+  assert.ok(gap >= 26, `the two icons no longer overlap (gap ${gap})`);
+  assert.deepEqual({ x: once[2].x, y: once[2].y }, { x: 400, y: 400 }, "a browse dot is never moved");
+});
+
+test("spreadPinsPx: a pin on the stay ring moves off it - the ring itself never moves", () => {
+  const items = [
+    { kind: "anchor", id: "stay", x: 100, y: 100 },
+    { kind: "pin", id: "a", x: 109, y: 100 },
+  ];
+  const once = spreadPinsPx(items);
+  assert.deepEqual({ x: once[0].x, y: once[0].y }, { x: 100, y: 100 }, "the ring stays exactly where it is");
+  const gap = Math.hypot(once[0].x - once[1].x, once[0].y - once[1].y);
+  assert.ok(gap >= 26, `the pin is clear of the ring (gap ${gap})`);
 });
