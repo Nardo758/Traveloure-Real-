@@ -54,7 +54,7 @@ function whenLine(start?: string | null, end?: string | null): string {
 function Chip({ label, value, testId }: { label: string; value: string; testId: string }) {
   return (
     <span
-      className="inline-flex items-baseline gap-1 rounded-full border px-3 py-1.5"
+      className="inline-flex shrink-0 items-baseline gap-1 whitespace-nowrap rounded-full border px-3 py-1.5"
       style={{ borderColor: BOARD.line }}
       data-testid={testId}
     >
@@ -252,7 +252,7 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
                 type="button"
                 aria-pressed={mapDay === "all"}
                 onClick={() => setMapDay("all")}
-                className="rounded-full border px-3 py-1 text-[12px] font-medium"
+                className="min-h-11 rounded-full border px-3 py-1 text-[12px] font-medium"
                 style={mapDay === "all" ? { borderColor: BOARD.border, backgroundColor: BOARD.fill, color: BOARD.text } : { borderColor: BOARD.line, color: BOARD.ink }}
                 data-testid="r3-map-chip-all"
               >
@@ -264,7 +264,7 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
                   type="button"
                   aria-pressed={mapDay === c.day}
                   onClick={() => setMapDay(c.day)}
-                  className="rounded-full border px-3 py-1 text-[12px] font-medium"
+                  className="min-h-11 rounded-full border px-3 py-1 text-[12px] font-medium"
                   style={mapDay === c.day ? { borderColor: BOARD.border, backgroundColor: BOARD.fill, color: BOARD.text } : { borderColor: BOARD.line, color: BOARD.ink }}
                   data-testid="r3-map-chip-day"
                   data-day={c.day}
@@ -291,7 +291,9 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
         </div>
       </section>
 
-      <OptimizeCard tripId={tripId} enabled={desktop || !desktop} isOwner={(data as any)?.tripRole === "owner"} />
+      {(desktop || (phoneTab === "days" && openDay >= 1)) ? (
+        <OptimizeCard tripId={tripId} enabled isOwner={(data as any)?.tripRole === "owner"} />
+      ) : null}
 
       <footer
         className={desktop ? "mt-6 flex items-center justify-between rounded-xl border border-border bg-card p-4" : "mt-6 flex flex-nowrap items-center justify-between gap-2 rounded-xl border border-border bg-card p-3"}

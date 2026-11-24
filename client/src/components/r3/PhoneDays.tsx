@@ -83,7 +83,7 @@ export function PhoneDayStrip({
           flex: fill ? "1 1 0" : "0 0 auto",
           minWidth: fill ? 0 : 70,
           borderColor: active ? BOARD_INK : BOARD_LINE,
-          backgroundColor: active ? BOARD_INK : day === 0 ? BOARD_FILL : undefined,
+          backgroundColor: active ? BOARD_INK : day === 0 ? "var(--card)" : undefined,
           color: active ? "var(--r3-pin-text)" : BOARD_INK,
           ...(day === 0 ? { position: "sticky", left: 0, zIndex: 5 } : {}),
         }}
@@ -186,7 +186,7 @@ export function PhoneDayBody({
         style={{ borderColor: BOARD_LINE }}
         data-testid="r3-phone-add"
       >
-        {openDay === 0 ? "Add" : PHONE_ADD}
+        {openDay === 0 ? "+ Add" : PHONE_ADD}
       </button>
     </div>
   );
