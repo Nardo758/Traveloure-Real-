@@ -222,3 +222,30 @@ test("U2: the Optimize card with findings, and its empty state", async ({ page }
   await page.getByTestId("r3-optimize-card").screenshot({ path: path.join(OUT_DIR, "u2-optimize-empty-1280.png") });
   await page.unroute("**/api/optimization-preview**");
 });
+
+test("U3: the phone surface - Days tab and Map tab at 390", async ({ page }) => {
+  fs.mkdirSync(OUT_DIR, { recursive: true });
+  const tripId = await sixStopTrip(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3`);
+  await expect(page.getByTestId("r3-surface")).toBeVisible({ timeout: 30_000 });
+
+  // Days: the two tabs, the day strip, the one open day and its stops.
+  await expect(page.getByTestId("r3-phone-tabs")).toBeVisible();
+  await expect(page.getByTestId("r3-phone-tab-days")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("r3-phone-day-strip")).toBeVisible();
+  await expect(page.getByTestId("r3-phone-day-chip")).toHaveCount(4);
+  await expect(page.getByTestId("r3-phone-day-body")).toBeVisible();
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OUT_DIR, "u3-days-390.png"), fullPage: true });
+
+  // Map: the tab swaps the body for the map, with its chips row and count line.
+  await page.getByTestId("r3-phone-tab-map").click();
+  await expect(page.getByTestId("r3-phone-tab-map")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("r3-map")).toBeVisible();
+  await expect(page.getByTestId("r3-map-chips")).toBeVisible();
+  await page.waitForFunction(() => document.querySelectorAll(".leaflet-tile-loaded").length > 0, { timeout: 20_000 }).catch(() => {});
+  await page.waitForTimeout(600);
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OUT_DIR, "u3-map-390.png"), fullPage: true });
+});

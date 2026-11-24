@@ -19,6 +19,7 @@ import { OCCASION_GROUP_LABELS } from "@shared/experience-group";
 import { planEyebrowLabel } from "@shared/plan-dates";
 import { DaysBoard } from "@/components/r3/DaysBoard";
 import { OptimizeCard } from "@/components/r3/OptimizeCard";
+import { PhoneDayBody, PhoneDayStrip, PhoneTabs, type PhoneTab } from "@/components/r3/PhoneDays";
 import { DaysMapPanel } from "@/components/plan/DaysMapPanel";
 import { r3Columns, r3IdeaCount, r3MapCounts, r3Stops } from "@/lib/r3-surface";
 import { daysMapCountLine } from "@/lib/days-map";
@@ -105,6 +106,9 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
     flight: facts.flightKnown,
   };
   const [mapDay, setMapDay] = useState<"all" | number>("all");
+  // U3 (board V22): the phone's two tabs and the one open day.
+  const [phoneTab, setPhoneTab] = useState<PhoneTab>("days");
+  const [openDay, setOpenDay] = useState(1);
   const [skipped, setSkipped] = useState<NextQuestionKey[]>([]);
   const question = order.find((k) => !answered[k] && !skipped.includes(k)) ?? null;
   const copy = question ? NEXT_QUESTION_COPY[question] : null;
@@ -175,6 +179,8 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
         )}
       </header>
 
+      {desktop ? null : <PhoneTabs tab={phoneTab} onChange={setPhoneTab} />}
+
       <section className="mt-5 rounded-xl border border-border bg-card p-4" data-testid="r3-strip">
         <div className="flex items-start justify-between gap-3">
           <p className="text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground" data-testid="r3-strip-title">What you've told us</p>
@@ -208,9 +214,15 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
       <OptimizeCard tripId={tripId} enabled={desktop} />
 
       <section className="mt-4" data-testid="r3-days" data-day-count={dayCount} data-stop-count={stops.length}>
-        <div className="flex items-start gap-3">
-          <DaysBoard data={data} />
-          <div className="min-w-0 flex-1" data-testid="r3-map">
+        {desktop ? null : phoneTab === "days" ? (
+          <>
+            <PhoneDayStrip data={data} openDay={openDay} onOpen={setOpenDay} ideas={ideas} />
+            <PhoneDayBody data={data} openDay={openDay} />
+          </>
+        ) : null}
+        <div className={desktop ? "flex items-start gap-3" : "mt-3 flex flex-col gap-3"}>
+          {desktop ? <DaysBoard data={data} /> : null}
+          <div className={desktop || phoneTab === "map" ? "min-w-0 flex-1" : "hidden"} data-testid="r3-map">
             {/* ONE chrome row (board V1): All days, the weekdays, then Browse nearby. */}
             <div className="mb-2 flex flex-wrap items-center gap-1.5" data-testid="r3-map-chips">
               <button
