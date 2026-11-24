@@ -50,7 +50,7 @@ export function OptimizeCard({ tripId, enabled }: { tripId: string; enabled: boo
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
           <Link
-            href={`/plans/${tripId}/versions`}
+            href={`/itinerary-comparison/${tripId}`}
             className="h-11 rounded-lg px-4 text-[13px] font-semibold leading-[44px] text-white"
             style={{ backgroundColor: BOARD_INK }}
             data-testid="r3-optimize-cta"
