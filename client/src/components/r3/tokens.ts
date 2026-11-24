@@ -7,3 +7,4 @@ export const BOARD_INK = "var(--r3-board-ink)";
 export const BOARD_COLUMN = "var(--r3-board-col)";
 export const BOARD_CTA = "var(--r3-optimize-cta)";
 export const BOARD_SLATE = "var(--r3-slate)";
+export const BOARD_CELL = "var(--r3-cell)";

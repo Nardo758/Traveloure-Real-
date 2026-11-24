@@ -9,7 +9,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, GripVertical, MoreHorizontal, Plus } from "lucide-react";
-import { BOARD_FILL, BOARD_INK, BOARD_LINE, BOARD_TEXT } from "@/components/r3/tokens";
+import { BOARD_CELL, BOARD_FILL, BOARD_INK, BOARD_LINE, BOARD_TEXT } from "@/components/r3/tokens";
 import type { SlipData } from "@/components/plancard/SlipView";
 import { r3Columns } from "@/lib/r3-surface";
 import { MoveStopSheet } from "@/components/plan/MoveStopSheet";
@@ -80,18 +80,19 @@ export function PhoneDayStrip({
         onClick={() => onOpen(day)}
         className={`${HIT} shrink-0 rounded-xl border px-2 text-center`}
         style={{
-          flex: fill ? "1 1 0" : "0 0 70px",
-          minWidth: 70,
+          flex: fill ? "1 1 0" : "0 0 84px",
+          width: fill ? undefined : 84,
+          minWidth: 84,
           flexShrink: 0,
           borderColor: active ? BOARD_INK : BOARD_LINE,
-          backgroundColor: active ? BOARD_INK : day === 0 ? "var(--card)" : undefined,
+          backgroundColor: active ? BOARD_INK : day === 0 ? BOARD_CELL : undefined,
           color: active ? "var(--r3-pin-text)" : BOARD_INK,
           ...(day === 0 ? { position: "sticky", left: 0, zIndex: 30 } : {}),
         }}
         data-testid="r3-phone-day-chip"
         data-day={day}
       >
-        <span className="block text-[12px] font-semibold">{label}</span>
+        <span className="block whitespace-nowrap text-[12px] font-semibold">{label}</span>
         <span className="block text-[11px] opacity-80">{`${count}`}</span>
       </button>
     );
@@ -100,7 +101,7 @@ export function PhoneDayStrip({
   return (
     <div className="mt-3 flex items-stretch gap-2 overflow-x-auto pb-1" data-testid="r3-phone-day-strip">
       {chip(0, "Ideas", ideas)}
-      {columns.map((c) => chip(c.day, c.label.replace(" \u00b7 ", " "), c.stops.length))}
+      {columns.map((c) => chip(c.day, c.shortLabel, c.stops.length))}
     </div>
   );
 }

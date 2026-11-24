@@ -253,6 +253,16 @@ test("U3: the phone surface - days, map, ideas, an empty day and a long trip", a
   await expect(page.getByTestId("r3-phone-tab-days")).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByTestId("r3-phone-day-chip")).toHaveCount(4);
   await expect(page.getByTestId("r3-phone-hint")).toBeVisible();
+  // The sticky Ideas cell must be OPAQUE and as wide as a day cell, or scrolled cells show through it.
+  const sticky = await page.getByTestId("r3-phone-day-chip").first().evaluate((el) => {
+    const cs = getComputedStyle(el);
+    const cells = Array.from(document.querySelectorAll('[data-testid="r3-phone-day-chip"]')) as HTMLElement[];
+    const dayCell = cells[1];
+    return { bg: cs.backgroundColor, w: el.getBoundingClientRect().width, dayW: dayCell ? dayCell.getBoundingClientRect().width : 0 };
+  });
+  const alpha = sticky.bg.startsWith("rgba(") ? Number(sticky.bg.split(",")[3]?.replace(")", "") ?? "1") : 1;
+  expect(alpha, `the sticky cell's computed background must be opaque (got ${sticky.bg})`).toBe(1);
+  expect(sticky.w, "the sticky cell is as wide as a day cell").toBeGreaterThanOrEqual(Math.floor(sticky.dayW) - 1);
   await expect(page.getByTestId("r3-phone-day-body")).toBeVisible();
   await expect(page.getByTestId("r3-optimize-card")).toBeVisible();
   await page.evaluate(() => window.scrollTo(0, 0));
