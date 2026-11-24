@@ -155,12 +155,22 @@ test("U2: the Optimize card with findings, and its empty state", async ({ page }
   // REAL response shape (three findings from the shared `Finding` type), so the card can be photographed without
   // pretending the seed data reports them. The empty state below runs against the real server, with no intercept.
   const withFindings = await sixStopTrip(page);
-  await page.route("**/api/optimization-preview", async (route) => {
-    if (route.request().method() !== "POST") return route.continue();
+  // The hook uses the app's DEFAULT fetcher: queryKey ["/api/optimization-preview", { tripId }] becomes a GET to
+  // /api/optimization-preview?tripId=... - my first stub only answered POST, so the real request went through.
+  await page.route("**/api/optimization-preview**", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
+        computable: true,
+        itemCount: 6,
+        dayCount: 3,
+        currentScore: 62,
+        improvementRoom: 12,
+        weakest: { key: "pace", score: 62 },
+        dimensions: [],
+        fixedCount: 0,
+        hasPricedItems: false,
         findings: [
           { kind: "leg_unreachable", count: 2, days: [1, 2] },
           { kind: "closed_on_arrival", count: 1, days: [2] },
@@ -169,6 +179,7 @@ test("U2: the Optimize card with findings, and its empty state", async ({ page }
       }),
     });
   });
+
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`${BASE_URL}/plans/${withFindings}?surface=r3`);
   await expect(page.getByTestId("r3-optimize-card")).toBeVisible({ timeout: 30_000 });
