@@ -4,6 +4,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { spreadPins } from "../map-pin-spread";
 import { isStayItem, r3Columns, r3IdeaCount, r3Ideas, r3MapCounts, r3Stops, r3SurfaceOn, sidebarStartsCollapsed, sidebarStorageKey } from "../r3-surface";
 
 test("flag OFF ignores ?surface=r3 - the parameter alone changes nothing", () => {
@@ -98,4 +99,24 @@ test("a stay is the exact DTO shape the plancard sends: type 'accommodation', ne
   assert.equal(r3Columns(plan)[0].stops.length, 1, "the ring is not a card");
   assert.equal(r3Stops(plan).length, 1, "and not a counted stop");
   assert.equal(r3MapCounts(plan).total, 1, "nor part of the map's total");
+});
+
+test("spreadPins: two stops at the same point get distinct, deterministic positions in stop order", () => {
+  const point = { lat: 35.0, lng: 135.77 };
+  const markers = [
+    { kind: "pin", id: "a", ...point },
+    { kind: "pin", id: "b", ...point },
+    { kind: "anchor", id: "stay", ...point },
+    { kind: "browse", id: "nearby", ...point },
+  ];
+  const once = spreadPins(markers);
+  const twice = spreadPins(markers);
+  assert.deepEqual(once, twice, "the same input gives the same positions on every render");
+  assert.deepEqual({ lat: once[0].lat, lng: once[0].lng }, point, "the first pin keeps its own point");
+  assert.notDeepEqual({ lat: once[1].lat, lng: once[1].lng }, point, "the second pin is nudged off it");
+  const gap = Math.hypot(once[0].lat - once[1].lat, once[0].lng - once[1].lng);
+  assert.ok(gap > 0.0015, `the two pins are apart (gap ${gap})`);
+  assert.deepEqual({ lat: once[2].lat, lng: once[2].lng }, point, "the stay ring is never moved");
+  assert.deepEqual({ lat: once[3].lat, lng: once[3].lng }, point, "a browse dot is never moved");
+  assert.equal(spreadPins(markers).length, markers.length, "nothing is dropped or added");
 });

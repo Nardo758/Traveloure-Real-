@@ -15,10 +15,11 @@ import { MapContainer, Marker, TileLayer, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { MAP_DISTRICT_ZOOM, clampFramingZoom, mapFraming } from "@/lib/map-framing";
+import { spreadPins } from "@/lib/map-pin-spread";
 import { ANCHOR_COLOR, AREA_PIN_STYLE, BROWSE_TEAL, PIN_STYLE, areaPinLabel, escapeHtml, leafletSceneInputs, sceneMarkers, type MapArea, type MapScene, type MarkerDescriptor } from "@/lib/map-scene";
 import type { SceneMapProps } from "./SceneMapGoogle";
 
-function iconFor(m: MarkerDescriptor, selected: boolean): L.DivIcon {
+function iconFor(m: MarkerDescriptor, selected: boolean, r3 = false): L.DivIcon {
   if (m.kind === "pin") {
     const st = PIN_STYLE[m.state];
     return L.divIcon({
@@ -29,6 +30,15 @@ function iconFor(m: MarkerDescriptor, selected: boolean): L.DivIcon {
     });
   }
   if (m.kind === "anchor") {
+    if (r3) {
+      // R3: the ring carries no glyph (Leon, Nov 23 2026) - a hollow circle, nothing inside.
+      return L.divIcon({
+        className: "",
+        html: `<div data-testid="${m.testId}" data-anchor-kind="${m.anchorKind}" style="width:28px;height:28px;background:transparent;"></div>`,
+        iconSize: [28, 28],
+        iconAnchor: [14, 14],
+      });
+    }
     return L.divIcon({
       className: "",
       html: `<div data-testid="${m.testId}" data-anchor-kind="${m.anchorKind}" style="width:28px;height:28px;border-radius:8px;background:${ANCHOR_COLOR};color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;">★</div>`,
@@ -56,12 +66,26 @@ function areaIcon(a: MapArea): L.DivIcon {
   });
 }
 
-function Framing({ scene }: { scene: MapScene }) {
+function Framing({ scene, r3 = false }: { scene: MapScene; r3?: boolean }) {
   const map = useMap();
   // GC-1 (rows 196/197/218): a Google-derived anchor is not a framing point here (`leafletSceneInputs`).
   const pts = leafletSceneInputs(scene).framePoints;
   const key = pts.map((p) => `${p.lat}:${p.lng}`).join("|");
   useEffect(() => {
+    // The Leaflet project's prefix ("Leaflet |") is dropped in r3; the ODbL text stays.
+    if (r3) map.attributionControl?.setPrefix(false);
+  }, [map, r3]);
+  useEffect(() => {
+    if (r3) {
+      // R3 (Leon, Nov 23 2026): fit the plan's own points, with a margin - no district-wide framing.
+      if (pts.length === 0) return;
+      if (pts.length === 1) {
+        map.setView([pts[0].lat, pts[0].lng], Math.max(map.getZoom(), MAP_DISTRICT_ZOOM));
+        return;
+      }
+      map.fitBounds(L.latLngBounds(pts.map((p) => [p.lat, p.lng] as [number, number])), { padding: [48, 48] });
+      return;
+    }
     const framing = mapFraming(pts);
     if (framing.kind === "center") map.setView([framing.center.lat, framing.center.lng], framing.zoom);
     else if (framing.kind === "bounds") {
@@ -72,31 +96,6 @@ function Framing({ scene }: { scene: MapScene }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
   return null;
-}
-
-/**
- * R3 (Leon, Nov 23 2026): when two stops land within ~12px at the rendered zoom their numbers are unreadable. In R3 mode
- * only, a COINCIDENT pin is nudged onto a deterministic ring around its own point - stable order (the scene's stop
- * order), no leader lines, same result every render. The old page passes no flag and takes the original path untouched.
- */
-function spreadPins<T extends { kind: string; lat: number; lng: number }>(markers: readonly T[]): T[] {
-  const placed: Array<{ lat: number; lng: number }> = [];
-  return markers.map((m) => {
-    if (m.kind !== "pin") return m;
-    const tooClose = (p: { lat: number; lng: number }) => Math.hypot(p.lat - m.lat, p.lng - m.lng) < 0.002;
-    let lat = m.lat;
-    let lng = m.lng;
-    let step = 0;
-    while (placed.some(tooClose) && step < 8) {
-      step += 1;
-      const angle = (Math.PI * 2 * step) / 8;
-      const nudge = 0.0018;
-      lat = m.lat + Math.sin(angle) * nudge;
-      lng = m.lng + Math.cos(angle) * nudge;
-    }
-    placed.push({ lat, lng });
-    return { ...m, lat, lng };
-  });
 }
 
 export function SceneMapLeaflet({ scene, center, selectedId, onSelect, onSelectBrowse, r3 = false }: Omit<SceneMapProps, "legs"> & { r3?: boolean }) {
@@ -110,7 +109,7 @@ export function SceneMapLeaflet({ scene, center, selectedId, onSelect, onSelectB
         url={tiles?.url ?? "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"}
         attribution={tiles?.attribution ?? "© OpenStreetMap contributors"}
       />
-      <Framing scene={scene} />
+      <Framing scene={scene} r3={r3} />
       {scene.areas.map((a) => (
         <Marker key={a.slug} position={[a.lat, a.lng]} icon={areaIcon(a)} title={a.name} interactive={false} keyboard={false} zIndexOffset={-1000} />
       ))}
@@ -119,7 +118,7 @@ export function SceneMapLeaflet({ scene, center, selectedId, onSelect, onSelectB
         <Marker
           key={m.testId}
           position={[m.lat, m.lng]}
-          icon={iconFor(m, m.kind === "pin" && selectedId === m.id)}
+          icon={iconFor(m, m.kind === "pin" && selectedId === m.id, r3)}
           title={m.title}
           eventHandlers={{
             click: () => {
