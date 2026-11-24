@@ -5,3 +5,5 @@ export const BOARD_BORDER = "var(--r3-board-border)";
 export const BOARD_LINE = "var(--r3-board-line)";
 export const BOARD_INK = "var(--r3-board-ink)";
 export const BOARD_COLUMN = "var(--r3-board-col)";
+export const BOARD_CTA = "var(--r3-optimize-cta)";
+export const BOARD_SLATE = "var(--r3-slate)";

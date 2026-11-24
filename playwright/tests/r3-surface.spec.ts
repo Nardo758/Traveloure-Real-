@@ -77,6 +77,22 @@ async function maskEmails(page: Page): Promise<void> {
   });
 }
 
+
+/** U2: a plan with no items at all - nothing for the optimizer to report, so the card shows its empty state. */
+async function quietTrip(page: Page): Promise<string> {
+  await registerAndSignIn(
+    page.request,
+    { email: `e2e-r3-quiet-${uid()}@example.com`, password: "R3Surface123!", firstName: "Quiet", lastName: "Plan" },
+    BASE_URL,
+  );
+  const trip = await page.request.post(`${BASE_URL}/api/trips`, {
+    data: { title: "R3 quiet plan", destination: "Kyoto, Japan", startDate: "2027-05-01", endDate: "2027-05-02" },
+  });
+  expect(trip.status(), await trip.text()).toBe(201);
+  const { id } = await trip.json();
+  return id as string;
+}
+
 test("R3 P0: the surface mounts with ?surface=r3 and is captured at 1280 and 390", async ({ page }) => {
   fs.mkdirSync(OUT_DIR, { recursive: true });
   const tripId = await sixStopTrip(page);
@@ -116,7 +132,13 @@ test("R3 P0: the surface mounts with ?surface=r3 and is captured at 1280 and 390
   // Let the tiles land before the shot: a capture of an empty canvas proves nothing.
   await page.waitForFunction(() => document.querySelectorAll(".leaflet-tile-loaded").length > 0, { timeout: 20_000 }).catch(() => {});
   await page.waitForTimeout(750);
+  // U2: the Optimize card's body - its findings, the sentence and the two buttons - beside its own board crop.
+  await expect(page.getByTestId("r3-optimize-card")).toBeVisible();
+  await expect(page.getByTestId("r3-optimize-sentence")).toBeVisible();
+  await expect(page.getByTestId("r3-optimize-cta")).toBeVisible();
+  await expect(page.getByTestId("r3-optimize-expert")).toBeVisible();
   await maskEmails(page);
+  await page.getByTestId("r3-optimize-card").screenshot({ path: path.join(OUT_DIR, "u2-optimize-1280.png") });
   await page.screenshot({ path: path.join(OUT_DIR, "v1-1280.png"), fullPage: true });
 
   await page.setViewportSize({ width: 390, height: 844 });
@@ -124,4 +146,79 @@ test("R3 P0: the surface mounts with ?surface=r3 and is captured at 1280 and 390
   await expect(page.getByTestId("r3-surface")).toBeVisible({ timeout: 30_000 });
   await maskEmails(page);
   await page.screenshot({ path: path.join(OUT_DIR, "v1-390.png"), fullPage: true });
+});
+
+test("U2: the Optimize card with findings, and its empty state", async ({ page }) => {
+  fs.mkdirSync(OUT_DIR, { recursive: true });
+
+  // LOOKS CAPTURE ONLY - NOT DATA COVERAGE. The findings state is produced by intercepting the preview request with the
+  // REAL response shape (three findings from the shared `Finding` type), so the card can be photographed without
+  // pretending the seed data reports them. The empty state below runs against the real server, with no intercept.
+  const withFindings = await sixStopTrip(page);
+  // The hook uses the app's DEFAULT fetcher: queryKey ["/api/optimization-preview", { tripId }] becomes a GET to
+  // /api/optimization-preview?tripId=... - my first stub only answered POST, so the real request went through.
+  await page.route("**/api/optimization-preview**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        computable: true,
+        itemCount: 6,
+        dayCount: 3,
+        currentScore: 62,
+        improvementRoom: 12,
+        weakest: { key: "pace", score: 62 },
+        dimensions: [],
+        fixedCount: 0,
+        hasPricedItems: false,
+        findings: [
+          { kind: "leg_unreachable", count: 2, days: [1, 2] },
+          { kind: "closed_on_arrival", count: 1, days: [2] },
+          { kind: "after_last_admission", count: 1, days: [3] },
+        ],
+      }),
+    });
+  });
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`${BASE_URL}/plans/${withFindings}?surface=r3`);
+  await expect(page.getByTestId("r3-optimize-card")).toBeVisible({ timeout: 30_000 });
+  const findings = page.getByTestId("r3-optimize-finding");
+  await expect(findings.first()).toBeVisible({ timeout: 20_000 });
+  expect(await findings.count(), "three findings, as the stub returns").toBe(3);
+  await expect(page.getByTestId("r3-optimize-cta")).toBeVisible();
+  await expect(page.getByTestId("r3-optimize-expert")).toBeVisible();
+  await maskEmails(page);
+  await page.getByTestId("r3-optimize-card").screenshot({ path: path.join(OUT_DIR, "u2-optimize-1280.png") });
+  await page.unroute("**/api/optimization-preview");
+
+  // empty: LOOKS CAPTURE ONLY - NOT DATA COVERAGE. The real preview always reports something about a plan, so the empty
+  // state is photographed through a second stub that answers the same GET with the same computed shape and no findings.
+  await page.route("**/api/optimization-preview**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        computable: true,
+        itemCount: 0,
+        dayCount: 2,
+        currentScore: 0,
+        improvementRoom: 0,
+        weakest: { key: "pace", score: 0 },
+        dimensions: [],
+        fixedCount: 0,
+        hasPricedItems: false,
+        findings: [],
+      }),
+    });
+  });
+  const quiet = await quietTrip(page);
+  await page.goto(`${BASE_URL}/plans/${quiet}?surface=r3`);
+  await expect(page.getByTestId("r3-optimize-card")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("r3-optimize-sentence")).toContainText("Optimize checks real travel times");
+  await expect(page.getByTestId("r3-optimize-cta")).toBeVisible();
+  await expect(page.getByTestId("r3-optimize-expert")).toBeVisible();
+  await maskEmails(page);
+  await page.getByTestId("r3-optimize-card").screenshot({ path: path.join(OUT_DIR, "u2-optimize-empty-1280.png") });
+  await page.unroute("**/api/optimization-preview**");
 });

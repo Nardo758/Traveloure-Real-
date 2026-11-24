@@ -18,6 +18,7 @@ import { NEXT_QUESTION_COPY, NEXT_QUESTION_SKIP, type NextQuestionFacts, type Ne
 import { OCCASION_GROUP_LABELS } from "@shared/experience-group";
 import { planEyebrowLabel } from "@shared/plan-dates";
 import { DaysBoard } from "@/components/r3/DaysBoard";
+import { OptimizeCard } from "@/components/r3/OptimizeCard";
 import { DaysMapPanel } from "@/components/plan/DaysMapPanel";
 import { r3Columns, r3IdeaCount, r3MapCounts, r3Stops } from "@/lib/r3-surface";
 import { daysMapCountLine } from "@/lib/days-map";
@@ -204,9 +205,7 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
         ) : null}
       </section>
 
-      <section className="mt-4 rounded-xl border p-4" style={{ backgroundColor: BOARD.fill, borderColor: BOARD.border }} data-testid="r3-optimize-card">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: BOARD.text }}>What Optimize found in your plan</p>
-      </section>
+      <OptimizeCard tripId={tripId} enabled={desktop} />
 
       <section className="mt-4" data-testid="r3-days" data-day-count={dayCount} data-stop-count={stops.length}>
         <div className="flex items-start gap-3">
