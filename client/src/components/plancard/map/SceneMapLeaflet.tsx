@@ -74,10 +74,36 @@ function Framing({ scene }: { scene: MapScene }) {
   return null;
 }
 
-export function SceneMapLeaflet({ scene, center, selectedId, onSelect, onSelectBrowse }: Omit<SceneMapProps, "legs">) {
+/**
+ * R3 (Leon, Nov 23 2026): when two stops land within ~12px at the rendered zoom their numbers are unreadable. In R3 mode
+ * only, a COINCIDENT pin is nudged onto a deterministic ring around its own point - stable order (the scene's stop
+ * order), no leader lines, same result every render. The old page passes no flag and takes the original path untouched.
+ */
+function spreadPins<T extends { kind: string; lat: number; lng: number }>(markers: readonly T[]): T[] {
+  const placed: Array<{ lat: number; lng: number }> = [];
+  return markers.map((m) => {
+    if (m.kind !== "pin") return m;
+    const tooClose = (p: { lat: number; lng: number }) => Math.hypot(p.lat - m.lat, p.lng - m.lng) < 0.002;
+    let lat = m.lat;
+    let lng = m.lng;
+    let step = 0;
+    while (placed.some(tooClose) && step < 8) {
+      step += 1;
+      const angle = (Math.PI * 2 * step) / 8;
+      const radius = 0.0018;
+      lat = m.lat + Math.sin(angle) * radius;
+      lng = m.lng + Math.cos(angle) * radius;
+    }
+    placed.push({ lat, lng });
+    return { ...m, lat, lng };
+  });
+}
+
+export function SceneMapLeaflet({ scene, center, selectedId, onSelect, onSelectBrowse, r3 = false }: Omit<SceneMapProps, "legs"> & { r3?: boolean }) {
   const { data: tiles } = useQuery<{ url: string; attribution: string }>({ queryKey: ["/api/maps/tiles"], staleTime: Infinity });
   // GC-1: the SAME marker list, minus a Google-derived anchor (named in the legend only).
-  const { markers } = leafletSceneInputs(scene, sceneMarkers(scene));
+  const { markers: rawMarkers } = leafletSceneInputs(scene, sceneMarkers(scene));
+  const markers = r3 ? spreadPins(rawMarkers) : rawMarkers;
   return (
     <MapContainer center={[center.lat, center.lng]} zoom={MAP_DISTRICT_ZOOM - 1} style={{ width: "100%", height: "100%" }} scrollWheelZoom={false}>
       <TileLayer

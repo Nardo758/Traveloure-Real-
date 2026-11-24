@@ -24,18 +24,20 @@ export interface DaysMapCanvasProps {
   onSelect: (id: string | null) => void;
   onGoogleLoad: () => void;
   onGoogleError: () => void;
+  /** R3 only: pins that coincide are nudged apart; old page passes nothing. */
+  r3?: boolean;
 }
 
 const noBrowse = () => {};
 
-export default function DaysMapCanvas({ tripId, scene, center, renderer, leafletMapAllowed, activities, selectedId, onSelect, onGoogleLoad, onGoogleError }: DaysMapCanvasProps) {
+export default function DaysMapCanvas({ tripId, scene, center, renderer, leafletMapAllowed, activities, selectedId, onSelect, onGoogleLoad, onGoogleError , r3 = false}: DaysMapCanvasProps) {
   if (renderer === "google") {
     return (
       <SceneMapGoogle apiKey={MAPS_BROWSER_KEY} onLoad={onGoogleLoad} onError={onGoogleError} scene={scene} center={center} selectedId={selectedId} onSelect={onSelect} onSelectBrowse={noBrowse} />
     );
   }
   if (leafletMapAllowed) {
-    return <SceneMapLeaflet scene={scene} center={center} selectedId={selectedId} onSelect={onSelect} onSelectBrowse={noBrowse} />;
+    return <SceneMapLeaflet scene={scene} center={center} selectedId={selectedId} onSelect={onSelect} onSelectBrowse={noBrowse} r3={r3} />;
   }
   return <MapFallbackList tripId={tripId} activities={activities} />;
 }

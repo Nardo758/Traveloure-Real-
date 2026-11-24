@@ -45,12 +45,14 @@ export interface DaysMapPanelProps {
    * (Leon, Nov 23 2026), which draws ONE chrome row and puts the caption and count INSIDE the map itself.
    */
   chrome?: "full" | "bare";
+  /** R3 only: pins that coincide are nudged apart, and the ring is drawn above them. Absent: no change. */
+  r3?: boolean;
   /** A caller's day filter (the R3 surface's own chips). Absent: the panel keeps its own state. */
   dayKey?: DaysMapKey;
   onDayKeyChange?: (key: DaysMapKey) => void;
 }
 
-export function DaysMapPanel({ tripId, days, anchor, fallbackCenter = null, emptyNote, onBrowse = null, chrome = "full", dayKey, onDayKeyChange }: DaysMapPanelProps) {
+export function DaysMapPanel({ tripId, days, anchor, fallbackCenter = null, emptyNote, onBrowse = null, chrome = "full", dayKey, onDayKeyChange, r3 = false }: DaysMapPanelProps) {
   const [ownChosen, setOwnChosen] = useState<DaysMapKey>("all");
   const chosen = dayKey ?? ownChosen;
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -139,6 +141,7 @@ export function DaysMapPanel({ tripId, days, anchor, fallbackCenter = null, empt
               onSelect={setSelectedId}
               onGoogleLoad={onGoogleLoad}
               onGoogleError={onGoogleError}
+              r3={r3}
             />
           </Suspense>
         ) : emptyNote ? (
