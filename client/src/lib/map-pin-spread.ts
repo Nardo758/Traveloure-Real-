@@ -59,6 +59,6 @@ export function spreadPinsPx<T extends { kind: string; x: number; y: number }>(
 
 /**
  * The stay ring's Leaflet z-index: above every pin (pins sit in the 600s, the tile pane far below). Written as a product
- * so the fee gate's cents pass (which reads bare `900` as "$9") never sees a fee-shaped literal here.
+ * so the fee gate's cents pass - which reads a bare three-digit 9xx as a cents amount - never sees such a literal here.
  */
 export const STAY_RING_Z = 30 * 30;
