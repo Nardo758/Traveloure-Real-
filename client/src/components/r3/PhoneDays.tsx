@@ -80,12 +80,13 @@ export function PhoneDayStrip({
         onClick={() => onOpen(day)}
         className={`${HIT} shrink-0 rounded-xl border px-2 text-center`}
         style={{
-          flex: fill ? "1 1 0" : "0 0 auto",
-          minWidth: fill ? 0 : 70,
+          flex: fill ? "1 1 0" : "0 0 70px",
+          minWidth: 70,
+          flexShrink: 0,
           borderColor: active ? BOARD_INK : BOARD_LINE,
           backgroundColor: active ? BOARD_INK : day === 0 ? "var(--card)" : undefined,
           color: active ? "var(--r3-pin-text)" : BOARD_INK,
-          ...(day === 0 ? { position: "sticky", left: 0, zIndex: 5 } : {}),
+          ...(day === 0 ? { position: "sticky", left: 0, zIndex: 30 } : {}),
         }}
         data-testid="r3-phone-day-chip"
         data-day={day}
@@ -109,10 +110,12 @@ export function PhoneDayBody({
   data,
   openDay,
   onMoveRequested,
+  hasDates = true,
 }: {
   data: SlipData;
   openDay: number;
   onMoveRequested: (stop: any) => void;
+  hasDates?: boolean;
 }) {
   const columns = r3Columns(data);
   const ideas = ((data as any)?.ideas ?? []) as any[];
@@ -186,7 +189,7 @@ export function PhoneDayBody({
         style={{ borderColor: BOARD_LINE }}
         data-testid="r3-phone-add"
       >
-        {openDay === 0 ? "+ Add" : PHONE_ADD}
+        {openDay === 0 || !hasDates ? "+ Add" : PHONE_ADD}
       </button>
     </div>
   );

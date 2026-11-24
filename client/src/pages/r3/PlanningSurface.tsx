@@ -239,7 +239,7 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
           <>
             <PhoneDayStrip data={data} openDay={openDay} onOpen={setOpenDay} ideas={ideas} />
             <PhoneHint show={hintShown && openDay >= 1 && (columns.find((c) => c.day === openDay)?.stops.length ?? 0) > 0} />
-            <PhoneDayBody data={data} openDay={openDay} onMoveRequested={handleMove} />
+            <PhoneDayBody data={data} openDay={openDay} onMoveRequested={handleMove} hasDates={!!trip?.startDate && !!trip?.endDate} />
           </>
         ) : null}
         <div className={desktop ? "flex items-start gap-3" : "mt-3 flex flex-col gap-3"}>
@@ -272,7 +272,7 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
                   {c.label.split(" ")[0]}
                 </button>
               ))}
-              <button type="button" className="ml-auto rounded-full border px-3 py-1 text-[12px] font-medium text-foreground" style={{ borderColor: BOARD.line }} data-testid="r3-map-browse">
+              <button type="button" className="ml-auto flex min-h-11 items-center rounded-full border px-3 py-1 text-[12px] font-medium text-foreground" style={{ borderColor: BOARD.line }} data-testid="r3-map-browse">
                 Browse nearby
               </button>
             </div>
