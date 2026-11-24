@@ -717,7 +717,6 @@
 [data-r3-map] [data-pin-state] { background: var(--r3-pin-ink) !important; color: var(--r3-pin-text) !important; }
 /* the stay: a hollow ring with the board's purple outline, above the pins so it is never hidden by one */
 [data-r3-map] [data-anchor-kind] { background: transparent !important; border: 2px solid var(--r3-board-text) !important; border-radius: 50% !important; width: 30px !important; height: 30px !important; box-shadow: none !important; }
-[data-r3-map] .leaflet-marker-icon:has([data-anchor-kind]) { z-index: 900 !important; }
 /* collapsed rail: icons only - the clipped label letters go */
 [data-state="collapsed"] [data-sidebar="menu-button"] > span:not([data-sidebar-label-icon]) { display: none !important; }
 
