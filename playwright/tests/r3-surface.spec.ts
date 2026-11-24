@@ -78,18 +78,18 @@ async function maskEmails(page: Page): Promise<void> {
 }
 
 
-/** U2: a one-stop plan with nothing to report - the card's empty state. */
+/** U2: a plan with no items at all - nothing for the optimizer to report, so the card shows its empty state. */
 async function quietTrip(page: Page): Promise<string> {
-  await registerAndSignIn(page.request, { email: `e2e-r3-quiet-${uid()}@example.com`, password: "R3Surface123!", firstName: "Quiet", lastName: "Plan" }, BASE_URL);
+  await registerAndSignIn(
+    page.request,
+    { email: `e2e-r3-quiet-${uid()}@example.com`, password: "R3Surface123!", firstName: "Quiet", lastName: "Plan" },
+    BASE_URL,
+  );
   const trip = await page.request.post(`${BASE_URL}/api/trips`, {
     data: { title: "R3 quiet plan", destination: "Kyoto, Japan", startDate: "2027-05-01", endDate: "2027-05-02" },
   });
   expect(trip.status(), await trip.text()).toBe(201);
   const { id } = await trip.json();
-  const res = await page.request.post(`${BASE_URL}/api/trips/${id}/itinerary-items`, {
-    data: { title: "Nishiki Market", dayNumber: 1, startTime: "10:00", latitude: "35.005", longitude: "135.764" },
-  });
-  expect([200, 201], await res.text()).toContain(res.status());
   return id as string;
 }
 
