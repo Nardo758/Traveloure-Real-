@@ -192,7 +192,26 @@ test("U2: the Optimize card with findings, and its empty state", async ({ page }
   await page.getByTestId("r3-optimize-card").screenshot({ path: path.join(OUT_DIR, "u2-optimize-1280.png") });
   await page.unroute("**/api/optimization-preview");
 
-  // empty: a quiet plan keeps the card and both buttons, hides the eyebrow and the "fills these" line
+  // empty: LOOKS CAPTURE ONLY - NOT DATA COVERAGE. The real preview always reports something about a plan, so the empty
+  // state is photographed through a second stub that answers the same GET with the same computed shape and no findings.
+  await page.route("**/api/optimization-preview**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        computable: true,
+        itemCount: 0,
+        dayCount: 2,
+        currentScore: 0,
+        improvementRoom: 0,
+        weakest: { key: "pace", score: 0 },
+        dimensions: [],
+        fixedCount: 0,
+        hasPricedItems: false,
+        findings: [],
+      }),
+    });
+  });
   const quiet = await quietTrip(page);
   await page.goto(`${BASE_URL}/plans/${quiet}?surface=r3`);
   await expect(page.getByTestId("r3-optimize-card")).toBeVisible({ timeout: 30_000 });
@@ -201,4 +220,5 @@ test("U2: the Optimize card with findings, and its empty state", async ({ page }
   await expect(page.getByTestId("r3-optimize-expert")).toBeVisible();
   await maskEmails(page);
   await page.getByTestId("r3-optimize-card").screenshot({ path: path.join(OUT_DIR, "u2-optimize-empty-1280.png") });
+  await page.unroute("**/api/optimization-preview**");
 });
