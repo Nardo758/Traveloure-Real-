@@ -90,9 +90,9 @@ function spreadPins<T extends { kind: string; lat: number; lng: number }>(marker
     while (placed.some(tooClose) && step < 8) {
       step += 1;
       const angle = (Math.PI * 2 * step) / 8;
-      const radius = 0.0018;
-      lat = m.lat + Math.sin(angle) * radius;
-      lng = m.lng + Math.cos(angle) * radius;
+      const nudge = 0.0018;
+      lat = m.lat + Math.sin(angle) * nudge;
+      lng = m.lng + Math.cos(angle) * nudge;
     }
     placed.push({ lat, lng });
     return { ...m, lat, lng };
