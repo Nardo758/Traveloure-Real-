@@ -43,3 +43,24 @@ export async function markSeededItemsAsOsm(tripId: string, stayTitle?: string): 
     await client.end();
   }
 }
+
+
+/**
+ * TEST-ONLY (U2): removes the coordinates from a plan's seeded stops, directly in the CI database, so the optimizer's
+ * own preview has something to report (its unlocated-placeholder finding). Same guard as the OSM helper: it refuses to
+ * run unless CI=true and DATABASE_URL is a local test database.
+ */
+export async function clearSeededCoordinates(tripId: string): Promise<number> {
+  assertTestDatabase();
+  const client = new Client({ connectionString: process.env.DATABASE_URL });
+  await client.connect();
+  try {
+    const res = await client.query(
+      "UPDATE itinerary_items SET latitude = NULL, longitude = NULL, coord_source = NULL WHERE trip_id = $1",
+      [tripId],
+    );
+    return res.rowCount ?? 0;
+  } finally {
+    await client.end();
+  }
+}

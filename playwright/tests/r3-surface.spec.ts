@@ -12,7 +12,7 @@ import { test, expect, type Page } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
 import { registerAndSignIn } from "../utils/auth";
-import { markSeededItemsAsOsm } from "../utils/osm-coords";
+import { clearSeededCoordinates, markSeededItemsAsOsm } from "../utils/osm-coords";
 
 const BASE_URL = process.env.BASE_URL ?? "http://localhost:5000";
 const OUT_DIR = path.join(process.cwd(), "playwright", "r3-captures");
@@ -77,6 +77,29 @@ async function maskEmails(page: Page): Promise<void> {
   });
 }
 
+
+/** U2: a plan whose stops have no coordinates, so the optimizer's own preview has something to report. */
+async function unlocatedTrip(page: Page): Promise<string> {
+  const tripId = await sixStopTrip(page);
+  await clearSeededCoordinates(tripId);
+  return tripId;
+}
+
+/** U2: a one-stop plan with nothing to report - the card's empty state. */
+async function quietTrip(page: Page): Promise<string> {
+  await registerAndSignIn(page.request, { email: `e2e-r3-quiet-${uid()}@example.com`, password: "R3Surface123!", firstName: "Quiet", lastName: "Plan" }, BASE_URL);
+  const trip = await page.request.post(`${BASE_URL}/api/trips`, {
+    data: { title: "R3 quiet plan", destination: "Kyoto, Japan", startDate: "2027-05-01", endDate: "2027-05-02" },
+  });
+  expect(trip.status(), await trip.text()).toBe(201);
+  const { id } = await trip.json();
+  const res = await page.request.post(`${BASE_URL}/api/trips/${id}/itinerary-items`, {
+    data: { title: "Nishiki Market", dayNumber: 1, startTime: "10:00", latitude: "35.005", longitude: "135.764" },
+  });
+  expect([200, 201], await res.text()).toContain(res.status());
+  return id as string;
+}
+
 test("R3 P0: the surface mounts with ?surface=r3 and is captured at 1280 and 390", async ({ page }) => {
   fs.mkdirSync(OUT_DIR, { recursive: true });
   const tripId = await sixStopTrip(page);
@@ -130,4 +153,32 @@ test("R3 P0: the surface mounts with ?surface=r3 and is captured at 1280 and 390
   await expect(page.getByTestId("r3-surface")).toBeVisible({ timeout: 30_000 });
   await maskEmails(page);
   await page.screenshot({ path: path.join(OUT_DIR, "v1-390.png"), fullPage: true });
+});
+
+test("U2: the Optimize card with findings, and its empty state", async ({ page }) => {
+  fs.mkdirSync(OUT_DIR, { recursive: true });
+
+  // with findings: a plan whose stops are unlocated, so the preview reports them
+  const withFindings = await unlocatedTrip(page);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`${BASE_URL}/plans/${withFindings}?surface=r3`);
+  await expect(page.getByTestId("r3-optimize-card")).toBeVisible({ timeout: 30_000 });
+  const findings = page.getByTestId("r3-optimize-finding");
+  await expect(findings.first()).toBeVisible({ timeout: 20_000 });
+  const count = await findings.count();
+  expect(count, "the seeded plan reports at least one finding").toBeGreaterThan(0);
+  await expect(page.getByTestId("r3-optimize-cta")).toBeVisible();
+  await expect(page.getByTestId("r3-optimize-expert")).toBeVisible();
+  await maskEmails(page);
+  await page.getByTestId("r3-optimize-card").screenshot({ path: path.join(OUT_DIR, "u2-optimize-1280.png") });
+
+  // empty: a quiet plan keeps the card and both buttons, hides the eyebrow and the "fills these" line
+  const quiet = await quietTrip(page);
+  await page.goto(`${BASE_URL}/plans/${quiet}?surface=r3`);
+  await expect(page.getByTestId("r3-optimize-card")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("r3-optimize-sentence")).toContainText("Optimize checks real travel times");
+  await expect(page.getByTestId("r3-optimize-cta")).toBeVisible();
+  await expect(page.getByTestId("r3-optimize-expert")).toBeVisible();
+  await maskEmails(page);
+  await page.getByTestId("r3-optimize-card").screenshot({ path: path.join(OUT_DIR, "u2-optimize-empty-1280.png") });
 });

@@ -10,11 +10,14 @@
 import { Link } from "wouter";
 import { useOptimizerLeadData } from "@/components/plan/use-optimizer-lead-data";
 import { findingBadge, optimizeCtaLabel } from "@/components/plan/OptimizerLead";
-import { BOARD_BORDER, BOARD_FILL, BOARD_INK, BOARD_TEXT } from "@/components/r3/tokens";
+import { BOARD_BORDER, BOARD_CTA, BOARD_FILL, BOARD_INK, BOARD_SLATE, BOARD_TEXT } from "@/components/r3/tokens";
 
 const OPTIMIZE_SENTENCE =
   "Optimize fills these, checks real travel times and builds three versions to compare. Your pinned stops stay where they are.";
 const EXPERT_CTA = "Get help from a local expert";
+/** U2 (Leon, Nov 23 2026): with nothing to report, the card keeps both buttons and says what Optimize does. DRAFT. */
+const OPTIMIZE_EMPTY_LINE =
+  "Optimize checks real travel times and builds three versions to compare. Your pinned stops stay where they are.";
 
 export function OptimizeCard({ tripId, enabled }: { tripId: string; enabled: boolean }) {
   const { findings, fee } = useOptimizerLeadData(tripId, enabled);
@@ -26,9 +29,11 @@ export function OptimizeCard({ tripId, enabled }: { tripId: string; enabled: boo
       style={{ backgroundColor: BOARD_FILL, borderColor: BOARD_BORDER }}
       data-testid="r3-optimize-card"
     >
-      <p className="text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: BOARD_TEXT }}>
-        What Optimize found in your plan
-      </p>
+      {shown.length ? (
+        <p className="text-[11px] font-semibold uppercase tracking-[0.08em]" style={{ color: BOARD_TEXT }}>
+          What Optimize found in your plan
+        </p>
+      ) : null}
       <div className="mt-2 flex flex-wrap items-start gap-6">
         <div className="min-w-0 flex-1">
           {shown.length ? (
@@ -44,15 +49,15 @@ export function OptimizeCard({ tripId, enabled }: { tripId: string; enabled: boo
               })}
             </ul>
           ) : null}
-          <p className="mt-2 text-[12px] text-muted-foreground" data-testid="r3-optimize-sentence">
-            {OPTIMIZE_SENTENCE}
+          <p className="mt-2 text-[12px]" style={{ color: BOARD_SLATE }} data-testid="r3-optimize-sentence">
+            {shown.length ? OPTIMIZE_SENTENCE : OPTIMIZE_EMPTY_LINE}
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
           <Link
             href={`/itinerary-comparison/${tripId}`}
             className="h-11 rounded-lg px-4 text-[13px] font-semibold leading-[44px] text-white"
-            style={{ backgroundColor: BOARD_INK }}
+            style={{ backgroundColor: BOARD_CTA }}
             data-testid="r3-optimize-cta"
           >
             {optimizeCtaLabel(fee)}
