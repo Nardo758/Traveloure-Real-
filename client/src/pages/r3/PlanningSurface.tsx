@@ -19,6 +19,8 @@ import { OCCASION_GROUP_LABELS } from "@shared/experience-group";
 import { planEyebrowLabel } from "@shared/plan-dates";
 import { DaysBoard } from "@/components/r3/DaysBoard";
 import { OptimizeCard } from "@/components/r3/OptimizeCard";
+import { PhoneDayBody, PhoneDayStrip, PhoneHint, PhoneTabs, type PhoneTab } from "@/components/r3/PhoneDays";
+import { useQueryClient } from "@tanstack/react-query";
 import { DaysMapPanel } from "@/components/plan/DaysMapPanel";
 import { r3Columns, r3IdeaCount, r3MapCounts, r3Stops } from "@/lib/r3-surface";
 import { daysMapCountLine } from "@/lib/days-map";
@@ -52,7 +54,7 @@ function whenLine(start?: string | null, end?: string | null): string {
 function Chip({ label, value, testId }: { label: string; value: string; testId: string }) {
   return (
     <span
-      className="inline-flex items-baseline gap-1 rounded-full border px-3 py-1.5"
+      className="inline-flex shrink-0 items-baseline gap-1 whitespace-nowrap rounded-full border px-3 py-1.5"
       style={{ borderColor: BOARD.line }}
       data-testid={testId}
     >
@@ -105,6 +107,29 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
     flight: facts.flightKnown,
   };
   const [mapDay, setMapDay] = useState<"all" | number>("all");
+  // U3 (board V22): the phone's two tabs and the one open day.
+  const [phoneTab, setPhoneTab] = useState<PhoneTab>("days");
+  const [openDay, setOpenDay] = useState(1);
+  const [hintShown, setHintShown] = useState(true);
+  const queryClient = useQueryClient();
+  // The approved Move: the same PATCH the old page's move sheet sends. On success the hint goes (first move only).
+  const handleMove = async (stop: any) => {
+    const target = Number(stop?.dayNumber ?? openDay) + 1;
+    try {
+      const res = await fetch(`/api/trips/${tripId}/itinerary-items/${stop.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
+        body: JSON.stringify({ dayNumber: target }),
+      });
+      if (res.ok) {
+        setHintShown(false);
+        await queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+      }
+    } catch {
+      /* a failed move leaves the plan and the hint untouched */
+    }
+  };
   const [skipped, setSkipped] = useState<NextQuestionKey[]>([]);
   const question = order.find((k) => !answered[k] && !skipped.includes(k)) ?? null;
   const copy = question ? NEXT_QUESTION_COPY[question] : null;
@@ -175,12 +200,15 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
         )}
       </header>
 
-      <section className="mt-5 rounded-xl border border-border bg-card p-4" data-testid="r3-strip">
+      {desktop ? null : <PhoneTabs tab={phoneTab} onChange={setPhoneTab} />}
+
+      {desktop || phoneTab === "days" ? (
+<section className="mt-5 rounded-xl border border-border bg-card p-4" data-testid="r3-strip">
         <div className="flex items-start justify-between gap-3">
           <p className="text-[12px] font-semibold uppercase tracking-[0.06em] text-muted-foreground" data-testid="r3-strip-title">What you've told us</p>
           <button type="button" className="text-[13px] font-medium underline-offset-2 hover:underline" style={{ color: BOARD.text }} data-testid="r3-strip-change">Change any of these</button>
         </div>
-        <div className="mt-3 flex flex-wrap items-center gap-2">
+        <div className="mt-3 flex flex-nowrap items-center gap-2 overflow-x-auto" data-testid="r3-strip-chips">
           {where ? <Chip label="Where" value={where} testId="r3-chip-where" /> : null}
           {when ? <Chip label="When" value={when} testId="r3-chip-when" /> : null}
           {who ? <Chip label="Who" value={who} testId="r3-chip-who" /> : null}
@@ -193,7 +221,7 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
             <p className="text-[13px] text-foreground">
               <span className="font-semibold">Next:</span> {copy.sentence.replace(/^Next:\s*/, "")}
             </p>
-            <div className="flex items-center gap-2">
+            <div className="ml-auto flex items-center gap-2">
               <button type="button" className="h-11 rounded-lg border px-3 text-[13px] font-semibold" style={boardOutline} data-testid="r3-question-action">
                 {copy.action}
               </button>
@@ -204,12 +232,19 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
           </div>
         ) : null}
       </section>
-
-      <OptimizeCard tripId={tripId} enabled={desktop} />
+      ) : null}
 
       <section className="mt-4" data-testid="r3-days" data-day-count={dayCount} data-stop-count={stops.length}>
-        <div className="flex items-start gap-3">
-          <DaysBoard data={data} />
+        {desktop ? null : phoneTab === "days" ? (
+          <>
+            <PhoneDayStrip data={data} openDay={openDay} onOpen={setOpenDay} ideas={ideas} />
+            <PhoneHint show={hintShown && openDay >= 1 && (columns.find((c) => c.day === openDay)?.stops.length ?? 0) > 0} />
+            <PhoneDayBody data={data} openDay={openDay} onMoveRequested={handleMove} hasDates={!!trip?.startDate && !!trip?.endDate} />
+          </>
+        ) : null}
+        <div className={desktop ? "flex items-start gap-3" : "mt-3 flex flex-col gap-3"}>
+          {desktop ? <DaysBoard data={data} /> : null}
+          {desktop || phoneTab === "map" ? (
           <div className="min-w-0 flex-1" data-testid="r3-map">
             {/* ONE chrome row (board V1): All days, the weekdays, then Browse nearby. */}
             <div className="mb-2 flex flex-wrap items-center gap-1.5" data-testid="r3-map-chips">
@@ -217,7 +252,7 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
                 type="button"
                 aria-pressed={mapDay === "all"}
                 onClick={() => setMapDay("all")}
-                className="rounded-full border px-3 py-1 text-[12px] font-medium"
+                className="min-h-11 rounded-full border px-3 py-1 text-[12px] font-medium"
                 style={mapDay === "all" ? { borderColor: BOARD.border, backgroundColor: BOARD.fill, color: BOARD.text } : { borderColor: BOARD.line, color: BOARD.ink }}
                 data-testid="r3-map-chip-all"
               >
@@ -229,7 +264,7 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
                   type="button"
                   aria-pressed={mapDay === c.day}
                   onClick={() => setMapDay(c.day)}
-                  className="rounded-full border px-3 py-1 text-[12px] font-medium"
+                  className="min-h-11 rounded-full border px-3 py-1 text-[12px] font-medium"
                   style={mapDay === c.day ? { borderColor: BOARD.border, backgroundColor: BOARD.fill, color: BOARD.text } : { borderColor: BOARD.line, color: BOARD.ink }}
                   data-testid="r3-map-chip-day"
                   data-day={c.day}
@@ -237,7 +272,7 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
                   {c.label.split(" ")[0]}
                 </button>
               ))}
-              <button type="button" className="ml-auto rounded-full border px-3 py-1 text-[12px] font-medium text-foreground" style={{ borderColor: BOARD.line }} data-testid="r3-map-browse">
+              <button type="button" className="ml-auto flex min-h-11 items-center rounded-full border px-3 py-1 text-[12px] font-medium text-foreground" style={{ borderColor: BOARD.line }} data-testid="r3-map-browse">
                 Browse nearby
               </button>
             </div>
@@ -252,8 +287,13 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
               {`${countLine ?? ""}${countLine ? " \u00b7 " : ""}the ring is where you're staying${ideas > 0 ? " \u00b7 Ideas aren't shown until they have a day" : ""}`}
             </p>
           </div>
+          ) : null}
         </div>
       </section>
+
+      {(desktop || (phoneTab === "days" && openDay >= 1)) ? (
+        <OptimizeCard tripId={tripId} enabled isOwner={(data as any)?.tripRole === "owner"} />
+      ) : null}
 
       <footer
         className={desktop ? "mt-6 flex items-center justify-between rounded-xl border border-border bg-card p-4" : "mt-6 flex flex-nowrap items-center justify-between gap-2 rounded-xl border border-border bg-card p-3"}

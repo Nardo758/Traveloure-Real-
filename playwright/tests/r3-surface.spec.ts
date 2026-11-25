@@ -222,3 +222,124 @@ test("U2: the Optimize card with findings, and its empty state", async ({ page }
   await page.getByTestId("r3-optimize-card").screenshot({ path: path.join(OUT_DIR, "u2-optimize-empty-1280.png") });
   await page.unroute("**/api/optimization-preview**");
 });
+
+/** A 7-day plan with two stops on day 1 and none on day 7 - the long strip and the empty day. */
+async function longTrip(page: Page): Promise<string> {
+  await registerAndSignIn(page.request, { email: `e2e-r3-long-${uid()}@example.com`, password: "R3Surface123!", firstName: "Long", lastName: "Plan" }, BASE_URL);
+  const trip = await page.request.post(`${BASE_URL}/api/trips`, {
+    data: { title: "R3 long plan", destination: "Kyoto, Japan", startDate: "2027-06-01", endDate: "2027-06-07" },
+  });
+  expect(trip.status(), await trip.text()).toBe(201);
+  const { id } = await trip.json();
+  for (const stop of [
+    { title: "Arashiyama Bamboo Grove", dayNumber: 1, startTime: "10:00" },
+    { title: "Tenryu-ji", dayNumber: 1, startTime: "13:00" },
+  ]) {
+    const res = await page.request.post(`${BASE_URL}/api/trips/${id}/itinerary-items`, { data: stop });
+    expect([200, 201], await res.text()).toContain(res.status());
+  }
+  return id as string;
+}
+
+test("U3: the phone surface - days, map, ideas, an empty day and a long trip", async ({ page }) => {
+  fs.mkdirSync(OUT_DIR, { recursive: true });
+  const tripId = await sixStopTrip(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3`);
+  await expect(page.getByTestId("r3-surface")).toBeVisible({ timeout: 30_000 });
+
+  // Days: the pills, the strip (Ideas + 3 days), the hint, the open day's stops, the Optimize card under them.
+  await expect(page.getByTestId("r3-phone-tabs")).toBeVisible();
+  await expect(page.getByTestId("r3-phone-tab-days")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("r3-phone-day-chip")).toHaveCount(4);
+  await expect(page.getByTestId("r3-phone-hint")).toBeVisible();
+  // The sticky Ideas cell must be OPAQUE and as wide as a day cell, or scrolled cells show through it.
+  const sticky = await page.getByTestId("r3-phone-day-chip").first().evaluate((el) => {
+    const cs = getComputedStyle(el);
+    const cells = Array.from(document.querySelectorAll('[data-testid="r3-phone-day-chip"]')) as HTMLElement[];
+    const dayCell = cells[1];
+    return { bg: cs.backgroundColor, w: el.getBoundingClientRect().width, dayW: dayCell ? dayCell.getBoundingClientRect().width : 0 };
+  });
+  const alpha = sticky.bg.startsWith("rgba(") ? Number(sticky.bg.split(",")[3]?.replace(")", "") ?? "1") : 1;
+  expect(alpha, `the sticky cell's computed background must be opaque (got ${sticky.bg})`).toBe(1);
+  expect(sticky.w, "the sticky cell is as wide as a day cell").toBeGreaterThanOrEqual(Math.floor(sticky.dayW) - 1);
+  // A short trip fits the row: no cell clipped, no horizontal scroll.
+  const row = await page.getByTestId("r3-phone-day-strip").evaluate((el) => {
+    const cells = Array.from(el.querySelectorAll('[data-testid="r3-phone-day-chip"]')) as HTMLElement[];
+    const last = cells[cells.length - 1];
+    return {
+      rowRight: el.getBoundingClientRect().right,
+      lastRight: last ? last.getBoundingClientRect().right : 0,
+      scrollWidth: el.scrollWidth,
+      clientWidth: el.clientWidth,
+    };
+  });
+  expect(row.lastRight, "the last day cell ends inside the row").toBeLessThanOrEqual(Math.ceil(row.rowRight));
+  expect(row.scrollWidth, "a short trip's strip does not scroll").toBe(row.clientWidth);
+  await expect(page.getByTestId("r3-phone-day-body")).toBeVisible();
+  await expect(page.getByTestId("r3-optimize-card")).toBeVisible();
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OUT_DIR, "u3-days-390.png"), fullPage: true });
+
+  // Ideas: the first chip opens the ideas list.
+  await page.getByTestId("r3-phone-day-chip").first().click();
+  await expect(page.getByTestId("r3-phone-day-body")).toHaveAttribute("data-day", "0");
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OUT_DIR, "u3-ideas-390.png"), fullPage: true });
+
+  // Map: the tab swaps the body for the map, its chips and the count line; the map is re-fitted on open.
+  await page.getByTestId("r3-phone-tab-map").click();
+  await expect(page.getByTestId("r3-phone-tab-map")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByTestId("r3-map")).toBeVisible();
+  await expect(page.getByTestId("r3-map-chips")).toBeVisible();
+  await expect(page.getByTestId("r3-map-count")).toBeVisible();
+  await page.waitForFunction(() => document.querySelectorAll(".leaflet-tile-loaded").length > 0, { timeout: 20_000 }).catch(() => {});
+  // 3: the map must really draw - at least one pin AND the stay ring, or the test fails.
+  await expect(page.locator("[data-pin-state]").first()).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator("[data-anchor-kind]").first()).toBeVisible({ timeout: 20_000 });
+  await page.waitForTimeout(600);
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OUT_DIR, "u3-map-390.png"), fullPage: true });
+
+  // A 7-day trip: the strip scrolls, the last cell cut off, and an empty day offers only the dashed Add.
+  const longId = await longTrip(page);
+  await page.goto(`${BASE_URL}/plans/${longId}?surface=r3`);
+  await expect(page.getByTestId("r3-phone-day-strip")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("r3-phone-day-chip")).toHaveCount(8);
+  await page.getByTestId("r3-phone-day-chip").last().click();
+  await expect(page.getByTestId("r3-phone-day-body")).toHaveAttribute("data-day", "7");
+  await expect(page.getByTestId("r3-phone-add")).toBeVisible();
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OUT_DIR, "u3-empty-day-390.png"), fullPage: true });
+
+  // The stop menu on the long trip, open on the approved Move entry.
+  await page.getByTestId("r3-phone-day-chip").nth(1).click();
+  await expect(page.getByTestId("r3-phone-stop-card").first()).toBeVisible();
+  await page.getByTestId("r3-phone-stop-menu").first().click();
+  await expect(page.getByTestId("r3-phone-move")).toBeVisible();
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OUT_DIR, "u3-long-trip-390.png"), fullPage: true });
+
+  // Guest: LOOKS CAPTURE ONLY - NOT DATA COVERAGE. The slip response is rewritten to a non-owner role so the hidden
+  // Optimize card can be photographed; nothing in production changes.
+  await page.unroute("**/api/optimization-preview**");
+  await page.route(`**/api/trips/${tripId}/plancard**`, async (route) => {
+    const res = await route.fetch();
+    const json = await res.json();
+    json.tripRole = "guest";
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(json) });
+  });
+  await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3`);
+  await expect(page.getByTestId("r3-surface")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("r3-phone-tabs")).toBeVisible();
+  await expect(page.getByTestId("r3-optimize-card")).toHaveCount(0);
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OUT_DIR, "u3-guest-390.png"), fullPage: true });
+  await page.unroute(`**/api/trips/${tripId}/plancard**`);
+});

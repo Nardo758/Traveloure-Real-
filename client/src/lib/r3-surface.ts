@@ -86,7 +86,7 @@ export function isStayItem(item: any): boolean {
 const MONTH = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /** One column per day, in the plan's own order, each holding the stops the day rows name for it. */
-export function r3Columns(data: any): Array<{ day: number; label: string; stops: any[] }> {
+export function r3Columns(data: any): Array<{ day: number; label: string; shortLabel: string; stops: any[] }> {
   const days = Array.isArray(data?.days) ? data.days : [];
   return days.map((d: any, i: number) => {
     const day = Number(d?.dayNumber ?? i + 1);
@@ -107,7 +107,9 @@ export function r3Columns(data: any): Array<{ day: number; label: string; stops:
     const label = date && !Number.isNaN(date.getTime())
       ? `${WEEKDAY[date.getDay()]} \u00b7 ${date.getDate()} ${MONTH[date.getMonth()]}`
       : `Day ${day}`;
-    return { day, label, stops: (Array.isArray(d?.activities) ? d.activities : []).filter((a: any) => !isStayItem(a)) };
+    // The phone strip uses the board's short form: weekday + day number, no month ("Tue 8").
+    const shortLabel = date && !Number.isNaN(date.getTime()) ? `${WEEKDAY[date.getDay()]} ${date.getDate()}` : `Day ${day}`;
+    return { day, label, shortLabel, stops: (Array.isArray(d?.activities) ? d.activities : []).filter((a: any) => !isStayItem(a)) };
   });
 }
 

@@ -9,6 +9,7 @@
  */
 import { Link } from "wouter";
 import { useOptimizerLeadData } from "@/components/plan/use-optimizer-lead-data";
+import { useSignupMode } from "@/lib/signup-mode";
 import { findingBadge, optimizeCtaLabel } from "@/components/plan/OptimizerLead";
 import { BOARD_BORDER, BOARD_CTA, BOARD_FILL, BOARD_INK, BOARD_SLATE, BOARD_TEXT } from "@/components/r3/tokens";
 
@@ -19,9 +20,14 @@ const EXPERT_CTA = "Get help from a local expert";
 const OPTIMIZE_EMPTY_LINE =
   "Optimize checks real travel times and builds three versions to compare. Your pinned stops stay where they are.";
 
-export function OptimizeCard({ tripId, enabled }: { tripId: string; enabled: boolean }) {
-  const { findings, fee } = useOptimizerLeadData(tripId, enabled);
+export function OptimizeCard({ tripId, enabled, isOwner }: { tripId: string; enabled: boolean; isOwner: boolean }) {
+  // V22 note 6 (Leon, Nov 24 2026): the whole card is hidden for anyone who is not the owner, and in waitlist mode.
+  // The mode is the ONE the app already reads for priced controls (`useSignupMode`, `lib/signup-mode.ts`).
+  const { mode } = useSignupMode();
+  const waitlist = mode === "waitlist";
+  const { findings, fee } = useOptimizerLeadData(tripId, enabled && isOwner && !waitlist);
   const shown = (findings ?? []).slice(0, 3);
+  if (!isOwner || waitlist) return null;
 
   return (
     <section
@@ -53,10 +59,10 @@ export function OptimizeCard({ tripId, enabled }: { tripId: string; enabled: boo
             {shown.length ? OPTIMIZE_SENTENCE : OPTIMIZE_EMPTY_LINE}
           </p>
         </div>
-        <div className="flex shrink-0 flex-wrap items-center gap-2">
+        <div className="flex w-full shrink-0 flex-col items-stretch gap-2 md:w-auto md:flex-row md:items-center">
           <Link
             href={`/itinerary-comparison/${tripId}`}
-            className="h-11 rounded-lg px-4 text-[13px] font-semibold leading-[44px] text-white"
+            className="h-11 w-full rounded-lg px-4 text-center text-[13px] font-semibold leading-[44px] text-white md:w-auto"
             style={{ backgroundColor: BOARD_CTA }}
             data-testid="r3-optimize-cta"
           >
@@ -64,7 +70,7 @@ export function OptimizeCard({ tripId, enabled }: { tripId: string; enabled: boo
           </Link>
           <Link
             href="/experts"
-            className="h-11 rounded-lg border bg-card px-4 text-[13px] font-medium leading-[44px]"
+            className="h-11 w-full rounded-lg border bg-card px-4 text-center text-[13px] font-medium leading-[44px] md:w-auto"
             style={{ borderColor: BOARD_BORDER, color: BOARD_INK }}
             data-testid="r3-optimize-expert"
           >
