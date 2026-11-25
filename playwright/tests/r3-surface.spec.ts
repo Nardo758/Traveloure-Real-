@@ -300,7 +300,23 @@ test("U3: the phone surface - days, map, ideas, an empty day and a long trip", a
   // 3: the map must really draw - at least one pin AND the stay ring, or the test fails.
   await expect(page.locator("[data-pin-state]").first()).toBeVisible({ timeout: 20_000 });
   await expect(page.locator("[data-anchor-kind]").first()).toBeVisible({ timeout: 20_000 });
-  await page.waitForFunction(() => document.querySelectorAll(".leaflet-tile-loaded").length > 0, { timeout: 20_000 }).catch(() => {});
+  // Wait until the tiles actually span the canvas: the re-fit lands first, the tiles arrive after, and a fixed pause
+  // photographed a 76%-covered map. The poll is bounded and then asserted below, so a real gap still fails the run.
+  await page
+    .waitForFunction(
+      () => {
+        const container = document.querySelector('[data-testid="r3-map-canvas-wrap"]') as HTMLElement | null;
+        if (!container) return false;
+        const c = container.getBoundingClientRect();
+        const tiles = Array.from(document.querySelectorAll(".leaflet-tile-loaded")).map((el) => el.getBoundingClientRect());
+        if (!tiles.length) return false;
+        const left = Math.min(...tiles.map((r) => r.left));
+        const right = Math.max(...tiles.map((r) => r.right));
+        return (Math.min(right, c.right) - Math.max(left, c.left)) / c.width >= 0.9;
+      },
+      { timeout: 25_000 },
+    )
+    .catch(() => {});
   const phoneCover = await page.evaluate(() => {
     const container = document.querySelector('[data-testid="r3-map-canvas-wrap"]') as HTMLElement | null;
     if (!container) return { w: 0, h: 0, pins: 0, pinsInside: false };
