@@ -2,7 +2,7 @@
  * r3-surface.spec.ts — the Revision 3 planning surface's screenshots (Leon, Nov 22 2026).
  *
  * Stands up a fresh traveler and a three-day Kyoto plan with six stops through the SAME fixtures the other browser
- * tests use (`registerAndSignIn` + `/api/trips` + `/api/trips/:id/items`), then opens `/plans/:id?surface=r3` and
+ * tests use (`registerAndSignIn` + `/api/trips` + `/api/trips/:id/items`), then opens `/plans/:id?surface=r3&capture=1` and
  * captures the page at 1280 and at 390. It asserts only that the R3 surface mounted (`r3-surface`), so a screenshot is
  * never a picture of the old page.
  *
@@ -15,6 +15,38 @@ import { registerAndSignIn } from "../utils/auth";
 import { markSeededItemsAsOsm } from "../utils/osm-coords";
 
 const BASE_URL = process.env.BASE_URL ?? "http://localhost:5000";
+/** The map's settled state: how much of the canvas the loaded tiles span, and whether every pin is inside it. */
+async function mapCoverage(page: Page) {
+  return page.evaluate(() => {
+    const container = (document.querySelector('[data-testid="r3-map-canvas-wrap"]') as HTMLElement | null)
+      ?? (document.querySelector('[data-testid="slip-days-map-canvas"]') as HTMLElement | null);
+    if (!container) return { w: 0, h: 0, pins: 0, pinsInside: false };
+    const c = container.getBoundingClientRect();
+    const tiles = Array.from(document.querySelectorAll(".leaflet-tile-loaded")).map((el) => el.getBoundingClientRect());
+    const pins = Array.from(document.querySelectorAll("[data-pin-state]")).map((el) => el.getBoundingClientRect());
+    if (!tiles.length) return { w: 0, h: 0, pins: pins.length, pinsInside: false };
+    const left = Math.min(...tiles.map((r) => r.left));
+    const right = Math.max(...tiles.map((r) => r.right));
+    const top = Math.min(...tiles.map((r) => r.top));
+    const bottom = Math.max(...tiles.map((r) => r.bottom));
+    return {
+      w: (Math.min(right, c.right) - Math.max(left, c.left)) / c.width,
+      h: (Math.min(bottom, c.bottom) - Math.max(top, c.top)) / c.height,
+      pins: pins.length,
+      pinsInside: pins.every((r) => r.left >= c.left - 1 && r.right <= c.right + 1 && r.top >= c.top - 1 && r.bottom <= c.bottom + 1),
+    };
+  });
+}
+
+/** The capture must show the settled map: shoot right after the poll, then prove nothing moved. */
+async function shootStable(page: Page, outPath: string) {
+  const before = await mapCoverage(page);
+  await page.screenshot({ path: outPath, fullPage: true });
+  const after = await mapCoverage(page);
+  expect(Math.abs(after.w - before.w), "the map did not change while the shot was taken").toBeLessThanOrEqual(0.01);
+  expect(Math.abs(after.h - before.h), "the map did not change while the shot was taken").toBeLessThanOrEqual(0.01);
+}
+
 const OUT_DIR = path.join(process.cwd(), "playwright", "r3-captures");
 const uid = () => Math.random().toString(36).slice(2, 10);
 
@@ -105,7 +137,7 @@ test("R3 P0: the surface mounts with ?surface=r3 and is captured at 1280 and 390
   expect(flag.on, "the server must report R3_SURFACE=1 in this job").toBe(true);
 
   await page.setViewportSize({ width: 1280, height: 900 });
-  await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3`);
+  await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3&capture=1`);
   // The R3 frame, not the old page: this is the assertion that makes the picture meaningful.
   await expect(page.getByTestId("r3-surface")).toBeVisible({ timeout: 30_000 });
   // P1: the days slot holds the board - three day columns and six stop cards, so the capture is of a FILLED board.
@@ -140,10 +172,10 @@ test("R3 P0: the surface mounts with ?surface=r3 and is captured at 1280 and 390
   await expect(page.getByTestId("r3-optimize-expert")).toBeVisible();
   await maskEmails(page);
   await page.getByTestId("r3-optimize-card").screenshot({ path: path.join(OUT_DIR, "u2-optimize-1280.png") });
-  await page.screenshot({ path: path.join(OUT_DIR, "v1-1280.png"), fullPage: true });
+  await shootStable(page, path.join(OUT_DIR, "v1-1280.png"));
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3`);
+  await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3&capture=1`);
   await expect(page.getByTestId("r3-surface")).toBeVisible({ timeout: 30_000 });
   await maskEmails(page);
   await page.screenshot({ path: path.join(OUT_DIR, "v1-390.png"), fullPage: true });
@@ -182,7 +214,7 @@ test("U2: the Optimize card with findings, and its empty state", async ({ page }
   });
 
   await page.setViewportSize({ width: 1280, height: 900 });
-  await page.goto(`${BASE_URL}/plans/${withFindings}?surface=r3`);
+  await page.goto(`${BASE_URL}/plans/${withFindings}?surface=r3&capture=1`);
   await expect(page.getByTestId("r3-optimize-card")).toBeVisible({ timeout: 30_000 });
   const findings = page.getByTestId("r3-optimize-finding");
   await expect(findings.first()).toBeVisible({ timeout: 20_000 });
@@ -214,7 +246,7 @@ test("U2: the Optimize card with findings, and its empty state", async ({ page }
     });
   });
   const quiet = await quietTrip(page);
-  await page.goto(`${BASE_URL}/plans/${quiet}?surface=r3`);
+  await page.goto(`${BASE_URL}/plans/${quiet}?surface=r3&capture=1`);
   await expect(page.getByTestId("r3-optimize-card")).toBeVisible({ timeout: 30_000 });
   await expect(page.getByTestId("r3-optimize-sentence")).toContainText("Optimize checks real travel times");
   await expect(page.getByTestId("r3-optimize-cta")).toBeVisible();
@@ -246,7 +278,7 @@ test("U3: the phone surface - days, map, ideas, an empty day and a long trip", a
   fs.mkdirSync(OUT_DIR, { recursive: true });
   const tripId = await sixStopTrip(page);
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3`);
+  await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3&capture=1`);
   await expect(page.getByTestId("r3-surface")).toBeVisible({ timeout: 30_000 });
 
   // Days: the pills, the strip (Ideas + 3 days), the hint, the open day's stops, the Optimize card under them.
@@ -342,11 +374,11 @@ test("U3: the phone surface - days, map, ideas, an empty day and a long trip", a
   await page.waitForTimeout(600);
   await page.evaluate(() => window.scrollTo(0, 0));
   await maskEmails(page);
-  await page.screenshot({ path: path.join(OUT_DIR, "u3-map-390.png"), fullPage: true });
+  await shootStable(page, path.join(OUT_DIR, "u3-map-390.png"));
 
   // A 7-day trip: the strip scrolls, the last cell cut off, and an empty day offers only the dashed Add.
   const longId = await longTrip(page);
-  await page.goto(`${BASE_URL}/plans/${longId}?surface=r3`);
+  await page.goto(`${BASE_URL}/plans/${longId}?surface=r3&capture=1`);
   await expect(page.getByTestId("r3-phone-day-strip")).toBeVisible({ timeout: 30_000 });
   await expect(page.getByTestId("r3-phone-day-chip")).toHaveCount(8);
   await page.getByTestId("r3-phone-day-chip").last().click();
@@ -374,7 +406,7 @@ test("U3: the phone surface - days, map, ideas, an empty day and a long trip", a
     json.tripRole = "guest";
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(json) });
   });
-  await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3`);
+  await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3&capture=1`);
   await expect(page.getByTestId("r3-surface")).toBeVisible({ timeout: 30_000 });
   await expect(page.getByTestId("r3-phone-tabs")).toBeVisible();
   await expect(page.getByTestId("r3-optimize-card")).toHaveCount(0);
@@ -390,7 +422,7 @@ test("U4: the V24 top bar - the bar, the plan switcher and the account menu", as
 
   for (const width of [1280, 390] as const) {
     await page.setViewportSize({ width, height: width === 1280 ? 900 : 844 });
-    await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3`);
+    await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3&capture=1`);
     await expect(page.getByTestId("r3-topbar")).toBeVisible({ timeout: 30_000 });
     // The bar must not cover the plan: its bottom is at or above the eyebrow's top.
     const barBox = await page.getByTestId("r3-topbar").boundingBox();
@@ -433,7 +465,7 @@ test("U4: the V24 top bar - the bar, the plan switcher and the account menu", as
       expect(avatar && avatar.x + avatar.width, "the avatar is fully visible").toBeLessThanOrEqual(390);
     }
     await maskEmails(page);
-    await page.screenshot({ path: path.join(OUT_DIR, `u4-bar-${width}.png`), fullPage: true });
+    await shootStable(page, path.join(OUT_DIR, `u4-bar-${width}.png`));
 
     await page.getByTestId("r3-plan-switcher-button").click();
     await expect(page.getByTestId("r3-plan-switcher-panel")).toBeVisible();
@@ -462,7 +494,7 @@ test("U4: the V24 top bar - the bar, the plan switcher and the account menu", as
     await expect(page.getByTestId("r3-account-bookings")).toBeVisible();
     await expect(page.getByTestId("r3-account-logout")).toBeVisible();
     await maskEmails(page);
-    await page.screenshot({ path: path.join(OUT_DIR, `u4-account-${width}.png`), fullPage: true });
+    await shootStable(page, path.join(OUT_DIR, `u4-account-${width}.png`));
     await page.getByTestId("r3-account-button").click();
   }
 });
@@ -483,7 +515,7 @@ test("U4: the switcher with three plans (current, no dates, past)", async ({ pag
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(rows) });
   });
   await page.setViewportSize({ width: 1280, height: 900 });
-  await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3`);
+  await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3&capture=1`);
   await expect(page.getByTestId("r3-topbar")).toBeVisible({ timeout: 30_000 });
   await page.getByTestId("r3-plan-switcher-button").click();
   await expect(page.getByTestId("r3-plan-row")).toHaveCount(3);
@@ -491,6 +523,6 @@ test("U4: the switcher with three plans (current, no dates, past)", async ({ pag
   await expect(page.getByTestId("r3-plan-row").nth(2), "the ended plan reads Past").toContainText("Past");
   await page.waitForFunction(() => document.querySelectorAll(".leaflet-tile-loaded").length > 0, { timeout: 20_000 }).catch(() => {});
   await maskEmails(page);
-  await page.screenshot({ path: path.join(OUT_DIR, "u4-switcher-three-1280.png"), fullPage: true });
+  await shootStable(page, path.join(OUT_DIR, "u4-switcher-three-1280.png"));
   await page.unroute("**/api/trips");
 });

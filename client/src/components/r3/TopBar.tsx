@@ -66,9 +66,14 @@ export function R3TopBar({ plan, plans, tripId }: { plan: BarPlan | null; plans:
                           data-testid="r3-plan-row"
                           data-current={current ? "true" : "false"}
                         >
-                          <span className="block text-[13px] font-medium" style={{ color: BOARD_INK }}>{p.title ?? "Your plan"}</span>
-                          <span className="block text-[12px] text-muted-foreground">
-                            {`${dates || "No dates yet"}${past ? "  Past" : ""}`}
+                          <span className="flex items-center justify-between gap-2">
+                            <span className="min-w-0">
+                              <span className="block text-[13px] font-medium" style={{ color: BOARD_INK }}>{p.title ?? "Your plan"}</span>
+                              <span className="block text-[12px] text-muted-foreground">{dates || "No dates yet"}</span>
+                            </span>
+                            {past ? (
+                              <span className="shrink-0 text-[11px] font-medium text-muted-foreground" data-testid="r3-plan-past">Past</span>
+                            ) : null}
                           </span>
                         </Link>
                       </li>
