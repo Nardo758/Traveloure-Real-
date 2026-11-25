@@ -300,6 +300,29 @@ test("U3: the phone surface - days, map, ideas, an empty day and a long trip", a
   // 3: the map must really draw - at least one pin AND the stay ring, or the test fails.
   await expect(page.locator("[data-pin-state]").first()).toBeVisible({ timeout: 20_000 });
   await expect(page.locator("[data-anchor-kind]").first()).toBeVisible({ timeout: 20_000 });
+  await page.waitForFunction(() => document.querySelectorAll(".leaflet-tile-loaded").length > 0, { timeout: 20_000 }).catch(() => {});
+  const phoneCover = await page.evaluate(() => {
+    const container = document.querySelector('[data-testid="r3-map-canvas-wrap"]') as HTMLElement | null;
+    if (!container) return { w: 0, h: 0, pins: 0, pinsInside: false };
+    const c = container.getBoundingClientRect();
+    const tiles = Array.from(document.querySelectorAll(".leaflet-tile-loaded")).map((el) => el.getBoundingClientRect());
+    if (!tiles.length) return { w: 0, h: 0, pins: 0, pinsInside: false };
+    const left = Math.min(...tiles.map((r) => r.left));
+    const right = Math.max(...tiles.map((r) => r.right));
+    const top = Math.min(...tiles.map((r) => r.top));
+    const bottom = Math.max(...tiles.map((r) => r.bottom));
+    const pins = Array.from(document.querySelectorAll("[data-pin-state]")).map((el) => el.getBoundingClientRect());
+    return {
+      w: (Math.min(right, c.right) - Math.max(left, c.left)) / c.width,
+      h: (Math.min(bottom, c.bottom) - Math.max(top, c.top)) / c.height,
+      pins: pins.length,
+      pinsInside: pins.every((r) => r.left >= c.left - 1 && r.right <= c.right + 1 && r.top >= c.top - 1 && r.bottom <= c.bottom + 1),
+    };
+  });
+  expect(phoneCover.w, "the phone map's tiles cover its width").toBeGreaterThanOrEqual(0.9);
+  expect(phoneCover.h, "the phone map's tiles cover its height").toBeGreaterThanOrEqual(0.9);
+  expect(phoneCover.pins, "the six stops are drawn on the phone map").toBeGreaterThanOrEqual(6);
+  expect(phoneCover.pinsInside, "every pin is inside the phone map").toBe(true);
   await page.waitForTimeout(600);
   await page.evaluate(() => window.scrollTo(0, 0));
   await maskEmails(page);
