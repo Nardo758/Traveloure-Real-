@@ -700,6 +700,14 @@ test("U5: the no-plan landing - bar, cities, waitlist and the empty switcher", a
 
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`${BASE_URL}/?start=1&surface=r3&capture=1`);
+  // Log what actually mounted BEFORE asserting: the gate, its decision, and whether the page or the home rendered.
+  const gate = page.getByTestId("r3-no-plan-gate");
+  const gateCount = await gate.count();
+  console.log(
+    `[u5-gate] present=${gateCount > 0} decision=${gateCount ? await gate.first().getAttribute("data-decision") : "<absent>"} ` +
+      `page=${await page.getByTestId("r3-no-plan-page").count()} skeleton=${await page.getByTestId("r3-no-plan-skeleton").count()} ` +
+      `home=${await page.getByText("TRAVELOURE").count()}`,
+  );
   await expect(page.getByTestId("r3-no-plan-page")).toBeVisible({ timeout: 30_000 });
   await expect(page.getByTestId("r3-no-plan-title")).toContainText("Where are you going?");
   await expect(page.getByTestId("r3-no-plan-open-line")).toContainText("Now open in");
