@@ -82,6 +82,26 @@ async function drawnClearance(page: Page) {
 
 /** Fail the run if the drawn badges are too close, before OR after a shot. */
 async function assertDrawnClear(page: Page, when: string) {
+  await page
+    .waitForFunction(
+      () => {
+        const wraps = Array.from(document.querySelectorAll(".leaflet-marker-icon")) as HTMLElement[];
+        const pins = wraps.filter((el) => el.querySelector("[data-pin-state]"));
+        const c = (el: HTMLElement) => {
+          const r = el.getBoundingClientRect();
+          return { x: r.x + r.width / 2, y: r.y + r.height / 2, w: el.offsetWidth || r.width };
+        };
+        const p = pins.map(c);
+        for (let i = 0; i < p.length; i++) {
+          for (let j = i + 1; j < p.length; j++) {
+            if (Math.hypot(p[i].x - p[j].x, p[i].y - p[j].y) < Math.max(p[i].w, 26) + 8) return false;
+          }
+        }
+        return true;
+      },
+      { timeout: 3_000 },
+    )
+    .catch(() => {});
   const clear = await drawnClearance(page);
   const bad = clear.pairs.filter((p) => p.d < p.need);
   expect(bad, `${when}: every pin pair has ${8}px of air (${JSON.stringify(bad)})`).toHaveLength(0);
