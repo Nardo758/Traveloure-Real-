@@ -108,7 +108,8 @@ export function R3TopBar({ plan, plans, tripId }: { plan: BarPlan | null; plans:
           <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">Account</p>
           <ul className="mt-2 space-y-1 text-[13px]" style={{ color: BOARD_INK }}>
             <li><Link href="/profile" onClick={() => setOpenPanel(null)} className="block rounded-lg px-2 py-2" data-testid="r3-account-profile">Profile</Link></li>
-            <li><Link href="/settings" onClick={() => setOpenPanel(null)} className="block rounded-lg px-2 py-2" data-testid="r3-account-settings">Settings</Link></li>
+            {/* U7 gives Settings its own page; until then the row points at the existing profile page. */}
+            <li><Link href="/profile" onClick={() => setOpenPanel(null)} className="block rounded-lg px-2 py-2" data-testid="r3-account-settings">Settings</Link></li>
             <li>
               <Link href="/bookings" onClick={() => setOpenPanel(null)} className="block rounded-lg px-2 py-2" data-testid="r3-account-bookings">
                 Bookings and receipts
