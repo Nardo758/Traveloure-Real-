@@ -360,7 +360,30 @@ test("U4: the V24 top bar - the bar, the plan switcher and the account menu", as
     if (width === 1280) {
       await page.waitForFunction(() => document.querySelectorAll(".leaflet-tile-loaded").length > 0, { timeout: 20_000 }).catch(() => {});
       await page.waitForTimeout(500);
-      expect(await page.locator(".leaflet-tile-loaded").count(), "the map has drawn its tiles").toBeGreaterThan(0);
+      const cover = await page.evaluate(() => {
+        const container = document.querySelector('[data-testid="r3-map-canvas-wrap"]') as HTMLElement | null
+          ?? (document.querySelector('[data-testid="slip-days-map-canvas"]') as HTMLElement | null);
+        if (!container) return { w: 0, h: 0 };
+        const c = container.getBoundingClientRect();
+        const tiles = Array.from(document.querySelectorAll(".leaflet-tile-loaded")).map((el) => el.getBoundingClientRect());
+        if (!tiles.length) return { w: 0, h: 0 };
+        const left = Math.min(...tiles.map((r) => r.left));
+        const right = Math.max(...tiles.map((r) => r.right));
+        const top = Math.min(...tiles.map((r) => r.top));
+        const bottom = Math.max(...tiles.map((r) => r.bottom));
+        const pins = Array.from(document.querySelectorAll("[data-pin-state]")).map((el) => el.getBoundingClientRect());
+        const pinsInside = pins.every((r) => r.left >= c.left - 1 && r.right <= c.right + 1 && r.top >= c.top - 1 && r.bottom <= c.bottom + 1);
+        return {
+          w: (Math.min(right, c.right) - Math.max(left, c.left)) / c.width,
+          h: (Math.min(bottom, c.bottom) - Math.max(top, c.top)) / c.height,
+          pins: pins.length,
+          pinsInside,
+        };
+      });
+      expect(cover.w, "loaded tiles span the map's width").toBeGreaterThanOrEqual(0.9);
+      expect(cover.h, "loaded tiles span the map's height").toBeGreaterThanOrEqual(0.9);
+      expect(cover.pins, "the six stops are drawn").toBeGreaterThanOrEqual(6);
+      expect(cover.pinsInside, "every pin is inside the map").toBe(true);
     }
     await page.evaluate(() => window.scrollTo(0, 0));
     if (width === 390) {
@@ -416,7 +439,7 @@ test("U4: the switcher with three plans (current, no dates, past)", async ({ pag
     const rows = [
       { ...(current ?? { id: tripId, title: "Your Kyoto plan", startDate: "2027-04-01", endDate: "2027-04-03" }) },
       { id: "stub-no-dates", title: "Your plan", startDate: null, endDate: null },
-      { id: "stub-past", title: "Your Kyoto plan", startDate: "2027-03-03", endDate: "2027-03-05" },
+      { id: "stub-past", title: "Your Kyoto plan", startDate: "2026-04-03", endDate: "2026-04-05" },
     ];
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(rows) });
   });
@@ -426,6 +449,7 @@ test("U4: the switcher with three plans (current, no dates, past)", async ({ pag
   await page.getByTestId("r3-plan-switcher-button").click();
   await expect(page.getByTestId("r3-plan-row")).toHaveCount(3);
   await expect(page.getByTestId("r3-plan-row").first()).toBeVisible();
+  await expect(page.getByTestId("r3-plan-row").nth(2), "the ended plan reads Past").toContainText("Past");
   await page.waitForFunction(() => document.querySelectorAll(".leaflet-tile-loaded").length > 0, { timeout: 20_000 }).catch(() => {});
   await maskEmails(page);
   await page.screenshot({ path: path.join(OUT_DIR, "u4-switcher-three-1280.png"), fullPage: true });

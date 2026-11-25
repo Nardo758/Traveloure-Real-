@@ -71,12 +71,23 @@ function Framing({ scene, r3 = false }: { scene: MapScene; r3?: boolean }) {
   // R3: the column width changes when the rail goes, so the canvas is re-measured once it is laid out and on resize.
   useEffect(() => {
     if (!r3) return;
+    const el = map.getContainer();
+    // Every SIZE change of the canvas re-measures it and re-fits the plan's points (the column width changes with the
+    // rail, the tab, and any resize of the window).
+    const ro = new ResizeObserver(() => {
+      map.invalidateSize();
+      if (pts.length > 1) {
+        map.fitBounds(L.latLngBounds(pts.map((p) => [p.lat, p.lng] as [number, number])), { padding: [48, 48] });
+      }
+    });
+    ro.observe(el);
     const bump = () => map.invalidateSize();
     const t = window.setTimeout(bump, 0);
     window.addEventListener("resize", bump);
     return () => {
       window.clearTimeout(t);
       window.removeEventListener("resize", bump);
+      ro.disconnect();
     };
   }, [map, r3]);
   // GC-1 (rows 196/197/218): a Google-derived anchor is not a framing point here (`leafletSceneInputs`).
