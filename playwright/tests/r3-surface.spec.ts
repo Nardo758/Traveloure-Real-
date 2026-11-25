@@ -48,6 +48,48 @@ async function tilesComplete(page: Page): Promise<number> {
   });
 }
 
+/**
+ * THE DRAWN EXTENT (Leon, Nov 25 2026): measure the Leaflet wrappers the reader actually sees, and require real air -
+ * centre-to-centre >= the drawn width + 8 for every pin pair, and ring-to-pin >= ring radius + pin radius + 8.
+ */
+async function drawnClearance(page: Page) {
+  return page.evaluate(() => {
+    const wraps = Array.from(document.querySelectorAll(".leaflet-marker-icon")) as HTMLElement[];
+    const pins = wraps.filter((el) => el.querySelector("[data-pin-state]"));
+    const ring = wraps.find((el) => el.querySelector("[data-anchor-kind]")) ?? null;
+    const c = (el: HTMLElement) => {
+      const r = el.getBoundingClientRect();
+      return { x: r.x + r.width / 2, y: r.y + r.height / 2, w: el.offsetWidth || r.width, h: el.offsetHeight || r.height };
+    };
+    const pairs: Array<{ a: number; b: number; d: number; need: number }> = [];
+    const p = pins.map(c);
+    for (let i = 0; i < p.length; i++) {
+      for (let j = i + 1; j < p.length; j++) {
+        const d = Math.hypot(p[i].x - p[j].x, p[i].y - p[j].y);
+        pairs.push({ a: i, b: j, d: Math.round(d * 10) / 10, need: Math.max(p[i].w, p[i].h) + 8 });
+      }
+    }
+    let ringGap: { d: number; need: number } | null = null;
+    if (ring) {
+      const r = c(ring);
+      const nearest = p.map((q) => ({ d: Math.hypot(q.x - r.x, q.y - r.y), need: r.w / 2 + Math.max(q.w, q.h) / 2 + 8 }))
+        .sort((u, v) => u.d - v.d)[0];
+      if (nearest) ringGap = { d: Math.round(nearest.d * 10) / 10, need: Math.round(nearest.need * 10) / 10 };
+    }
+    return { pins: p.length, ring: !!ring, pairs, ringGap };
+  });
+}
+
+/** Fail the run if the drawn badges are too close, before OR after a shot. */
+async function assertDrawnClear(page: Page, when: string) {
+  const clear = await drawnClearance(page);
+  const bad = clear.pairs.filter((p) => p.d < p.need);
+  expect(bad, `${when}: every pin pair has ${8}px of air (${JSON.stringify(bad)})`).toHaveLength(0);
+  if (clear.ringGap) {
+    expect(clear.ringGap.d, `${when}: the ring keeps its air from every pin`).toBeGreaterThanOrEqual(clear.ringGap.need);
+  }
+}
+
 /** No two pins intersect, and no pin intersects the stay ring. */
 async function pinsClear(page: Page) {
   return page.evaluate(() => {
@@ -114,9 +156,20 @@ async function shootStable(page: Page, outPath: string) {
     )
     .catch(() => {});
   const before = await mapCoverage(page);
+  const tilesBefore = await page.evaluate(() => {
+    const c = (document.querySelector('[data-testid="r3-map-canvas-wrap"]') as HTMLElement | null)
+      ?? (document.querySelector('[data-testid="slip-days-map-canvas"]') as HTMLElement | null);
+    if (!c) return { loaded: 0, total: 0 };
+    const all = Array.from(c.querySelectorAll(".leaflet-tile"));
+    return { loaded: all.filter((el) => el.classList.contains("leaflet-tile-loaded")).length, total: all.length };
+  });
+  expect(tilesBefore.total, "the map has tiles at all before the shot").toBeGreaterThan(0);
+  expect(tilesBefore.loaded, "every tile is loaded before the shot").toBe(tilesBefore.total);
   expect(await tilesComplete(page), "no pending tile before the shot").toBe(0);
+  await assertDrawnClear(page, "before the shot");
   await page.screenshot({ path: outPath, fullPage: true });
   expect(await tilesComplete(page), "no pending tile right after the shot").toBe(0);
+  await assertDrawnClear(page, "right after the shot");
   await dumpMapDiag(page, outPath.replace(/\.png$/, "-after.png").replace(/-after\.png$/, "-after"));
   const after = await mapCoverage(page);
   expect(Math.abs(after.w - before.w), "the map did not change while the shot was taken").toBeLessThanOrEqual(0.01);
