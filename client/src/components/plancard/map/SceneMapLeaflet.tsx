@@ -9,13 +9,13 @@
  * non-Google point (`leafletMountPoints`); otherwise the map shows the day as a list. A Google-derived anchor
  * draws no marker and frames nothing here (`leafletSceneInputs`).
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { MapContainer, Marker, TileLayer, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { MAP_DISTRICT_ZOOM, clampFramingZoom, mapFraming } from "@/lib/map-framing";
-import { spreadPinsPx, STAY_RING_Z } from "@/lib/map-pin-spread";
+import { spreadPinsPx, PIN_GAP_PX, STAY_RING_Z } from "@/lib/map-pin-spread";
 import { ANCHOR_COLOR, AREA_PIN_STYLE, BROWSE_TEAL, PIN_STYLE, areaPinLabel, escapeHtml, leafletSceneInputs, sceneMarkers, type MapArea, type MapScene, type MarkerDescriptor } from "@/lib/map-scene";
 import type { SceneMapProps } from "./SceneMapGoogle";
 
@@ -135,6 +135,16 @@ function Framing({ scene, r3 = false }: { scene: MapScene; r3?: boolean }) {
   return null;
 }
 
+/** A capture load (?capture=1) turns the map's animations off, so a screenshot is the settled state, not a frame of it. */
+function captureMode(): boolean {
+  return typeof window !== "undefined" && new URLSearchParams(window.location.search).get("capture") === "1";
+}
+
+/**
+ * R3 pin spread - IMPERATIVE (Leon, Nov 25 2026). The offsets are applied to the Leaflet markers themselves inside the
+ * map's own zoom/move/resize handler, in the same tick as the view change, so the geometry and the view can never be one
+ * frame apart. Baked lat/lng offsets used to shrink when a later fit changed the zoom (38px -> 16px); this cannot.
+ */
 function SpreadMarkers({
   markers,
   r3,
@@ -149,48 +159,46 @@ function SpreadMarkers({
   onSelectBrowse: (id: string) => void;
 }) {
   const map = useMap();
-  const [tick, setTick] = useState(0);
+  const refs = useRef(new Map<string, L.Marker>());
+
   useEffect(() => {
     if (!r3) return;
-    const bump = () => setTick((t) => t + 1);
-    // The spread must run AFTER the settled fit, not only on mount: a fit that lands later changes the pixel geometry.
-    map.on("zoomend", bump);
-    map.on("moveend", bump);
-    map.on("resize", bump);
-    map.on("r3:fit" as any, bump);
-    const settle = window.setTimeout(bump, 400); // the debounced fit lands ~150ms after layout; this catches it
-    return () => {
-      map.off("zoomend", bump);
-      map.off("moveend", bump);
-      map.off("resize", bump);
-      map.off("r3:fit" as any, bump);
-      window.clearTimeout(settle);
+    const apply = () => {
+      const pins = markers.filter((m) => m.kind === "pin");
+      const ring = markers.find((m) => m.kind === "anchor") ?? null;
+      const px = pins.map((m) => {
+        const p = map.latLngToContainerPoint([m.lat, m.lng]);
+        return { ...m, x: p.x, y: p.y };
+      });
+      const fixed = ring ? [map.latLngToContainerPoint([ring.lat, ring.lng])] : [];
+      const spread = spreadPinsPx(px, PIN_GAP_PX, fixed);
+      for (const s of spread) {
+        const marker = refs.current.get(String(s.testId));
+        if (marker) marker.setLatLng(map.containerPointToLatLng([s.x, s.y]));
+      }
     };
-  }, [map, r3]);
-  const positioned = useMemo(() => {
-    if (!r3) return markers.map((m) => ({ m, position: [m.lat, m.lng] as [number, number] }));
-    const px = markers.map((m) => {
-      const p = map.latLngToContainerPoint([m.lat, m.lng]);
-      return { ...m, x: p.x, y: p.y };
-    });
-    const spreadOut = spreadPinsPx(px);
-    // DIAGNOSTIC: how many passes ran, and the pixel box each pin ended at, per map instance.
-    const w = window as any;
-    w.__r3Spread = w.__r3Spread ?? { runs: 0, last: [] };
-    w.__r3Spread.runs += 1;
-    w.__r3Spread.last = spreadOut.map((m: any) => ({ id: m.id, kind: m.kind, x: Math.round(m.x), y: Math.round(m.y), zoom: map.getZoom() }));
-    return spreadOut.map((m) => {
-      const ll = map.containerPointToLatLng([m.x, m.y]);
-      return { m, position: [ll.lat, ll.lng] as [number, number] };
-    });
+    map.on("zoomend", apply);
+    map.on("moveend", apply);
+    map.on("resize", apply);
+    apply();
+    return () => {
+      map.off("zoomend", apply);
+      map.off("moveend", apply);
+      map.off("resize", apply);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [markers, r3, map, tick]);
+  }, [map, r3, markers]);
+
   return (
     <>
-      {positioned.map(({ m, position }) => (
+      {markers.map((m) => (
         <Marker
           key={m.testId}
-          position={position}
+          ref={(instance) => {
+            if (instance && m.kind === "pin") refs.current.set(String(m.testId), instance as L.Marker);
+            if (!instance) refs.current.delete(String(m.testId));
+          }}
+          position={[m.lat, m.lng]}
           icon={iconFor(m, m.kind === "pin" && selectedId === m.id, r3)}
           title={m.title}
           zIndexOffset={r3 && m.kind === "anchor" ? STAY_RING_Z : 0}
@@ -204,11 +212,6 @@ function SpreadMarkers({
       ))}
     </>
   );
-}
-
-/** A capture load (?capture=1) turns the map's animations off, so a screenshot is the settled state, not a frame of it. */
-function captureMode(): boolean {
-  return typeof window !== "undefined" && new URLSearchParams(window.location.search).get("capture") === "1";
 }
 
 export function SceneMapLeaflet({ scene, center, selectedId, onSelect, onSelectBrowse, r3 = false }: Omit<SceneMapProps, "legs"> & { r3?: boolean }) {

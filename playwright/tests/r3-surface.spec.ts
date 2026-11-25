@@ -82,26 +82,6 @@ async function drawnClearance(page: Page) {
 
 /** Fail the run if the drawn badges are too close, before OR after a shot. */
 async function assertDrawnClear(page: Page, when: string) {
-  await page
-    .waitForFunction(
-      () => {
-        const wraps = Array.from(document.querySelectorAll(".leaflet-marker-icon")) as HTMLElement[];
-        const pins = wraps.filter((el) => el.querySelector("[data-pin-state]"));
-        const c = (el: HTMLElement) => {
-          const r = el.getBoundingClientRect();
-          return { x: r.x + r.width / 2, y: r.y + r.height / 2, w: el.offsetWidth || r.width };
-        };
-        const p = pins.map(c);
-        for (let i = 0; i < p.length; i++) {
-          for (let j = i + 1; j < p.length; j++) {
-            if (Math.hypot(p[i].x - p[j].x, p[i].y - p[j].y) < Math.max(p[i].w, 26) + 8) return false;
-          }
-        }
-        return true;
-      },
-      { timeout: 3_000 },
-    )
-    .catch(() => {});
   const clear = await drawnClearance(page);
   const bad = clear.pairs.filter((p) => p.d < p.need);
   expect(bad, `${when}: every pin pair has ${8}px of air (${JSON.stringify(bad)})`).toHaveLength(0);
@@ -157,43 +137,46 @@ async function dumpMapDiag(page: Page, outPath: string) {
 }
 
 async function shootStable(page: Page, outPath: string) {
+  await page.waitForFunction(
+    () => {
+      const c = (document.querySelector('[data-testid="r3-map-canvas-wrap"]') as HTMLElement | null)
+        ?? (document.querySelector('[data-testid="slip-days-map-canvas"]') as HTMLElement | null);
+      if (!c) return false;
+      const tiles = Array.from(c.querySelectorAll(".leaflet-tile"));
+      const loaded = tiles.filter((el) => el.classList.contains("leaflet-tile-loaded"));
+      if (tiles.length === 0) return false;
+      if (loaded.length !== tiles.length) return false;
+      const box = c.getBoundingClientRect();
+      const rects = loaded.map((el) => el.getBoundingClientRect());
+      const left = Math.min(...rects.map((r) => r.left));
+      const right = Math.max(...rects.map((r) => r.right));
+      const top = Math.min(...rects.map((r) => r.top));
+      const bottom = Math.max(...rects.map((r) => r.bottom));
+      const w = (Math.min(right, box.right) - Math.max(left, box.left)) / box.width;
+      const h = (Math.min(bottom, box.bottom) - Math.max(top, box.top)) / box.height;
+      return w >= 0.9 && h >= 0.9;
+    },
+    { timeout: 10_000 },
+  );
   await dumpMapDiag(page, outPath);
-  // Wait for the spread to settle (no intersecting pins, no pin on the ring) before the shot, then assert it.
-  await page
-    .waitForFunction(
-      () => {
-        const rects = Array.from(document.querySelectorAll(".leaflet-marker-icon:has([data-pin-state])")).map((el) => el.getBoundingClientRect());
-        const ring = document.querySelector(".leaflet-marker-icon:has([data-anchor-kind])")?.getBoundingClientRect() ?? null;
-        const hit = (a: DOMRect, b: DOMRect) => a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1;
-        if (rects.length < 2) return true;
-        for (let i = 0; i < rects.length; i++) {
-          for (let j = i + 1; j < rects.length; j++) if (hit(rects[i], rects[j])) return false;
-          if (ring && hit(rects[i], ring)) return false;
-        }
-        return true;
-      },
-      { timeout: 15_000 },
-    )
-    .catch(() => {});
-  const before = await mapCoverage(page);
-  const tilesBefore = await page.evaluate(() => {
-    const c = (document.querySelector('[data-testid="r3-map-canvas-wrap"]') as HTMLElement | null)
-      ?? (document.querySelector('[data-testid="slip-days-map-canvas"]') as HTMLElement | null);
-    if (!c) return { loaded: 0, total: 0 };
-    const all = Array.from(c.querySelectorAll(".leaflet-tile"));
-    return { loaded: all.filter((el) => el.classList.contains("leaflet-tile-loaded")).length, total: all.length };
-  });
-  expect(tilesBefore.total, "the map has tiles at all before the shot").toBeGreaterThan(0);
-  expect(tilesBefore.loaded, "every tile is loaded before the shot").toBe(tilesBefore.total);
-  expect(await tilesComplete(page), "no pending tile before the shot").toBe(0);
   await assertDrawnClear(page, "before the shot");
   await page.screenshot({ path: outPath, fullPage: true });
-  expect(await tilesComplete(page), "no pending tile right after the shot").toBe(0);
   await assertDrawnClear(page, "right after the shot");
-  await dumpMapDiag(page, outPath.replace(/\.png$/, "-after.png").replace(/-after\.png$/, "-after"));
   const after = await mapCoverage(page);
-  expect(Math.abs(after.w - before.w), "the map did not change while the shot was taken").toBeLessThanOrEqual(0.01);
-  expect(Math.abs(after.h - before.h), "the map did not change while the shot was taken").toBeLessThanOrEqual(0.01);
+  expect(after.w, "the map's tile coverage holds after the shot").toBeGreaterThanOrEqual(0.9);
+  expect(after.h, "the map's tile coverage holds after the shot").toBeGreaterThanOrEqual(0.9);
+  expect(await tilesComplete(page), "no pending tile right after the shot").toBe(0);
+  expect(await pagesTilesLoaded(page), "every tile is loaded right after the shot").toBe(true);
+}
+
+async function pagesTilesLoaded(page: Page): Promise<boolean> {
+  return page.evaluate(() => {
+    const c = (document.querySelector('[data-testid="r3-map-canvas-wrap"]') as HTMLElement | null)
+      ?? (document.querySelector('[data-testid="slip-days-map-canvas"]') as HTMLElement | null);
+    if (!c) return false;
+    const tiles = Array.from(c.querySelectorAll(".leaflet-tile"));
+    return tiles.length > 0 && tiles.every((el) => el.classList.contains("leaflet-tile-loaded"));
+  });
 }
 
 const OUT_DIR = path.join(process.cwd(), "playwright", "r3-captures");

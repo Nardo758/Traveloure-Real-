@@ -39,8 +39,9 @@ export const PIN_GAP_PX = PIN_ICON_PX + 12;
 export function spreadPinsPx<T extends { kind: string; x: number; y: number }>(
   items: readonly T[],
   gapPx: number = PIN_GAP_PX,
+  extraFixed: ReadonlyArray<{ x: number; y: number }> = [],
 ): T[] {
-  const fixed = items.filter((i) => i.kind !== "pin").map((i) => ({ x: i.x, y: i.y }));
+  const fixed = [...extraFixed, ...items.filter((i) => i.kind !== "pin").map((i) => ({ x: i.x, y: i.y }))];
   const placed = [...fixed];
   return items.map((item) => {
     if (item.kind !== "pin") return item;
