@@ -34,7 +34,7 @@ export function spreadPins<T extends { kind: string; lat: number; lng: number }>
  */
 export const PIN_ICON_PX = 26;
 // 2px of air: two 26px badges 26px apart would touch edge to edge, so the gap is one icon plus a margin.
-export const PIN_GAP_PX = PIN_ICON_PX + 2;
+export const PIN_GAP_PX = PIN_ICON_PX + 12;
 
 export function spreadPinsPx<T extends { kind: string; x: number; y: number }>(
   items: readonly T[],
