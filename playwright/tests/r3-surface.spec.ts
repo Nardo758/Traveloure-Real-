@@ -343,3 +343,34 @@ test("U3: the phone surface - days, map, ideas, an empty day and a long trip", a
   await page.screenshot({ path: path.join(OUT_DIR, "u3-guest-390.png"), fullPage: true });
   await page.unroute(`**/api/trips/${tripId}/plancard**`);
 });
+
+test("U4: the V24 top bar - the bar, the plan switcher and the account menu", async ({ page }) => {
+  fs.mkdirSync(OUT_DIR, { recursive: true });
+  const tripId = await sixStopTrip(page);
+
+  for (const width of [1280, 390] as const) {
+    await page.setViewportSize({ width, height: width === 1280 ? 900 : 844 });
+    await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3`);
+    await expect(page.getByTestId("r3-topbar")).toBeVisible({ timeout: 30_000 });
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await maskEmails(page);
+    await page.screenshot({ path: path.join(OUT_DIR, `u4-bar-${width}.png`), fullPage: true });
+
+    await page.getByTestId("r3-plan-switcher-button").click();
+    await expect(page.getByTestId("r3-plan-switcher-panel")).toBeVisible();
+    await expect(page.getByTestId("r3-plan-row").first()).toBeVisible();
+    await expect(page.getByTestId("r3-plan-start")).toBeVisible();
+    await maskEmails(page);
+    await page.screenshot({ path: path.join(OUT_DIR, `u4-switcher-${width}.png`), fullPage: true });
+    await page.getByTestId("r3-plan-switcher-button").click();
+
+    await page.getByTestId("r3-account-button").click();
+    await expect(page.getByTestId("r3-account-panel")).toBeVisible();
+    await expect(page.getByTestId("r3-account-profile")).toBeVisible();
+    await expect(page.getByTestId("r3-account-bookings")).toBeVisible();
+    await expect(page.getByTestId("r3-account-logout")).toBeVisible();
+    await maskEmails(page);
+    await page.screenshot({ path: path.join(OUT_DIR, `u4-account-${width}.png`), fullPage: true });
+    await page.getByTestId("r3-account-button").click();
+  }
+});
