@@ -38,10 +38,37 @@ async function mapCoverage(page: Page) {
   });
 }
 
+/** Every tile in the view's own range is loaded - a blank block fails, not just a gap in the outer extent. */
+async function tilesComplete(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const container = (document.querySelector('[data-testid="r3-map-canvas-wrap"]') as HTMLElement | null)
+      ?? (document.querySelector('[data-testid="slip-days-map-canvas"]') as HTMLElement | null);
+    if (!container) return 0;
+    return container.querySelectorAll(".leaflet-tile:not(.leaflet-tile-loaded)").length;
+  });
+}
+
+/** No two pins intersect, and no pin intersects the stay ring. */
+async function pinsClear(page: Page) {
+  return page.evaluate(() => {
+    const rects = Array.from(document.querySelectorAll("[data-pin-state]")).map((el) => el.getBoundingClientRect());
+    const ring = document.querySelector("[data-anchor-kind]")?.getBoundingClientRect() ?? null;
+    const hit = (a: DOMRect, b: DOMRect) => a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1;
+    let overlaps = 0;
+    for (let i = 0; i < rects.length; i++) {
+      for (let j = i + 1; j < rects.length; j++) if (hit(rects[i], rects[j])) overlaps++;
+      if (ring && hit(rects[i], ring)) overlaps++;
+    }
+    return { pins: rects.length, overlaps, hasRing: !!ring };
+  });
+}
+
 /** The capture must show the settled map: shoot right after the poll, then prove nothing moved. */
 async function shootStable(page: Page, outPath: string) {
   const before = await mapCoverage(page);
+  expect(await tilesComplete(page), "no pending tile before the shot").toBe(0);
   await page.screenshot({ path: outPath, fullPage: true });
+  expect(await tilesComplete(page), "no pending tile right after the shot").toBe(0);
   const after = await mapCoverage(page);
   expect(Math.abs(after.w - before.w), "the map did not change while the shot was taken").toBeLessThanOrEqual(0.01);
   expect(Math.abs(after.h - before.h), "the map did not change while the shot was taken").toBeLessThanOrEqual(0.01);
@@ -371,6 +398,8 @@ test("U3: the phone surface - days, map, ideas, an empty day and a long trip", a
   expect(phoneCover.h, "the phone map's tiles cover its height").toBeGreaterThanOrEqual(0.9);
   expect(phoneCover.pins, "the six stops are drawn on the phone map").toBeGreaterThanOrEqual(6);
   expect(phoneCover.pinsInside, "every pin is inside the phone map").toBe(true);
+  const phonePins = await pinsClear(page);
+  expect(phonePins.overlaps, "no two pins (or a pin and the ring) intersect at 390").toBe(0);
   await page.waitForTimeout(600);
   await page.evaluate(() => window.scrollTo(0, 0));
   await maskEmails(page);
@@ -455,6 +484,8 @@ test("U4: the V24 top bar - the bar, the plan switcher and the account menu", as
       expect(cover.h, "loaded tiles span the map's height").toBeGreaterThanOrEqual(0.9);
       expect(cover.pins, "the six stops are drawn").toBeGreaterThanOrEqual(6);
       expect(cover.pinsInside, "every pin is inside the map").toBe(true);
+      const clear = await pinsClear(page);
+      expect(clear.overlaps, "no two pins (or a pin and the ring) intersect at 1280").toBe(0);
     }
     await page.evaluate(() => window.scrollTo(0, 0));
     if (width === 390) {

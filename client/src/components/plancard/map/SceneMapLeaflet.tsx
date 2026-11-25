@@ -152,11 +152,16 @@ function SpreadMarkers({
   useEffect(() => {
     if (!r3) return;
     const bump = () => setTick((t) => t + 1);
+    // The spread must run AFTER the settled fit, not only on mount: a fit that lands later changes the pixel geometry.
     map.on("zoomend", bump);
     map.on("moveend", bump);
+    map.on("resize", bump);
+    const settle = window.setTimeout(bump, 400); // the debounced fit lands ~150ms after layout; this catches it
     return () => {
       map.off("zoomend", bump);
       map.off("moveend", bump);
+      map.off("resize", bump);
+      window.clearTimeout(settle);
     };
   }, [map, r3]);
   const positioned = useMemo(() => {
