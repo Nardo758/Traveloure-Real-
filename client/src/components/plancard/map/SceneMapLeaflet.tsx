@@ -68,6 +68,17 @@ function areaIcon(a: MapArea): L.DivIcon {
 
 function Framing({ scene, r3 = false }: { scene: MapScene; r3?: boolean }) {
   const map = useMap();
+  // R3: the column width changes when the rail goes, so the canvas is re-measured once it is laid out and on resize.
+  useEffect(() => {
+    if (!r3) return;
+    const bump = () => map.invalidateSize();
+    const t = window.setTimeout(bump, 0);
+    window.addEventListener("resize", bump);
+    return () => {
+      window.clearTimeout(t);
+      window.removeEventListener("resize", bump);
+    };
+  }, [map, r3]);
   // GC-1 (rows 196/197/218): a Google-derived anchor is not a framing point here (`leafletSceneInputs`).
   const pts = leafletSceneInputs(scene).framePoints;
   const key = pts.map((p) => `${p.lat}:${p.lng}`).join("|");

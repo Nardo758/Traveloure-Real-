@@ -353,9 +353,14 @@ test("U4: the V24 top bar - the bar, the plan switcher and the account menu", as
     await page.setViewportSize({ width, height: width === 1280 ? 900 : 844 });
     await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3`);
     await expect(page.getByTestId("r3-topbar")).toBeVisible({ timeout: 30_000 });
+    // The bar must not cover the plan: its bottom is at or above the eyebrow's top.
+    const barBox = await page.getByTestId("r3-topbar").boundingBox();
+    const eyebrowBox = await page.getByTestId("r3-eyebrow").boundingBox();
+    expect(barBox && eyebrowBox && barBox.y + barBox.height, `the bar ends above the eyebrow (${width})`).toBeLessThanOrEqual(Math.ceil(eyebrowBox!.y) + 1);
     if (width === 1280) {
       await page.waitForFunction(() => document.querySelectorAll(".leaflet-tile-loaded").length > 0, { timeout: 20_000 }).catch(() => {});
       await page.waitForTimeout(500);
+      expect(await page.locator(".leaflet-tile-loaded").count(), "the map has drawn its tiles").toBeGreaterThan(0);
     }
     await page.evaluate(() => window.scrollTo(0, 0));
     if (width === 390) {
@@ -370,6 +375,9 @@ test("U4: the V24 top bar - the bar, the plan switcher and the account menu", as
 
     await page.getByTestId("r3-plan-switcher-button").click();
     await expect(page.getByTestId("r3-plan-switcher-panel")).toBeVisible();
+    const trigger = await page.getByTestId("r3-plan-switcher-button").boundingBox();
+    const panel = await page.getByTestId("r3-plan-switcher-panel").boundingBox();
+    expect(Math.abs((panel?.x ?? 0) - (trigger?.x ?? 0)), "the switcher menu is anchored to its trigger").toBeLessThanOrEqual(8);
     await expect(page.getByTestId("r3-plan-row").first()).toBeVisible();
     await expect(page.getByTestId("r3-plan-start")).toBeVisible();
     await maskEmails(page);
@@ -378,6 +386,12 @@ test("U4: the V24 top bar - the bar, the plan switcher and the account menu", as
 
     await page.getByTestId("r3-account-button").click();
     await expect(page.getByTestId("r3-account-panel")).toBeVisible();
+    const avatar = await page.getByTestId("r3-account-button").boundingBox();
+    const accountPanel = await page.getByTestId("r3-account-panel").boundingBox();
+    expect(
+      Math.abs((accountPanel?.x ?? 0) + (accountPanel?.width ?? 0) - ((avatar?.x ?? 0) + (avatar?.width ?? 0))),
+      "the account menu is right-anchored to the avatar",
+    ).toBeLessThanOrEqual(8);
     if (width === 1280) {
       await page.waitForFunction(() => document.querySelectorAll(".leaflet-tile-loaded").length > 0, { timeout: 20_000 }).catch(() => {});
       await page.waitForTimeout(400);
