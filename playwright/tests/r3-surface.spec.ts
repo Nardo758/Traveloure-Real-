@@ -137,6 +137,15 @@ async function dumpMapDiag(page: Page, outPath: string) {
 }
 
 async function shootStable(page: Page, outPath: string) {
+  // A capture with no map (a phone page on its Days tab) has nothing to wait for: shoot it plainly.
+  const hasMap = await page.evaluate(
+    () =>
+      !!(document.querySelector('[data-testid="r3-map-canvas-wrap"]') || document.querySelector('[data-testid="slip-days-map-canvas"]')),
+  );
+  if (!hasMap) {
+    await page.screenshot({ path: outPath, fullPage: true });
+    return;
+  }
   await page.waitForFunction(
     () => {
       const c = (document.querySelector('[data-testid="r3-map-canvas-wrap"]') as HTMLElement | null)
