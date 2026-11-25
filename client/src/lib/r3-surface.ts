@@ -156,3 +156,22 @@ export function r3MapCounts(data: any): { located: number; total: number } {
   const located = scene.list.filter((s: any) => s.located && stopIds.has(String(s.id))).length;
   return { located, total };
 }
+
+/** "Tue 8 \u2013 Thu 10 Dec" from a plan's own dates; "" when it has none (the bar then says "No dates yet"). */
+export function r3WhenLine(start?: string | null, end?: string | null): string {
+  const W = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const M = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const a = start ? new Date(`${String(start).slice(0, 10)}T00:00:00`) : null;
+  const b = end ? new Date(`${String(end).slice(0, 10)}T00:00:00`) : null;
+  if (!a || Number.isNaN(a.getTime())) return "";
+  const left = `${W[a.getDay()]} ${a.getDate()}`;
+  if (!b || Number.isNaN(b.getTime())) return left;
+  return `${left} \u2013 ${W[b.getDay()]} ${b.getDate()} ${M[b.getMonth()]}`;
+}
+
+/** True when the plan's end date is in the past (the switcher tags the row "Past"). */
+export function r3IsPast(end?: string | null, now: Date = new Date()): boolean {
+  if (!end) return false;
+  const d = new Date(`${String(end).slice(0, 10)}T23:59:59`);
+  return !Number.isNaN(d.getTime()) && d.getTime() < now.getTime();
+}

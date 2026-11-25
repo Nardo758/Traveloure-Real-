@@ -68,6 +68,42 @@ function areaIcon(a: MapArea): L.DivIcon {
 
 function Framing({ scene, r3 = false }: { scene: MapScene; r3?: boolean }) {
   const map = useMap();
+  // R3: the column width changes when the rail goes, so the canvas is re-measured once it is laid out and on resize.
+  useEffect(() => {
+    if (!r3) return;
+    const el = map.getContainer();
+    // Every SIZE change of the canvas re-measures it and re-fits the plan's points (the column width changes with the
+    // rail, the tab, and any resize of the window).
+    let lastW = 0;
+    let lastH = 0;
+    let timer = 0;
+    const onSize = () => {
+      map.invalidateSize();
+      const size = map.getSize();
+      if (!size || size.x === 0 || size.y === 0) return; // a hidden or unmounted canvas has no size to fit
+      if (size.x === lastW && size.y === lastH) return; // no fit unless the box actually changed
+      lastW = size.x;
+      lastH = size.y;
+      if (pts.length > 1) {
+        map.fitBounds(L.latLngBounds(pts.map((p) => [p.lat, p.lng] as [number, number])), { padding: [48, 48] });
+      }
+    };
+    const ro = new ResizeObserver(() => {
+      // debounce: the final size settles ~150ms after the last layout change
+      window.clearTimeout(timer);
+      timer = window.setTimeout(onSize, 150);
+    });
+    ro.observe(el);
+    const bump = () => map.invalidateSize();
+    const t = window.setTimeout(bump, 0);
+    window.addEventListener("resize", bump);
+    return () => {
+      window.clearTimeout(t);
+      window.clearTimeout(timer);
+      window.removeEventListener("resize", bump);
+      ro.disconnect();
+    };
+  }, [map, r3]);
   // GC-1 (rows 196/197/218): a Google-derived anchor is not a framing point here (`leafletSceneInputs`).
   const pts = leafletSceneInputs(scene).framePoints;
   const key = pts.map((p) => `${p.lat}:${p.lng}`).join("|");
@@ -116,11 +152,16 @@ function SpreadMarkers({
   useEffect(() => {
     if (!r3) return;
     const bump = () => setTick((t) => t + 1);
+    // The spread must run AFTER the settled fit, not only on mount: a fit that lands later changes the pixel geometry.
     map.on("zoomend", bump);
     map.on("moveend", bump);
+    map.on("resize", bump);
+    const settle = window.setTimeout(bump, 400); // the debounced fit lands ~150ms after layout; this catches it
     return () => {
       map.off("zoomend", bump);
       map.off("moveend", bump);
+      map.off("resize", bump);
+      window.clearTimeout(settle);
     };
   }, [map, r3]);
   const positioned = useMemo(() => {
@@ -156,13 +197,26 @@ function SpreadMarkers({
   );
 }
 
+/** A capture load (?capture=1) turns the map's animations off, so a screenshot is the settled state, not a frame of it. */
+function captureMode(): boolean {
+  return typeof window !== "undefined" && new URLSearchParams(window.location.search).get("capture") === "1";
+}
+
 export function SceneMapLeaflet({ scene, center, selectedId, onSelect, onSelectBrowse, r3 = false }: Omit<SceneMapProps, "legs"> & { r3?: boolean }) {
   const { data: tiles } = useQuery<{ url: string; attribution: string }>({ queryKey: ["/api/maps/tiles"], staleTime: Infinity });
   // GC-1: the SAME marker list, minus a Google-derived anchor (named in the legend only).
   const { markers: rawMarkers } = leafletSceneInputs(scene, sceneMarkers(scene));
   const markers = rawMarkers;
   return (
-    <MapContainer center={[center.lat, center.lng]} zoom={MAP_DISTRICT_ZOOM - 1} style={{ width: "100%", height: "100%" }} scrollWheelZoom={false}>
+    <MapContainer
+      center={[center.lat, center.lng]}
+      zoom={MAP_DISTRICT_ZOOM - 1}
+      style={{ width: "100%", height: "100%" }}
+      scrollWheelZoom={false}
+      fadeAnimation={!captureMode()}
+      zoomAnimation={!captureMode()}
+      markerZoomAnimation={!captureMode()}
+    >
       <TileLayer
         url={tiles?.url ?? "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"}
         attribution={tiles?.attribution ?? "© OpenStreetMap contributors"}

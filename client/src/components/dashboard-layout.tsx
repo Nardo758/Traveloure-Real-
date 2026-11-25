@@ -9,6 +9,8 @@ import { TraveloureLogo } from "@/components/ui/traveloure-logo";
 import { KyotoMarketNotice } from "@/components/KyotoMarketNotice";
 import { useAuth } from "@/hooks/use-auth";
 import { useR3SurfaceOn, sidebarStartsCollapsed, sidebarStorageKey } from "@/lib/r3-surface";
+import { R3TopBar } from "@/components/r3/TopBar";
+import { useQuery } from "@tanstack/react-query";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -43,9 +45,18 @@ export function DashboardLayout({ children, subheader }: DashboardLayoutProps) {
   // other page; a toggle the traveler makes is remembered for them alone (localStorage, per user id), so no other page
   // changes and a manual choice survives a reload.
   // `useLocation` is the PATH only; the switch lives in the query, so the query is what decides the default.
+  const [path] = useLocation();
   const search = useSearch();
   const r3Page = useR3SurfaceOn(search);
   const { user } = useAuth();
+  // U4 (V24): on a plan page under ?surface=r3 the bar replaces the console header. The plans list is the app's own
+  // /api/trips query - one read, only when the bar is shown.
+  const planMatch = /^\/plans\/([^/?]+)/.exec(path);
+  const r3TripId = r3Page && planMatch ? planMatch[1] : null;
+  const { data: plansList } = useQuery<Array<{ id: string; title?: string; startDate?: string | null; endDate?: string | null }>>({
+    queryKey: ["/api/trips"],
+    enabled: !!r3TripId,
+  });
   const storageKey = sidebarStorageKey((user as any)?.id ?? null);
   const [open, setOpen] = React.useState<boolean>(() => {
     let stored: boolean | null = null;
@@ -89,8 +100,15 @@ export function DashboardLayout({ children, subheader }: DashboardLayoutProps) {
           surfaces. The scope class carries the tokens; the raw console hex literals that
           used to live here are gone (sidebar reads tokens). */}
       <div className="console-scope flex min-h-screen w-full" style={{ background: "var(--console-ground)" }}>
-        <DashboardSidebar />
+        {r3TripId ? null : <DashboardSidebar />}
         <div className="flex flex-col flex-1 min-w-0" style={{ "--chrome-nav-h": "52px" } as React.CSSProperties}>
+          {r3TripId ? (
+            <R3TopBar
+              tripId={r3TripId}
+              plan={(plansList ?? []).find((p) => p.id === r3TripId) ?? { id: r3TripId }}
+              plans={plansList ?? []}
+            />
+          ) : (
           <header
             className="flex items-center justify-between gap-2 h-[52px] px-3 sm:px-5 sticky top-0 z-40"
             style={{ background: "var(--console-card)", borderBottom: "1px solid var(--console-line)" }}
@@ -106,6 +124,7 @@ export function DashboardLayout({ children, subheader }: DashboardLayoutProps) {
               <UserMenu />
             </div>
           </header>
+          )}
           {subheader}
           <KyotoMarketNotice />
           <main className="flex-1 overflow-auto">

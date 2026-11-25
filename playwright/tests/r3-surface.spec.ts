@@ -2,7 +2,7 @@
  * r3-surface.spec.ts — the Revision 3 planning surface's screenshots (Leon, Nov 22 2026).
  *
  * Stands up a fresh traveler and a three-day Kyoto plan with six stops through the SAME fixtures the other browser
- * tests use (`registerAndSignIn` + `/api/trips` + `/api/trips/:id/items`), then opens `/plans/:id?surface=r3` and
+ * tests use (`registerAndSignIn` + `/api/trips` + `/api/trips/:id/items`), then opens `/plans/:id?surface=r3&capture=1` and
  * captures the page at 1280 and at 390. It asserts only that the R3 surface mounted (`r3-surface`), so a screenshot is
  * never a picture of the old page.
  *
@@ -15,6 +15,65 @@ import { registerAndSignIn } from "../utils/auth";
 import { markSeededItemsAsOsm } from "../utils/osm-coords";
 
 const BASE_URL = process.env.BASE_URL ?? "http://localhost:5000";
+/** The map's settled state: how much of the canvas the loaded tiles span, and whether every pin is inside it. */
+async function mapCoverage(page: Page) {
+  return page.evaluate(() => {
+    const container = (document.querySelector('[data-testid="r3-map-canvas-wrap"]') as HTMLElement | null)
+      ?? (document.querySelector('[data-testid="slip-days-map-canvas"]') as HTMLElement | null);
+    if (!container) return { w: 0, h: 0, pins: 0, pinsInside: false };
+    const c = container.getBoundingClientRect();
+    const tiles = Array.from(document.querySelectorAll(".leaflet-tile-loaded")).map((el) => el.getBoundingClientRect());
+    const pins = Array.from(document.querySelectorAll("[data-pin-state]")).map((el) => el.getBoundingClientRect());
+    if (!tiles.length) return { w: 0, h: 0, pins: pins.length, pinsInside: false };
+    const left = Math.min(...tiles.map((r) => r.left));
+    const right = Math.max(...tiles.map((r) => r.right));
+    const top = Math.min(...tiles.map((r) => r.top));
+    const bottom = Math.max(...tiles.map((r) => r.bottom));
+    return {
+      w: (Math.min(right, c.right) - Math.max(left, c.left)) / c.width,
+      h: (Math.min(bottom, c.bottom) - Math.max(top, c.top)) / c.height,
+      pins: pins.length,
+      pinsInside: pins.every((r) => r.left >= c.left - 1 && r.right <= c.right + 1 && r.top >= c.top - 1 && r.bottom <= c.bottom + 1),
+    };
+  });
+}
+
+/** Every tile in the view's own range is loaded - a blank block fails, not just a gap in the outer extent. */
+async function tilesComplete(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const container = (document.querySelector('[data-testid="r3-map-canvas-wrap"]') as HTMLElement | null)
+      ?? (document.querySelector('[data-testid="slip-days-map-canvas"]') as HTMLElement | null);
+    if (!container) return 0;
+    return container.querySelectorAll(".leaflet-tile:not(.leaflet-tile-loaded)").length;
+  });
+}
+
+/** No two pins intersect, and no pin intersects the stay ring. */
+async function pinsClear(page: Page) {
+  return page.evaluate(() => {
+    const rects = Array.from(document.querySelectorAll("[data-pin-state]")).map((el) => el.getBoundingClientRect());
+    const ring = document.querySelector("[data-anchor-kind]")?.getBoundingClientRect() ?? null;
+    const hit = (a: DOMRect, b: DOMRect) => a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1;
+    let overlaps = 0;
+    for (let i = 0; i < rects.length; i++) {
+      for (let j = i + 1; j < rects.length; j++) if (hit(rects[i], rects[j])) overlaps++;
+      if (ring && hit(rects[i], ring)) overlaps++;
+    }
+    return { pins: rects.length, overlaps, hasRing: !!ring };
+  });
+}
+
+/** The capture must show the settled map: shoot right after the poll, then prove nothing moved. */
+async function shootStable(page: Page, outPath: string) {
+  const before = await mapCoverage(page);
+  expect(await tilesComplete(page), "no pending tile before the shot").toBe(0);
+  await page.screenshot({ path: outPath, fullPage: true });
+  expect(await tilesComplete(page), "no pending tile right after the shot").toBe(0);
+  const after = await mapCoverage(page);
+  expect(Math.abs(after.w - before.w), "the map did not change while the shot was taken").toBeLessThanOrEqual(0.01);
+  expect(Math.abs(after.h - before.h), "the map did not change while the shot was taken").toBeLessThanOrEqual(0.01);
+}
+
 const OUT_DIR = path.join(process.cwd(), "playwright", "r3-captures");
 const uid = () => Math.random().toString(36).slice(2, 10);
 
@@ -105,7 +164,7 @@ test("R3 P0: the surface mounts with ?surface=r3 and is captured at 1280 and 390
   expect(flag.on, "the server must report R3_SURFACE=1 in this job").toBe(true);
 
   await page.setViewportSize({ width: 1280, height: 900 });
-  await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3`);
+  await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3&capture=1`);
   // The R3 frame, not the old page: this is the assertion that makes the picture meaningful.
   await expect(page.getByTestId("r3-surface")).toBeVisible({ timeout: 30_000 });
   // P1: the days slot holds the board - three day columns and six stop cards, so the capture is of a FILLED board.
@@ -119,7 +178,8 @@ test("R3 P0: the surface mounts with ?surface=r3 and is captured at 1280 and 390
   expect(order[0], "Ideas is the first column").toBe("r3-ideas-column");
   // The rail is COLLAPSED on this page, so the board has room: the map's own chrome is one row, and its caption and
   // single count line sit INSIDE the canvas.
-  await expect(page.locator('[data-state="collapsed"]')).toHaveCount(1);
+  // U4: the rail is not rendered at all on an R3 plan page - the bar and the plan run full width.
+  await expect(page.locator('[data-state="collapsed"], [data-state="expanded"]')).toHaveCount(0);
   await expect(page.getByTestId("r3-map-chip-all")).toBeVisible();
   await expect(page.getByTestId("r3-map-chip-day")).toHaveCount(3);
   await expect(page.getByTestId("r3-map-browse")).toBeVisible();
@@ -139,10 +199,10 @@ test("R3 P0: the surface mounts with ?surface=r3 and is captured at 1280 and 390
   await expect(page.getByTestId("r3-optimize-expert")).toBeVisible();
   await maskEmails(page);
   await page.getByTestId("r3-optimize-card").screenshot({ path: path.join(OUT_DIR, "u2-optimize-1280.png") });
-  await page.screenshot({ path: path.join(OUT_DIR, "v1-1280.png"), fullPage: true });
+  await shootStable(page, path.join(OUT_DIR, "v1-1280.png"));
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3`);
+  await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3&capture=1`);
   await expect(page.getByTestId("r3-surface")).toBeVisible({ timeout: 30_000 });
   await maskEmails(page);
   await page.screenshot({ path: path.join(OUT_DIR, "v1-390.png"), fullPage: true });
@@ -181,7 +241,7 @@ test("U2: the Optimize card with findings, and its empty state", async ({ page }
   });
 
   await page.setViewportSize({ width: 1280, height: 900 });
-  await page.goto(`${BASE_URL}/plans/${withFindings}?surface=r3`);
+  await page.goto(`${BASE_URL}/plans/${withFindings}?surface=r3&capture=1`);
   await expect(page.getByTestId("r3-optimize-card")).toBeVisible({ timeout: 30_000 });
   const findings = page.getByTestId("r3-optimize-finding");
   await expect(findings.first()).toBeVisible({ timeout: 20_000 });
@@ -213,7 +273,7 @@ test("U2: the Optimize card with findings, and its empty state", async ({ page }
     });
   });
   const quiet = await quietTrip(page);
-  await page.goto(`${BASE_URL}/plans/${quiet}?surface=r3`);
+  await page.goto(`${BASE_URL}/plans/${quiet}?surface=r3&capture=1`);
   await expect(page.getByTestId("r3-optimize-card")).toBeVisible({ timeout: 30_000 });
   await expect(page.getByTestId("r3-optimize-sentence")).toContainText("Optimize checks real travel times");
   await expect(page.getByTestId("r3-optimize-cta")).toBeVisible();
@@ -245,7 +305,7 @@ test("U3: the phone surface - days, map, ideas, an empty day and a long trip", a
   fs.mkdirSync(OUT_DIR, { recursive: true });
   const tripId = await sixStopTrip(page);
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3`);
+  await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3&capture=1`);
   await expect(page.getByTestId("r3-surface")).toBeVisible({ timeout: 30_000 });
 
   // Days: the pills, the strip (Ideas + 3 days), the hint, the open day's stops, the Optimize card under them.
@@ -299,14 +359,55 @@ test("U3: the phone surface - days, map, ideas, an empty day and a long trip", a
   // 3: the map must really draw - at least one pin AND the stay ring, or the test fails.
   await expect(page.locator("[data-pin-state]").first()).toBeVisible({ timeout: 20_000 });
   await expect(page.locator("[data-anchor-kind]").first()).toBeVisible({ timeout: 20_000 });
+  // Wait until the tiles actually span the canvas: the re-fit lands first, the tiles arrive after, and a fixed pause
+  // photographed a 76%-covered map. The poll is bounded and then asserted below, so a real gap still fails the run.
+  await page
+    .waitForFunction(
+      () => {
+        const container = document.querySelector('[data-testid="r3-map-canvas-wrap"]') as HTMLElement | null;
+        if (!container) return false;
+        const c = container.getBoundingClientRect();
+        const tiles = Array.from(document.querySelectorAll(".leaflet-tile-loaded")).map((el) => el.getBoundingClientRect());
+        if (!tiles.length) return false;
+        const left = Math.min(...tiles.map((r) => r.left));
+        const right = Math.max(...tiles.map((r) => r.right));
+        return (Math.min(right, c.right) - Math.max(left, c.left)) / c.width >= 0.9;
+      },
+      { timeout: 25_000 },
+    )
+    .catch(() => {});
+  const phoneCover = await page.evaluate(() => {
+    const container = document.querySelector('[data-testid="r3-map-canvas-wrap"]') as HTMLElement | null;
+    if (!container) return { w: 0, h: 0, pins: 0, pinsInside: false };
+    const c = container.getBoundingClientRect();
+    const tiles = Array.from(document.querySelectorAll(".leaflet-tile-loaded")).map((el) => el.getBoundingClientRect());
+    if (!tiles.length) return { w: 0, h: 0, pins: 0, pinsInside: false };
+    const left = Math.min(...tiles.map((r) => r.left));
+    const right = Math.max(...tiles.map((r) => r.right));
+    const top = Math.min(...tiles.map((r) => r.top));
+    const bottom = Math.max(...tiles.map((r) => r.bottom));
+    const pins = Array.from(document.querySelectorAll("[data-pin-state]")).map((el) => el.getBoundingClientRect());
+    return {
+      w: (Math.min(right, c.right) - Math.max(left, c.left)) / c.width,
+      h: (Math.min(bottom, c.bottom) - Math.max(top, c.top)) / c.height,
+      pins: pins.length,
+      pinsInside: pins.every((r) => r.left >= c.left - 1 && r.right <= c.right + 1 && r.top >= c.top - 1 && r.bottom <= c.bottom + 1),
+    };
+  });
+  expect(phoneCover.w, "the phone map's tiles cover its width").toBeGreaterThanOrEqual(0.9);
+  expect(phoneCover.h, "the phone map's tiles cover its height").toBeGreaterThanOrEqual(0.9);
+  expect(phoneCover.pins, "the six stops are drawn on the phone map").toBeGreaterThanOrEqual(6);
+  expect(phoneCover.pinsInside, "every pin is inside the phone map").toBe(true);
+  const phonePins = await pinsClear(page);
+  expect(phonePins.overlaps, "no two pins (or a pin and the ring) intersect at 390").toBe(0);
   await page.waitForTimeout(600);
   await page.evaluate(() => window.scrollTo(0, 0));
   await maskEmails(page);
-  await page.screenshot({ path: path.join(OUT_DIR, "u3-map-390.png"), fullPage: true });
+  await shootStable(page, path.join(OUT_DIR, "u3-map-390.png"));
 
   // A 7-day trip: the strip scrolls, the last cell cut off, and an empty day offers only the dashed Add.
   const longId = await longTrip(page);
-  await page.goto(`${BASE_URL}/plans/${longId}?surface=r3`);
+  await page.goto(`${BASE_URL}/plans/${longId}?surface=r3&capture=1`);
   await expect(page.getByTestId("r3-phone-day-strip")).toBeVisible({ timeout: 30_000 });
   await expect(page.getByTestId("r3-phone-day-chip")).toHaveCount(8);
   await page.getByTestId("r3-phone-day-chip").last().click();
@@ -334,7 +435,7 @@ test("U3: the phone surface - days, map, ideas, an empty day and a long trip", a
     json.tripRole = "guest";
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(json) });
   });
-  await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3`);
+  await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3&capture=1`);
   await expect(page.getByTestId("r3-surface")).toBeVisible({ timeout: 30_000 });
   await expect(page.getByTestId("r3-phone-tabs")).toBeVisible();
   await expect(page.getByTestId("r3-optimize-card")).toHaveCount(0);
@@ -342,4 +443,117 @@ test("U3: the phone surface - days, map, ideas, an empty day and a long trip", a
   await maskEmails(page);
   await page.screenshot({ path: path.join(OUT_DIR, "u3-guest-390.png"), fullPage: true });
   await page.unroute(`**/api/trips/${tripId}/plancard**`);
+});
+
+test("U4: the V24 top bar - the bar, the plan switcher and the account menu", async ({ page }) => {
+  fs.mkdirSync(OUT_DIR, { recursive: true });
+  const tripId = await sixStopTrip(page);
+
+  for (const width of [1280, 390] as const) {
+    await page.setViewportSize({ width, height: width === 1280 ? 900 : 844 });
+    await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3&capture=1`);
+    await expect(page.getByTestId("r3-topbar")).toBeVisible({ timeout: 30_000 });
+    // The bar must not cover the plan: its bottom is at or above the eyebrow's top.
+    const barBox = await page.getByTestId("r3-topbar").boundingBox();
+    const eyebrowBox = await page.getByTestId("r3-eyebrow").boundingBox();
+    expect(barBox && eyebrowBox && barBox.y + barBox.height, `the bar ends above the eyebrow (${width})`).toBeLessThanOrEqual(Math.ceil(eyebrowBox!.y) + 1);
+    if (width === 1280) {
+      await page.waitForFunction(() => document.querySelectorAll(".leaflet-tile-loaded").length > 0, { timeout: 20_000 }).catch(() => {});
+      await page.waitForTimeout(500);
+      const cover = await page.evaluate(() => {
+        const container = document.querySelector('[data-testid="r3-map-canvas-wrap"]') as HTMLElement | null
+          ?? (document.querySelector('[data-testid="slip-days-map-canvas"]') as HTMLElement | null);
+        if (!container) return { w: 0, h: 0 };
+        const c = container.getBoundingClientRect();
+        const tiles = Array.from(document.querySelectorAll(".leaflet-tile-loaded")).map((el) => el.getBoundingClientRect());
+        if (!tiles.length) return { w: 0, h: 0 };
+        const left = Math.min(...tiles.map((r) => r.left));
+        const right = Math.max(...tiles.map((r) => r.right));
+        const top = Math.min(...tiles.map((r) => r.top));
+        const bottom = Math.max(...tiles.map((r) => r.bottom));
+        const pins = Array.from(document.querySelectorAll("[data-pin-state]")).map((el) => el.getBoundingClientRect());
+        const pinsInside = pins.every((r) => r.left >= c.left - 1 && r.right <= c.right + 1 && r.top >= c.top - 1 && r.bottom <= c.bottom + 1);
+        return {
+          w: (Math.min(right, c.right) - Math.max(left, c.left)) / c.width,
+          h: (Math.min(bottom, c.bottom) - Math.max(top, c.top)) / c.height,
+          pins: pins.length,
+          pinsInside,
+        };
+      });
+      expect(cover.w, "loaded tiles span the map's width").toBeGreaterThanOrEqual(0.9);
+      expect(cover.h, "loaded tiles span the map's height").toBeGreaterThanOrEqual(0.9);
+      expect(cover.pins, "the six stops are drawn").toBeGreaterThanOrEqual(6);
+      expect(cover.pinsInside, "every pin is inside the map").toBe(true);
+      const clear = await pinsClear(page);
+      expect(clear.overlaps, "no two pins (or a pin and the ring) intersect at 1280").toBe(0);
+    }
+    await page.evaluate(() => window.scrollTo(0, 0));
+    if (width === 390) {
+      // No sideways overflow at 390, and the avatar is fully inside the viewport.
+      const doc = await page.evaluate(() => document.documentElement.scrollWidth);
+      expect(doc, "the phone page is exactly 390 wide").toBe(390);
+      const avatar = await page.getByTestId("r3-account-button").boundingBox();
+      expect(avatar && avatar.x + avatar.width, "the avatar is fully visible").toBeLessThanOrEqual(390);
+    }
+    await maskEmails(page);
+    await shootStable(page, path.join(OUT_DIR, `u4-bar-${width}.png`));
+
+    await page.getByTestId("r3-plan-switcher-button").click();
+    await expect(page.getByTestId("r3-plan-switcher-panel")).toBeVisible();
+    const trigger = await page.getByTestId("r3-plan-switcher-button").boundingBox();
+    const panel = await page.getByTestId("r3-plan-switcher-panel").boundingBox();
+    expect(Math.abs((panel?.x ?? 0) - (trigger?.x ?? 0)), "the switcher menu is anchored to its trigger").toBeLessThanOrEqual(8);
+    await expect(page.getByTestId("r3-plan-row").first()).toBeVisible();
+    await expect(page.getByTestId("r3-plan-start")).toBeVisible();
+    await maskEmails(page);
+    await page.screenshot({ path: path.join(OUT_DIR, `u4-switcher-${width}.png`), fullPage: true });
+    await page.getByTestId("r3-plan-switcher-button").click();
+
+    await page.getByTestId("r3-account-button").click();
+    await expect(page.getByTestId("r3-account-panel")).toBeVisible();
+    const avatar = await page.getByTestId("r3-account-button").boundingBox();
+    const accountPanel = await page.getByTestId("r3-account-panel").boundingBox();
+    expect(
+      Math.abs((accountPanel?.x ?? 0) + (accountPanel?.width ?? 0) - ((avatar?.x ?? 0) + (avatar?.width ?? 0))),
+      "the account menu is right-anchored to the avatar",
+    ).toBeLessThanOrEqual(8);
+    if (width === 1280) {
+      await page.waitForFunction(() => document.querySelectorAll(".leaflet-tile-loaded").length > 0, { timeout: 20_000 }).catch(() => {});
+      await page.waitForTimeout(400);
+    }
+    await expect(page.getByTestId("r3-account-profile")).toBeVisible();
+    await expect(page.getByTestId("r3-account-bookings")).toBeVisible();
+    await expect(page.getByTestId("r3-account-logout")).toBeVisible();
+    await maskEmails(page);
+    await shootStable(page, path.join(OUT_DIR, `u4-account-${width}.png`));
+    await page.getByTestId("r3-account-button").click();
+  }
+});
+
+test("U4: the switcher with three plans (current, no dates, past)", async ({ page }) => {
+  fs.mkdirSync(OUT_DIR, { recursive: true });
+  const tripId = await sixStopTrip(page);
+  // LOOKS CAPTURE ONLY - NOT DATA COVERAGE. The plans list is stubbed so the three row states can be photographed.
+  await page.route("**/api/trips", async (route) => {
+    const res = await route.fetch().catch(() => null);
+    const real = res ? await res.json().catch(() => null) : null;
+    const current = Array.isArray(real) ? real.find((p: any) => p.id === tripId) : null;
+    const rows = [
+      { ...(current ?? { id: tripId, title: "Your Kyoto plan", startDate: "2027-04-01", endDate: "2027-04-03" }) },
+      { id: "stub-no-dates", title: "Your plan", startDate: null, endDate: null },
+      { id: "stub-past", title: "Your Kyoto plan", startDate: "2026-04-03", endDate: "2026-04-05" },
+    ];
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(rows) });
+  });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3&capture=1`);
+  await expect(page.getByTestId("r3-topbar")).toBeVisible({ timeout: 30_000 });
+  await page.getByTestId("r3-plan-switcher-button").click();
+  await expect(page.getByTestId("r3-plan-row")).toHaveCount(3);
+  await expect(page.getByTestId("r3-plan-row").first()).toBeVisible();
+  await expect(page.getByTestId("r3-plan-row").nth(2), "the ended plan reads Past").toContainText("Past");
+  await page.waitForFunction(() => document.querySelectorAll(".leaflet-tile-loaded").length > 0, { timeout: 20_000 }).catch(() => {});
+  await maskEmails(page);
+  await shootStable(page, path.join(OUT_DIR, "u4-switcher-three-1280.png"));
+  await page.unroute("**/api/trips");
 });
