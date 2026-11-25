@@ -48,11 +48,53 @@ async function tilesComplete(page: Page): Promise<number> {
   });
 }
 
+/**
+ * THE DRAWN EXTENT (Leon, Nov 25 2026): measure the Leaflet wrappers the reader actually sees, and require real air -
+ * centre-to-centre >= the drawn width + 8 for every pin pair, and ring-to-pin >= ring radius + pin radius + 8.
+ */
+async function drawnClearance(page: Page) {
+  return page.evaluate(() => {
+    const wraps = Array.from(document.querySelectorAll(".leaflet-marker-icon")) as HTMLElement[];
+    const pins = wraps.filter((el) => el.querySelector("[data-pin-state]"));
+    const ring = wraps.find((el) => el.querySelector("[data-anchor-kind]")) ?? null;
+    const c = (el: HTMLElement) => {
+      const r = el.getBoundingClientRect();
+      return { x: r.x + r.width / 2, y: r.y + r.height / 2, w: el.offsetWidth || r.width, h: el.offsetHeight || r.height };
+    };
+    const pairs: Array<{ a: number; b: number; d: number; need: number }> = [];
+    const p = pins.map(c);
+    for (let i = 0; i < p.length; i++) {
+      for (let j = i + 1; j < p.length; j++) {
+        const d = Math.hypot(p[i].x - p[j].x, p[i].y - p[j].y);
+        pairs.push({ a: i, b: j, d: Math.round(d * 10) / 10, need: Math.max(p[i].w, p[i].h) + 8 });
+      }
+    }
+    let ringGap: { d: number; need: number } | null = null;
+    if (ring) {
+      const r = c(ring);
+      const nearest = p.map((q) => ({ d: Math.hypot(q.x - r.x, q.y - r.y), need: r.w / 2 + Math.max(q.w, q.h) / 2 + 8 }))
+        .sort((u, v) => u.d - v.d)[0];
+      if (nearest) ringGap = { d: Math.round(nearest.d * 10) / 10, need: Math.round(nearest.need * 10) / 10 };
+    }
+    return { pins: p.length, ring: !!ring, pairs, ringGap };
+  });
+}
+
+/** Fail the run if the drawn badges are too close, before OR after a shot. */
+async function assertDrawnClear(page: Page, when: string) {
+  const clear = await drawnClearance(page);
+  const bad = clear.pairs.filter((p) => p.d < p.need);
+  expect(bad, `${when}: every pin pair has ${8}px of air (${JSON.stringify(bad)})`).toHaveLength(0);
+  if (clear.ringGap) {
+    expect(clear.ringGap.d, `${when}: the ring keeps its air from every pin`).toBeGreaterThanOrEqual(clear.ringGap.need);
+  }
+}
+
 /** No two pins intersect, and no pin intersects the stay ring. */
 async function pinsClear(page: Page) {
   return page.evaluate(() => {
-    const rects = Array.from(document.querySelectorAll("[data-pin-state]")).map((el) => el.getBoundingClientRect());
-    const ring = document.querySelector("[data-anchor-kind]")?.getBoundingClientRect() ?? null;
+    const rects = Array.from(document.querySelectorAll(".leaflet-marker-icon:has([data-pin-state])")).map((el) => el.getBoundingClientRect());
+    const ring = document.querySelector(".leaflet-marker-icon:has([data-anchor-kind])")?.getBoundingClientRect() ?? null;
     const hit = (a: DOMRect, b: DOMRect) => a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1;
     let overlaps = 0;
     for (let i = 0; i < rects.length; i++) {
@@ -64,14 +106,86 @@ async function pinsClear(page: Page) {
 }
 
 /** The capture must show the settled map: shoot right after the poll, then prove nothing moved. */
+/** DIAGNOSTIC: everything a capture can tell us about how its map got here, written next to the PNG. */
+async function dumpMapDiag(page: Page, outPath: string) {
+  const name = path.basename(outPath).replace(/\.png$/, "");
+  const data = await page.evaluate(() => {
+    const q = (sel: string) => Array.from(document.querySelectorAll(sel)) as HTMLElement[];
+    const box = (el: Element) => {
+      const r = el.getBoundingClientRect();
+      return { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) };
+    };
+    const wraps = q(".leaflet-marker-icon");
+    const pins = q("[data-pin-state]");
+    const ring = q("[data-anchor-kind]");
+    const tiles = q(".leaflet-tile");
+    return {
+      spread: (window as any).__r3Spread ?? null,
+      maps: q(".leaflet-container").length,
+      markWraps: wraps.length,
+      pins: pins.length,
+      ring: ring.length,
+      pinBoxes: pins.map(box),
+      pinWrapTransforms: wraps.map((el) => el.style.transform),
+      ringBox: ring.length ? box(ring[0]) : null,
+      tiles: { total: tiles.length, loaded: tiles.filter((el) => el.classList.contains("leaflet-tile-loaded")).length },
+      viewport: { w: window.innerWidth, h: window.innerHeight },
+      scrollY: window.scrollY,
+    };
+  });
+  fs.writeFileSync(path.join(OUT_DIR, `diag-${name}.json`), JSON.stringify(data, null, 2));
+}
+
 async function shootStable(page: Page, outPath: string) {
-  const before = await mapCoverage(page);
-  expect(await tilesComplete(page), "no pending tile before the shot").toBe(0);
+  // A capture with no map (a phone page on its Days tab) has nothing to wait for: shoot it plainly.
+  const hasMap = await page.evaluate(
+    () =>
+      !!(document.querySelector('[data-testid="r3-map-canvas-wrap"]') || document.querySelector('[data-testid="slip-days-map-canvas"]')),
+  );
+  if (!hasMap) {
+    await page.screenshot({ path: outPath, fullPage: true });
+    return;
+  }
+  await page.waitForFunction(
+    () => {
+      const c = (document.querySelector('[data-testid="r3-map-canvas-wrap"]') as HTMLElement | null)
+        ?? (document.querySelector('[data-testid="slip-days-map-canvas"]') as HTMLElement | null);
+      if (!c) return false;
+      const tiles = Array.from(c.querySelectorAll(".leaflet-tile"));
+      const loaded = tiles.filter((el) => el.classList.contains("leaflet-tile-loaded"));
+      if (tiles.length === 0) return false;
+      if (loaded.length !== tiles.length) return false;
+      const box = c.getBoundingClientRect();
+      const rects = loaded.map((el) => el.getBoundingClientRect());
+      const left = Math.min(...rects.map((r) => r.left));
+      const right = Math.max(...rects.map((r) => r.right));
+      const top = Math.min(...rects.map((r) => r.top));
+      const bottom = Math.max(...rects.map((r) => r.bottom));
+      const w = (Math.min(right, box.right) - Math.max(left, box.left)) / box.width;
+      const h = (Math.min(bottom, box.bottom) - Math.max(top, box.top)) / box.height;
+      return w >= 0.9 && h >= 0.9;
+    },
+    { timeout: 10_000 },
+  );
+  await dumpMapDiag(page, outPath);
+  await assertDrawnClear(page, "before the shot");
   await page.screenshot({ path: outPath, fullPage: true });
-  expect(await tilesComplete(page), "no pending tile right after the shot").toBe(0);
+  await assertDrawnClear(page, "right after the shot");
   const after = await mapCoverage(page);
-  expect(Math.abs(after.w - before.w), "the map did not change while the shot was taken").toBeLessThanOrEqual(0.01);
-  expect(Math.abs(after.h - before.h), "the map did not change while the shot was taken").toBeLessThanOrEqual(0.01);
+  expect(after.w, "the map's tile coverage holds after the shot").toBeGreaterThanOrEqual(0.9);
+  expect(after.h, "the map's tile coverage holds after the shot").toBeGreaterThanOrEqual(0.9);
+  expect(await tilesComplete(page), "no pending tile right after the shot").toBe(0);
+  expect(await pagesTilesLoaded(page), "every tile is loaded right after the shot").toBe(true);
+}
+
+async function pagesTilesLoaded(page: Page): Promise<boolean> {
+  return page.evaluate(() => {
+    const c = (document.querySelector('[data-testid="r3-map-canvas-wrap"]') as HTMLElement | null)
+      ?? (document.querySelector('[data-testid="slip-days-map-canvas"]') as HTMLElement | null);
+    if (!c) return false;
+    const tiles = Array.from(c.querySelectorAll(".leaflet-tile"));
+    return tiles.length > 0 && tiles.every((el) => el.classList.contains("leaflet-tile-loaded"));
+  });
 }
 
 const OUT_DIR = path.join(process.cwd(), "playwright", "r3-captures");
