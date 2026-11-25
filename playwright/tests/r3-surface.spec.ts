@@ -119,7 +119,8 @@ test("R3 P0: the surface mounts with ?surface=r3 and is captured at 1280 and 390
   expect(order[0], "Ideas is the first column").toBe("r3-ideas-column");
   // The rail is COLLAPSED on this page, so the board has room: the map's own chrome is one row, and its caption and
   // single count line sit INSIDE the canvas.
-  await expect(page.locator('[data-state="collapsed"]')).toHaveCount(1);
+  // U4: the rail is not rendered at all on an R3 plan page - the bar and the plan run full width.
+  await expect(page.locator('[data-state="collapsed"], [data-state="expanded"]')).toHaveCount(0);
   await expect(page.getByTestId("r3-map-chip-all")).toBeVisible();
   await expect(page.getByTestId("r3-map-chip-day")).toHaveCount(3);
   await expect(page.getByTestId("r3-map-browse")).toBeVisible();
