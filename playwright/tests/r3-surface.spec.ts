@@ -671,3 +671,63 @@ test("U4: the switcher with three plans (current, no dates, past)", async ({ pag
   await shootStable(page, path.join(OUT_DIR, "u4-switcher-three-1280.png"));
   await page.unroute("**/api/trips");
 });
+
+test("U5: the no-plan landing - bar, cities, waitlist and the empty switcher", async ({ page }) => {
+  fs.mkdirSync(OUT_DIR, { recursive: true });
+  // A signed-in traveller with NO plans: a fresh registration never has one.
+  await registerAndSignIn(
+    page.request,
+    { email: `e2e-r3-noplan-${uid()}@example.com`, password: "R3Surface123!", firstName: "No", lastName: "Plan" },
+    BASE_URL,
+  );
+  // LOOKS CAPTURE ONLY - NOT DATA COVERAGE. The admin market list is stubbed: one open city, one with an opening, one
+  // with no date, so all three row states can be photographed.
+  await page.route("**//api/public/live-markets**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        launch: "kyoto",
+        live: ["kyoto"],
+        beta: [],
+        dates: { porto: "2027-03-01" },
+      }),
+    });
+  });
+  await page.route("**/api/public/signup-mode", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ mode: "open", launchMarketSlug: "kyoto" }) });
+  });
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`${BASE_URL}/?start=1&surface=r3&capture=1`);
+  await expect(page.getByTestId("r3-no-plan-page")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("r3-no-plan-title")).toContainText("Where are you going?");
+  await expect(page.getByTestId("r3-no-plan-open-line")).toContainText("Now open in");
+  await expect(page.getByTestId("r3-no-plan-waitlist-cta").first()).toContainText("Join the");
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OUT_DIR, "u5-no-plan-1280.png"), fullPage: true });
+
+  // the empty switcher: it opens on the bar's plan slot and keeps its footer
+  await page.getByTestId("r3-plan-switcher-button").click();
+  await expect(page.getByTestId("r3-plan-switcher-panel")).toBeVisible();
+  await expect(page.getByTestId("r3-plan-row")).toHaveCount(0);
+  await expect(page.getByTestId("r3-plan-start")).toBeVisible();
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OUT_DIR, "u5-switcher-1280.png"), fullPage: true });
+  await page.getByTestId("r3-plan-switcher-button").click();
+
+  // the waitlist block, in view
+  await expect(page.getByTestId("r3-no-plan-waitlist")).toBeVisible();
+  await page.getByTestId("r3-no-plan-waitlist").scrollIntoViewIfNeeded();
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OUT_DIR, "u5-waitlist-1280.png"), fullPage: true });
+
+  // the same page at 390
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${BASE_URL}/?start=1&surface=r3&capture=1`);
+  await expect(page.getByTestId("r3-no-plan-page")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("r3-no-plan-title")).toBeVisible();
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OUT_DIR, "u5-no-plan-390.png"), fullPage: true });
+});
