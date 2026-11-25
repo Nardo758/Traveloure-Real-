@@ -949,6 +949,18 @@ router.post("/api/itinerary-comparisons/:id/apply-to-cart", isAuthenticated, asy
 
 
 
+/**
+ * R3 U5: the traveller's OWN plans, read-only, for the no-plan landing's decision. There was no such route (the client's
+ * `["/api/trips"]` read has no server handler - see PR #2099), so this is the minimal one: auth required, only the
+ * caller's non-deleted trips, and only the four fields the bar and the landing need.
+ */
+router.get("/api/trips/mine", isAuthenticated, async (req: any, res) => {
+  const userId = req.user?.id;
+  if (!userId) return res.status(401).json({ message: "Unauthorized" });
+  const rows = await storage.getTrips(userId);
+  res.json(rows.map((t: any) => ({ id: t.id, title: t.title, startDate: t.startDate, endDate: t.endDate })));
+});
+
 router.get("/api/trips/:tripId/participants", isAuthenticated, asyncHandler(async (req, res) => {
     const userId = getUserId(req)!;
     if (!await verifyTripOwnership(req.params.tripId, userId)) {

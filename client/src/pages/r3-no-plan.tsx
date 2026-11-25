@@ -122,14 +122,45 @@ export function R3NoPlanSwitch({ children }: { children: ReactNode }) {
   const [path] = useLocation();
   const search = useSearch();
   const r3 = useR3SurfaceOn(search);
-  const { user } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
   const startRequested = new URLSearchParams(search).get("start") === "1";
-  const { data: plans } = useQuery<Array<{ id: string }>>({
-    queryKey: ["/api/trips"],
-    enabled: !!user && r3 && startRequested && path === "/",
+  const onDoor = startRequested && path === "/";
+  // R3 U5: GET /api/trips/mine - the caller's own plans (server/routes/trips.routes.ts). Read only when it can matter.
+  const { data: plans, isLoading: plansLoading, isError: plansError } = useQuery<Array<{ id: string; title?: string | null; startDate?: string | null; endDate?: string | null }>>({
+    queryKey: ["/api/trips/mine"],
+    enabled: !!user && r3 && onDoor,
   });
-  if (!r3 || !user || !startRequested || path !== "/") return <>{children}</>;
-  if (!plans) return <>{children}</>;
-  if (plans.length > 0) return <>{children}</>;
-  return <R3NoPlanPage />;
+
+  const resolved = !authLoading && !plansLoading && plans !== undefined;
+  const decision = {
+    r3,
+    start: startRequested,
+    user: !!user,
+    authLoading,
+    plansLoading,
+    plansShape: Array.isArray(plans) ? "array" : plans === undefined ? "undefined" : typeof plans,
+    plansLen: Array.isArray(plans) ? plans.length : -1,
+    path,
+    lazyResolved: true,
+    resolved,
+    error: plansError ? "plans-error" : "none",
+  };
+
+  // Only decide once BOTH auth and the plans read have resolved: never fall through to the home early.
+  if (!r3 || !onDoor) return <>{children}</>;
+  if (!resolved) {
+    return (
+      <>
+        <span hidden data-testid="r3-no-plan-gate" data-decision={JSON.stringify(decision)} />
+        <div className="min-h-[40vh]" data-testid="r3-no-plan-skeleton" />
+      </>
+    );
+  }
+  const list = Array.isArray(plans) ? plans : [];
+  return (
+    <>
+      <span hidden data-testid="r3-no-plan-gate" data-decision={JSON.stringify(decision)} />
+      {list.length === 0 ? <R3NoPlanPage /> : children}
+    </>
+  );
 }
