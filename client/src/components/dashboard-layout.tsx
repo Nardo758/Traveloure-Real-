@@ -100,7 +100,7 @@ export function DashboardLayout({ children, subheader }: DashboardLayoutProps) {
           surfaces. The scope class carries the tokens; the raw console hex literals that
           used to live here are gone (sidebar reads tokens). */}
       <div className="console-scope flex min-h-screen w-full" style={{ background: "var(--console-ground)" }}>
-        <DashboardSidebar />
+        {r3TripId ? null : <DashboardSidebar />}
         <div className="flex flex-col flex-1 min-w-0" style={{ "--chrome-nav-h": "52px" } as React.CSSProperties}>
           {r3TripId ? (
             <R3TopBar

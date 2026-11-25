@@ -27,9 +27,10 @@ export function R3TopBar({ plan, plans, tripId }: { plan: BarPlan | null; plans:
   const panelStyle = { backgroundColor: BOARD_CELL, borderColor: BOARD_LINE } as const;
 
   return (
-    <div className="sticky top-0 z-40 border-b" style={{ borderColor: BOARD_LINE, backgroundColor: BOARD_CELL }} data-testid="r3-topbar">
-      <div className="mx-auto flex h-14 max-w-[1152px] items-center gap-3 px-3">
-        <Link href="/" className="text-[13px] font-bold tracking-[0.12em]" style={{ color: BOARD_INK }} data-testid="r3-bar-brand">
+    <div className="sticky top-0 z-40 bg-transparent" data-testid="r3-topbar">
+      <div className="mx-auto max-w-[1152px] px-3 pt-3">
+      <div className="flex h-14 items-center gap-3 rounded-xl border px-3" style={{ borderColor: BOARD_LINE, backgroundColor: BOARD_CELL }}>
+        <Link href="/" className="hidden text-[13px] font-bold tracking-[0.12em] lg:block" style={{ color: BOARD_INK }} data-testid="r3-bar-brand">
           TRAVELOURE
         </Link>
 
@@ -62,6 +63,7 @@ export function R3TopBar({ plan, plans, tripId }: { plan: BarPlan | null; plans:
             {initials}
           </button>
         </div>
+      </div>
       </div>
 
       {openPanel === "plans" ? (
@@ -106,24 +108,24 @@ export function R3TopBar({ plan, plans, tripId }: { plan: BarPlan | null; plans:
       {openPanel === "account" ? (
         <div className="absolute right-3 top-14 w-[280px] rounded-xl border p-3 shadow-xl" style={panelStyle} data-testid="r3-account-panel">
           <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">Account</p>
-          <ul className="mt-2 space-y-1 text-[13px]" style={{ color: BOARD_INK }}>
-            <li><Link href="/profile" onClick={() => setOpenPanel(null)} className="block rounded-lg px-2 py-2" data-testid="r3-account-profile">Profile</Link></li>
+          <ul className="mt-2 divide-y text-[13px]" style={{ color: BOARD_INK, borderColor: BOARD_LINE }}>
+            <li><Link href="/profile" onClick={() => setOpenPanel(null)} className="block px-2 py-2 font-semibold" data-testid="r3-account-profile">Profile</Link></li>
             {/* U7 gives Settings its own page; until then the row points at the existing profile page. */}
-            <li><Link href="/profile" onClick={() => setOpenPanel(null)} className="block rounded-lg px-2 py-2" data-testid="r3-account-settings">Settings</Link></li>
+            <li><Link href="/profile" onClick={() => setOpenPanel(null)} className="block px-2 py-2 font-semibold" data-testid="r3-account-settings">Settings</Link></li>
             <li>
-              <Link href="/bookings" onClick={() => setOpenPanel(null)} className="block rounded-lg px-2 py-2" data-testid="r3-account-bookings">
+              <Link href="/bookings" onClick={() => setOpenPanel(null)} className="block px-2 py-2 font-semibold" data-testid="r3-account-bookings">
                 Bookings and receipts
                 <span className="block text-[11px] text-muted-foreground">Every plan, and anything not on a plan</span>
               </Link>
             </li>
             <li>
-              <Link href="/inbox" onClick={() => setOpenPanel(null)} className="block rounded-lg px-2 py-2" data-testid="r3-account-messages">
+              <Link href="/inbox" onClick={() => setOpenPanel(null)} className="block px-2 py-2 font-semibold" data-testid="r3-account-messages">
                 Messages
                 <span className="block text-[11px] text-muted-foreground">Only those not tied to a plan</span>
               </Link>
             </li>
             <li>
-              <button type="button" onClick={() => logout()} className="block w-full rounded-lg px-2 py-2 text-left" data-testid="r3-account-logout">
+              <button type="button" onClick={() => logout()} className="block w-full px-2 py-2 text-left font-semibold" data-testid="r3-account-logout">
                 Log out
               </button>
             </li>

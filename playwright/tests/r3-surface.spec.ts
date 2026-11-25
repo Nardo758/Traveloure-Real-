@@ -352,7 +352,18 @@ test("U4: the V24 top bar - the bar, the plan switcher and the account menu", as
     await page.setViewportSize({ width, height: width === 1280 ? 900 : 844 });
     await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3`);
     await expect(page.getByTestId("r3-topbar")).toBeVisible({ timeout: 30_000 });
+    if (width === 1280) {
+      await page.waitForFunction(() => document.querySelectorAll(".leaflet-tile-loaded").length > 0, { timeout: 20_000 }).catch(() => {});
+      await page.waitForTimeout(500);
+    }
     await page.evaluate(() => window.scrollTo(0, 0));
+    if (width === 390) {
+      // No sideways overflow at 390, and the avatar is fully inside the viewport.
+      const doc = await page.evaluate(() => document.documentElement.scrollWidth);
+      expect(doc, "the phone page is exactly 390 wide").toBe(390);
+      const avatar = await page.getByTestId("r3-account-button").boundingBox();
+      expect(avatar && avatar.x + avatar.width, "the avatar is fully visible").toBeLessThanOrEqual(390);
+    }
     await maskEmails(page);
     await page.screenshot({ path: path.join(OUT_DIR, `u4-bar-${width}.png`), fullPage: true });
 
@@ -366,6 +377,10 @@ test("U4: the V24 top bar - the bar, the plan switcher and the account menu", as
 
     await page.getByTestId("r3-account-button").click();
     await expect(page.getByTestId("r3-account-panel")).toBeVisible();
+    if (width === 1280) {
+      await page.waitForFunction(() => document.querySelectorAll(".leaflet-tile-loaded").length > 0, { timeout: 20_000 }).catch(() => {});
+      await page.waitForTimeout(400);
+    }
     await expect(page.getByTestId("r3-account-profile")).toBeVisible();
     await expect(page.getByTestId("r3-account-bookings")).toBeVisible();
     await expect(page.getByTestId("r3-account-logout")).toBeVisible();
@@ -373,4 +388,31 @@ test("U4: the V24 top bar - the bar, the plan switcher and the account menu", as
     await page.screenshot({ path: path.join(OUT_DIR, `u4-account-${width}.png`), fullPage: true });
     await page.getByTestId("r3-account-button").click();
   }
+});
+
+test("U4: the switcher with three plans (current, no dates, past)", async ({ page }) => {
+  fs.mkdirSync(OUT_DIR, { recursive: true });
+  const tripId = await sixStopTrip(page);
+  // LOOKS CAPTURE ONLY - NOT DATA COVERAGE. The plans list is stubbed so the three row states can be photographed.
+  await page.route("**/api/trips", async (route) => {
+    const res = await route.fetch().catch(() => null);
+    const real = res ? await res.json().catch(() => null) : null;
+    const current = Array.isArray(real) ? real.find((p: any) => p.id === tripId) : null;
+    const rows = [
+      { ...(current ?? { id: tripId, title: "Your Kyoto plan", startDate: "2027-04-01", endDate: "2027-04-03" }) },
+      { id: "stub-no-dates", title: "Your plan", startDate: null, endDate: null },
+      { id: "stub-past", title: "Your Kyoto plan", startDate: "2027-03-03", endDate: "2027-03-05" },
+    ];
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(rows) });
+  });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3`);
+  await expect(page.getByTestId("r3-topbar")).toBeVisible({ timeout: 30_000 });
+  await page.getByTestId("r3-plan-switcher-button").click();
+  await expect(page.getByTestId("r3-plan-row")).toHaveCount(3);
+  await expect(page.getByTestId("r3-plan-row").first()).toBeVisible();
+  await page.waitForFunction(() => document.querySelectorAll(".leaflet-tile-loaded").length > 0, { timeout: 20_000 }).catch(() => {});
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OUT_DIR, "u4-switcher-three-1280.png"), fullPage: true });
+  await page.unroute("**/api/trips");
 });
