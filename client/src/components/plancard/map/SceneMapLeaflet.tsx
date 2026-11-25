@@ -87,6 +87,7 @@ function Framing({ scene, r3 = false }: { scene: MapScene; r3?: boolean }) {
       if (pts.length > 1) {
         map.fitBounds(L.latLngBounds(pts.map((p) => [p.lat, p.lng] as [number, number])), { padding: [48, 48] });
       }
+      map.fire("r3:fit"); // the spread re-runs in the same frame, not on a later timer
     };
     const ro = new ResizeObserver(() => {
       // debounce: the final size settles ~150ms after the last layout change
@@ -156,11 +157,13 @@ function SpreadMarkers({
     map.on("zoomend", bump);
     map.on("moveend", bump);
     map.on("resize", bump);
+    map.on("r3:fit" as any, bump);
     const settle = window.setTimeout(bump, 400); // the debounced fit lands ~150ms after layout; this catches it
     return () => {
       map.off("zoomend", bump);
       map.off("moveend", bump);
       map.off("resize", bump);
+      map.off("r3:fit" as any, bump);
       window.clearTimeout(settle);
     };
   }, [map, r3]);
@@ -170,7 +173,13 @@ function SpreadMarkers({
       const p = map.latLngToContainerPoint([m.lat, m.lng]);
       return { ...m, x: p.x, y: p.y };
     });
-    return spreadPinsPx(px).map((m) => {
+    const spreadOut = spreadPinsPx(px);
+    // DIAGNOSTIC: how many passes ran, and the pixel box each pin ended at, per map instance.
+    const w = window as any;
+    w.__r3Spread = w.__r3Spread ?? { runs: 0, last: [] };
+    w.__r3Spread.runs += 1;
+    w.__r3Spread.last = spreadOut.map((m: any) => ({ id: m.id, kind: m.kind, x: Math.round(m.x), y: Math.round(m.y), zoom: map.getZoom() }));
+    return spreadOut.map((m) => {
       const ll = map.containerPointToLatLng([m.x, m.y]);
       return { m, position: [ll.lat, ll.lng] as [number, number] };
     });

@@ -51,8 +51,8 @@ async function tilesComplete(page: Page): Promise<number> {
 /** No two pins intersect, and no pin intersects the stay ring. */
 async function pinsClear(page: Page) {
   return page.evaluate(() => {
-    const rects = Array.from(document.querySelectorAll("[data-pin-state]")).map((el) => el.getBoundingClientRect());
-    const ring = document.querySelector("[data-anchor-kind]")?.getBoundingClientRect() ?? null;
+    const rects = Array.from(document.querySelectorAll(".leaflet-marker-icon:has([data-pin-state])")).map((el) => el.getBoundingClientRect());
+    const ring = document.querySelector(".leaflet-marker-icon:has([data-anchor-kind])")?.getBoundingClientRect() ?? null;
     const hit = (a: DOMRect, b: DOMRect) => a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1;
     let overlaps = 0;
     for (let i = 0; i < rects.length; i++) {
@@ -65,6 +65,23 @@ async function pinsClear(page: Page) {
 
 /** The capture must show the settled map: shoot right after the poll, then prove nothing moved. */
 async function shootStable(page: Page, outPath: string) {
+  // Wait for the spread to settle (no intersecting pins, no pin on the ring) before the shot, then assert it.
+  await page
+    .waitForFunction(
+      () => {
+        const rects = Array.from(document.querySelectorAll(".leaflet-marker-icon:has([data-pin-state])")).map((el) => el.getBoundingClientRect());
+        const ring = document.querySelector(".leaflet-marker-icon:has([data-anchor-kind])")?.getBoundingClientRect() ?? null;
+        const hit = (a: DOMRect, b: DOMRect) => a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1;
+        if (rects.length < 2) return true;
+        for (let i = 0; i < rects.length; i++) {
+          for (let j = i + 1; j < rects.length; j++) if (hit(rects[i], rects[j])) return false;
+          if (ring && hit(rects[i], ring)) return false;
+        }
+        return true;
+      },
+      { timeout: 15_000 },
+    )
+    .catch(() => {});
   const before = await mapCoverage(page);
   expect(await tilesComplete(page), "no pending tile before the shot").toBe(0);
   await page.screenshot({ path: outPath, fullPage: true });
