@@ -64,7 +64,38 @@ async function pinsClear(page: Page) {
 }
 
 /** The capture must show the settled map: shoot right after the poll, then prove nothing moved. */
+/** DIAGNOSTIC: everything a capture can tell us about how its map got here, written next to the PNG. */
+async function dumpMapDiag(page: Page, outPath: string) {
+  const name = path.basename(outPath).replace(/\.png$/, "");
+  const data = await page.evaluate(() => {
+    const q = (sel: string) => Array.from(document.querySelectorAll(sel)) as HTMLElement[];
+    const box = (el: Element) => {
+      const r = el.getBoundingClientRect();
+      return { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) };
+    };
+    const wraps = q(".leaflet-marker-icon");
+    const pins = q("[data-pin-state]");
+    const ring = q("[data-anchor-kind]");
+    const tiles = q(".leaflet-tile");
+    return {
+      spread: (window as any).__r3Spread ?? null,
+      maps: q(".leaflet-container").length,
+      markWraps: wraps.length,
+      pins: pins.length,
+      ring: ring.length,
+      pinBoxes: pins.map(box),
+      pinWrapTransforms: wraps.map((el) => el.style.transform),
+      ringBox: ring.length ? box(ring[0]) : null,
+      tiles: { total: tiles.length, loaded: tiles.filter((el) => el.classList.contains("leaflet-tile-loaded")).length },
+      viewport: { w: window.innerWidth, h: window.innerHeight },
+      scrollY: window.scrollY,
+    };
+  });
+  fs.writeFileSync(path.join(OUT_DIR, `diag-${name}.json`), JSON.stringify(data, null, 2));
+}
+
 async function shootStable(page: Page, outPath: string) {
+  await dumpMapDiag(page, outPath);
   // Wait for the spread to settle (no intersecting pins, no pin on the ring) before the shot, then assert it.
   await page
     .waitForFunction(
@@ -86,6 +117,7 @@ async function shootStable(page: Page, outPath: string) {
   expect(await tilesComplete(page), "no pending tile before the shot").toBe(0);
   await page.screenshot({ path: outPath, fullPage: true });
   expect(await tilesComplete(page), "no pending tile right after the shot").toBe(0);
+  await dumpMapDiag(page, outPath.replace(/\.png$/, "-after.png").replace(/-after\.png$/, "-after"));
   const after = await mapCoverage(page);
   expect(Math.abs(after.w - before.w), "the map did not change while the shot was taken").toBeLessThanOrEqual(0.01);
   expect(Math.abs(after.h - before.h), "the map did not change while the shot was taken").toBeLessThanOrEqual(0.01);
