@@ -528,7 +528,7 @@ function Router() {
     <Switch>
       {/* Public Routes with Layout */}
       <Route path="/">
-        <Layout><LandingPage /></Layout>
+        <R3NoPlanSwitch><Layout><LandingPage /></Layout></R3NoPlanSwitch>
       </Route>
       <Route path="/landing-mockups">
         {process.env.NODE_ENV === "development" ? <LandingMockups /> : <Redirect to="/" />}

@@ -7,7 +7,7 @@
  * Cities come from the admin market list (falling back to LAUNCH_MARKETS); a closed market appears only when that answer
  * names it. Strings are DRAFT for Leon.
  */
-import { useMemo, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { BOARD_INK, BOARD_LINE, BOARD_TEXT, BOARD_FILL } from "@/components/r3/tokens";
@@ -16,7 +16,7 @@ import { LAUNCH_MARKETS } from "@shared/launch-markets";
 import { launchCityName, marketStatus } from "@shared/ticker";
 import { useAuth } from "@/hooks/use-auth";
 import { useMarketStatusSettings } from "@/lib/signup-mode";
-import { useR3SurfaceOn } from "@/lib/r3-surface";
+import { readR3SurfaceFlag } from "@/lib/r3-surface";
 import { planEntryHref } from "@/lib/plan-entry";
 import { waitlistMarketPath } from "@/lib/waitlist-markets";
 
@@ -121,47 +121,79 @@ export function R3NoPlanPage() {
 export function R3NoPlanSwitch({ children }: { children: ReactNode }) {
   const [path] = useLocation();
   const search = useSearch();
-  const r3 = useR3SurfaceOn(search);
   const { user, isLoading: authLoading } = useAuth();
   const params = new URLSearchParams(search);
+  const asked = params.get("surface") === "r3";
   const startRequested = params.get("start") === "1";
-  const stepPresent = params.has("step");
-  const onDoor = startRequested && !stepPresent && path === "/";
+  // `step` is read ONCE, at mount: the pop-up adds it after opening, and that must not change this decision.
+  const stepAtMount = useRef(params.has("step")).current;
+  const onDoor = startRequested && !stepAtMount && path === "/";
+
+  // The R3 flag: one read per page load, and the gate does not decide until it has answered.
+  const [flag, setFlag] = useState<boolean | null>(null);
+  const flagAt = useRef<number | null>(null);
+  useEffect(() => {
+    if (!asked) {
+      setFlag(false);
+      return;
+    }
+    let alive = true;
+    readR3SurfaceFlag().then((on) => {
+      if (!alive) return;
+      flagAt.current = Date.now();
+      setFlag(on);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [asked]);
+  const flagSettled = flag !== null;
+  const r3 = flag === true && asked;
+
   const { data: plans, isLoading: plansLoading, isError: plansError } = useQuery<Array<{ id: string }>>({
     queryKey: ["/api/trips"],
-    enabled: !!user && r3 && onDoor,
+    enabled: asked && r3 && onDoor && !authLoading && !!user,
   });
 
-  const resolved = !authLoading && !plansLoading;
+  const authResolved = !authLoading;
+  const plansResolved = plans !== undefined || plansError || !user;
   const decision = {
     r3,
+    flagResolved: flagSettled,
+    flagAt: flagAt.current,
     start: startRequested,
-    step: stepPresent,
+    stepAtMount,
     user: !!user,
     authLoading,
     plansLoading,
     plansShape: Array.isArray(plans) ? "array" : plans === undefined ? "undefined" : typeof plans,
     plansLen: Array.isArray(plans) ? plans.length : -1,
     path,
-    resolved: resolved && (plans !== undefined || plansError),
+    resolved: flagSettled && authResolved && plansResolved,
     error: plansError ? "plans-error" : "none",
   };
-  const gate = <span hidden data-testid="r3-no-plan-gate" data-decision={JSON.stringify(decision)} />;
 
-  if (!r3 || !onDoor) return <>{children}</>;
-  if (plansError) return <>{children}</>;
-  if (!resolved || plans === undefined) {
+  // Not this door, not this surface request: today's page, untouched.
+  if (!asked || !onDoor) return <>{children}</>;
+
+  // ON THE DOOR: nothing but the skeleton until flag, auth and plans have all resolved. Children never mount early,
+  // so the pop-up cannot push `&step=` into a cold load.
+  if (!flagSettled || !authResolved || !plansResolved) {
     return (
       <>
-        {gate}
+        <span hidden data-testid="r3-no-plan-gate" data-decision={JSON.stringify(decision)} />
         <div className="min-h-[40vh]" data-testid="r3-no-plan-skeleton" />
       </>
     );
   }
+  const gate = <span hidden data-testid="r3-no-plan-gate" data-decision={JSON.stringify(decision)} />;
+  if (!r3) return <>{gate}{children}</>;
+  if (plansError) return <>{gate}{children}</>;
+  const list = Array.isArray(plans) ? plans : [];
   return (
     <>
       {gate}
-      {plans.length === 0 ? <R3NoPlanPage /> : children}
+      {list.length === 0 ? <R3NoPlanPage /> : children}
     </>
   );
 }

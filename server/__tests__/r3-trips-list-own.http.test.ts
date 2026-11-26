@@ -6,6 +6,7 @@
  * It adds no server code. If one of these assertions fails, the landing's gate is built on a false premise.
  */
 import assert from "node:assert/strict";
+import test from "node:test";
 import crypto from "node:crypto";
 
 import { registerAndSignIn } from "./fixtures/register-and-sign-in";

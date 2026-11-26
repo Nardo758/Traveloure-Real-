@@ -674,6 +674,8 @@ test("U4: the switcher with three plans (current, no dates, past)", async ({ pag
 
 test("U5: the no-plan landing - bar, cities, waitlist and the empty switcher", async ({ page }) => {
   fs.mkdirSync(OUT_DIR, { recursive: true });
+  // Rule out a stale bundle: these loads bypass the HTTP cache.
+  await page.setExtraHTTPHeaders({ "cache-control": "no-cache", pragma: "no-cache" });
   // LOOKS CAPTURE ONLY - NOT DATA COVERAGE. The admin market list is stubbed: Kyoto live, Porto dated, Edinburgh
   // closed with no date, so all three row states can be photographed and checked.
   await page.route("**/api/public/live-markets**", async (route) => {
