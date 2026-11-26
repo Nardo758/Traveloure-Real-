@@ -115,7 +115,7 @@ export function R3SettingsPage() {
                   receipts, are kept for as long as the law requires.
                 </p>
                 {confirm === "error" ? (
-                  <p className="mt-2 text-[13px] text-destructive" data-testid="r3-settings-error">
+                  <p className="mt-2 text-[13px]" style={{ color: BOARD_DANGER }} data-testid="r3-settings-error">
                     Your request did not go through. Try again.
                   </p>
                 ) : null}
