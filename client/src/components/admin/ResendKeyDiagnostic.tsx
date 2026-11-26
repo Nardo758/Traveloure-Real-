@@ -24,7 +24,7 @@ export function ResendKeyDiagnostic() {
     <section className="border-t pt-4 space-y-3" aria-label="Resend key diagnostic">
       <h3 className="text-base font-medium">Production email key diagnostic</h3>
       <p className="text-sm text-gray-500">
-        Checks the server you are visiting. No email is sent and no secrets are changed.
+        Checks the server you are visiting. No email is sent and no settings are changed.
         Use the published site to check production.
       </p>
       <Button variant="outline" size="sm" disabled={busy} onClick={run} data-testid="button-resend-key-diagnostic">
