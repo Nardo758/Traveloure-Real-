@@ -129,7 +129,7 @@ export function R3TopBar({ plan, plans, tripId }: { plan: BarPlan | null; plans:
                 <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">Account</p>
                 <ul className="mt-2 divide-y text-[13px]" style={{ color: BOARD_INK, borderColor: BOARD_LINE }}>
                   <li><Link href="/profile" onClick={() => setOpenPanel(null)} className="block px-2 py-2 font-semibold" data-testid="r3-account-profile">Profile</Link></li>
-                  <li><Link href="/profile" onClick={() => setOpenPanel(null)} className="block px-2 py-2 font-semibold" data-testid="r3-account-settings">Settings</Link></li>
+                  <li><Link href="/settings?surface=r3" onClick={() => setOpenPanel(null)} className="block px-2 py-2 font-semibold" data-testid="r3-account-settings">Settings</Link></li>
                   <li>
                     <Link href="/bookings" onClick={() => setOpenPanel(null)} className="block px-2 py-2 font-semibold" data-testid="r3-account-bookings">
                       Bookings and receipts

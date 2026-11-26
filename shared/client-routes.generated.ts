@@ -243,6 +243,7 @@ export const CLIENT_ROUTES: readonly string[] = [
   "/services",
   "/services-provider",
   "/services/:id",
+  "/settings",
   "/signup",
   "/spontaneous",
   "/start/events",

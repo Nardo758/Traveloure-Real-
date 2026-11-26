@@ -588,6 +588,22 @@ jobs:
           path: playwright/a2-captures/
           retention-days: 14
           if-no-files-found: warn
+      - name: "dx2-signup-field-errors: field messages under the sign-up fields, at 1280 and 390"
+        id: dx2_signup_field_errors
+        if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
+        run: npx playwright test dx2-signup-field-errors --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          CI: 'true'
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      - name: Upload the DX2 screenshots
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: dx2-captures-${{ github.sha }}
+          path: playwright/dx2-captures/
+          retention-days: 14
+          if-no-files-found: warn
       - name: "dx3-server-claims: the expert application carries its picked neighborhoods"
         id: dx3_server_claims
         if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
