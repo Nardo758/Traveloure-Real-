@@ -10,7 +10,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { BOARD_CTA, BOARD_INK, BOARD_LINE, BOARD_TEXT, BOARD_FILL } from "@/components/r3/tokens";
+import { BOARD_BORDER, BOARD_CTA, BOARD_INK, BOARD_LINE, BOARD_TEXT, BOARD_FILL } from "@/components/r3/tokens";
 import { R3TopBar } from "@/components/r3/TopBar";
 import { LAUNCH_MARKETS } from "@shared/launch-markets";
 import { launchCityName, marketStatus } from "@shared/ticker";
@@ -81,7 +81,7 @@ export function R3NoPlanPage() {
                 className="flex min-h-11 items-center rounded-full border px-4 text-[13px] font-medium"
                 style={
                   isOpen || selected
-                    ? { borderColor: BOARD_TEXT, backgroundColor: BOARD_FILL, color: BOARD_TEXT }
+                    ? { borderColor: BOARD_BORDER, backgroundColor: BOARD_FILL, color: BOARD_TEXT }
                     : { borderColor: BOARD_LINE, color: BOARD_INK }
                 }
                 data-testid="r3-no-plan-city"
@@ -94,6 +94,23 @@ export function R3NoPlanPage() {
             );
           })}
         </div>
+
+        {chosenSlug ? (
+          <div className="mt-4 space-y-2" data-testid="r3-no-plan-waitlist" data-city={chosenSlug}>
+            {chosenOpening ? (
+              <p className="text-[12px] text-muted-foreground" data-testid="r3-no-plan-opening">{`Opening ${chosenOpening}`}</p>
+            ) : null}
+            <Link
+              href={waitlistMarketPath(chosenSlug)}
+              className="inline-flex min-h-11 items-center rounded-lg px-4 text-[13px] font-semibold text-white"
+              style={{ backgroundColor: BOARD_CTA }}
+              data-testid="r3-no-plan-waitlist-cta"
+              data-city={chosenSlug}
+            >
+              {`Join the ${launchCityName(chosenSlug)} waitlist`}
+            </Link>
+          </div>
+        ) : null}
 
         {openLine ? (
           <p className="mt-3 text-[13px] text-muted-foreground" data-testid="r3-no-plan-open-line">{openLine}</p>
@@ -109,23 +126,6 @@ export function R3NoPlanPage() {
           Start a plan
         </button>
 
-        {chosenSlug ? (
-          <div className="mt-6 rounded-xl border p-4" style={{ borderColor: BOARD_LINE }} data-testid="r3-no-plan-waitlist" data-city={chosenSlug}>
-            <p className="text-[14px] font-semibold" style={{ color: BOARD_INK }}>{launchCityName(chosenSlug)}</p>
-            {chosenOpening ? (
-              <p className="mt-1 text-[12px] text-muted-foreground" data-testid="r3-no-plan-opening">{`Opening ${chosenOpening}`}</p>
-            ) : null}
-            <Link
-              href={waitlistMarketPath(chosenSlug)}
-              className="mt-2 inline-flex min-h-11 items-center rounded-lg px-4 text-[13px] font-semibold text-white"
-              style={{ backgroundColor: BOARD_CTA }}
-              data-testid="r3-no-plan-waitlist-cta"
-              data-city={chosenSlug}
-            >
-              {`Join the ${launchCityName(chosenSlug)} waitlist`}
-            </Link>
-          </div>
-        ) : null}
       </main>
     </div>
   );

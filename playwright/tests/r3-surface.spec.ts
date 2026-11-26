@@ -722,9 +722,17 @@ test("U5: the no-plan landing - bar, cities, waitlist and the empty switcher", a
   await expect(page.getByRole("dialog"), "a tap on Start a plan opens the pop-up").toBeVisible({ timeout: 10_000 });
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog"), "the pop-up closes").toHaveCount(0, { timeout: 10_000 });
+  await expect
+    .poll(() => new URL(page.url()).search, { message: "closing over the landing restores the door URL" })
+    .toBe("?start=1&surface=r3");
   // Fifth case: after opening and closing the pop-up from the landing, the landing is still what shows.
   await logGate(page, "(after close)");
   expect(await page.getByTestId("r3-no-plan-gate").first().getAttribute("data-show"), "(after close): show=landing").toBe("landing");
+  // A reload of the restored door URL shows the landing again, with no dialog.
+  await page.reload();
+  await expect(page.getByTestId("r3-no-plan-page")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await logGate(page, "(after reload)");
 
   await page.getByTestId("r3-plan-switcher-button").click();
   await expect(page.getByTestId("r3-plan-switcher-panel")).toBeVisible();
@@ -740,19 +748,19 @@ test("U5: the no-plan landing - bar, cities, waitlist and the empty switcher", a
   await expect(page.getByTestId("r3-no-plan-opening")).toContainText("Opening March 2027");
   await page.getByTestId("r3-no-plan-waitlist").scrollIntoViewIfNeeded();
   await expect(page.getByTestId("r3-no-plan-waitlist")).toBeVisible();
-  await page.getByTestId("r3-no-plan-waitlist").click({ position: { x: 5, y: 5 } }).catch(() => undefined);
+  // u5-waitlist: captured WHILE Porto is chosen - filled pill, "Opening March 2027", purple join button.
+  await expect(page.getByTestId("r3-no-plan-city").filter({ hasText: "Porto" })).toHaveAttribute("data-selected", "true");
+  await expect(page.getByTestId("r3-no-plan-waitlist-cta")).toContainText("Join the Porto waitlist");
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OUT_DIR, "u5-waitlist-1280.png"), fullPage: true });
 
-  // Edinburgh is closed with no date: its block names it, offers its waitlist button, and shows NO opening line.
+  // Edinburgh is closed with no date: its block offers its waitlist button and shows NO opening line.
   await page.getByTestId("r3-no-plan-city").filter({ hasText: "Edinburgh" }).click();
   const edinburgh = page.getByTestId("r3-no-plan-waitlist");
   await expect(edinburgh).toHaveAttribute("data-city", "edinburgh");
   await expect(edinburgh.getByTestId("r3-no-plan-waitlist-cta")).toContainText("Join the Edinburgh waitlist");
   await expect(edinburgh.getByTestId("r3-no-plan-opening")).toHaveCount(0);
   await expect(edinburgh).not.toContainText("Opening");
-  // back to the landing for the remaining assertions
-  await page.getByTestId("r3-no-plan-city").filter({ hasText: "Edinburgh" }).click();
-  await maskEmails(page);
-  await page.screenshot({ path: path.join(OUT_DIR, "u5-waitlist-1280.png"), fullPage: true });
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`${BASE_URL}/?start=1&surface=r3&capture=1`);

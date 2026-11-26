@@ -462,7 +462,10 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
     setModalOpen(false);
     setEntryOpen(false);
     if (typeof window !== "undefined" && planEntryUrlRequested(window.location.search)) {
-      if (entryUrlPushed.current) window.history.back();
+      if (holdAutoOpenRef.current) {
+        // R3 U5: closing over the landing returns to the landing's own URL - no step, surface kept.
+        window.history.replaceState(window.history.state, "", "/?start=1&surface=r3");
+      } else if (entryUrlPushed.current) window.history.back();
       else writeEntryUrl("replace", false);
     }
     entryUrlPushed.current = false;
@@ -806,8 +809,17 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
  */
 function writeEntryUrl(mode: "push" | "replace", openFlag: boolean, step?: string | null): void {
   if (typeof window === "undefined") return;
+  // R3 U5: the open URL carries `surface` over from the live query string (and nothing else - R4-5 keeps every other
+  // parameter dropping). Without this the landing loses its surface the moment the pop-up opens.
   const url = openFlag
-    ? planEntryHref(step)
+    ? (() => {
+        const href = planEntryHref(step);
+        const surface = new URLSearchParams(window.location.search).get("surface");
+        if (!surface) return href;
+        const next = new URLSearchParams(href.startsWith("/?") ? href.slice(2) : "");
+        next.set("surface", surface);
+        return `/?${next.toString()}`;
+      })()
     : `${window.location.pathname}${withPlanEntryUrl(window.location.search, false, null)}${window.location.hash}`;
   if (mode === "push") window.history.pushState({ ...(window.history.state ?? {}), planEntry: true }, "", url);
   else window.history.replaceState(window.history.state, "", url);
