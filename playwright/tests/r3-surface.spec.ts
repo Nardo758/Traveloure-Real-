@@ -825,3 +825,158 @@ test("U5: with the R3 flag off the pop-up opens as today and there is no gate", 
   await expect(page.getByTestId("r3-no-plan-page")).toHaveCount(0);
   await expect(page.getByRole("dialog"), "the pop-up opens here as today").toBeVisible({ timeout: 10_000 });
 });
+
+test("U6: the Updates panel from the bell", async ({ page }) => {
+  fs.mkdirSync(OUT_DIR, { recursive: true });
+  await page.setExtraHTTPHeaders({ "cache-control": "no-cache", pragma: "no-cache" });
+  const tripId = await sixStopTrip(page);
+
+  const now = Date.now();
+  const iso = (msAgo: number) => new Date(now - msAgo).toISOString();
+  const rows = [
+    { id: "u6-1", type: "itinerary_update", title: "Aiko suggested a change to Wednesday", message: "", isRead: false, createdAt: iso(2 * 60 * 60 * 1000), data: { tripId, workspacePath: `/trip/${tripId}?tab=itinerary` } },
+    { id: "u6-2", type: "trip_card", title: "Your Trip Card is ready", message: "", isRead: false, createdAt: iso(26 * 60 * 60 * 1000), data: { tripId, workspacePath: `/trip/${tripId}?tab=itinerary` } },
+    { id: "u6-3", type: "booking", title: "Dinner in Gion is booked", message: "", isRead: true, createdAt: new Date(new Date().getFullYear(), 10, 12, 9, 0).toISOString(), data: { tripId, workspacePath: `/trip/${tripId}?tab=itinerary` } },
+    { id: "u6-4", type: "receipt", title: "Your receipt for the tea ceremony", message: "", isRead: true, createdAt: new Date(new Date().getFullYear(), 10, 9, 9, 0).toISOString() },
+  ];
+
+  let requests = 0;
+  const patchedIds: string[] = [];
+  let allRead = false;
+  let posted = 0;
+  let mode: "list" | "nolink" | "empty" | "error" = "list";
+
+  await page.route("**/api/notifications", async (route) => {
+    if (route.request().method() === "GET") requests += 1;
+    if (mode === "error") return route.fulfill({ status: 500, body: "boom" });
+    const bodyRows =
+      mode === "empty" ? []
+      : allRead ? rows.map((r) => ({ ...r, isRead: true }))
+      : mode === "nolink" ? rows.map((r) => (r.id === "u6-4" ? { ...r, isRead: false } : r))
+      : rows;
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(bodyRows) });
+  });
+  await page.route("**/api/notifications/*/read", async (route) => {
+    const id = route.request().url().split("/api/notifications/")[1]?.split("/")[0] ?? "";
+    patchedIds.push(id);
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) });
+  });
+  await page.route("**/api/notifications/mark-all-read", async (route) => {
+    posted += 1;
+    allRead = true;
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) });
+  });
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3&capture=1`);
+  await expect(page.getByTestId("r3-topbar")).toBeVisible({ timeout: 30_000 });
+  // The console bell already asks for this list on load (notification-bell.tsx:32,39 - pre-existing on main). Record
+  // that as the baseline; only requests the R3 panel itself causes are counted.
+  await page.waitForTimeout(2500);
+  const baseline = requests;
+  const addedBeforeTap = requests - baseline;
+  console.log(`[u6-closed] panel=${await page.getByTestId("r3-updates-panel").count()} baseline=${baseline} added=${addedBeforeTap}`);
+  expect(await page.getByTestId("r3-updates-panel").count()).toBe(0);
+  expect(addedBeforeTap, "the R3 panel causes no GET before the bell is tapped").toBe(0);
+
+  await page.getByTestId("r3-bar-bell").click();
+  // exactly ONE new GET, caused by the panel mounting
+  await expect.poll(() => requests - baseline, { timeout: 10_000 }).toBe(1);
+  const panel = page.getByTestId("r3-updates-panel");
+  await expect(panel).toHaveAttribute("data-state", "list");
+  const rowCount = await page.getByTestId("r3-updates-row").count();
+  const unread = await page.locator('[data-testid="r3-updates-row"][data-unread="true"]').count();
+  const markAll = await page.getByTestId("r3-updates-mark-all").count();
+  console.log(`[u6-list] state=list rows=${rowCount} unread=${unread} markall=${markAll}`);
+  expect(rowCount).toBe(4);
+  expect(unread).toBe(2);
+  expect(markAll).toBe(1);
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OUT_DIR, "u6-updates-1280.png"), fullPage: true });
+
+  const fourth = page.getByTestId("r3-updates-row").nth(3);
+  const subline = (await fourth.innerText()).split("\n").slice(1).join(" ").trim();
+  console.log(`[u6-noplan] row=4 plan=${await fourth.getAttribute("data-plan")} line="${subline}"`);
+  expect(await fourth.getAttribute("data-plan")).toBe("false");
+  expect(subline).toBe("Not on a plan \u00b7 9 Nov");
+
+  // [u6-nolink]: row 4 has no tripId and no workspacePath, so it has no link. It marks read and the panel stays.
+  mode = "nolink";
+  await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3&capture=1`);
+  await page.getByTestId("r3-bar-bell").click();
+  await expect(page.getByTestId("r3-updates-panel")).toHaveAttribute("data-state", "list");
+  const beforeNoLink = new URL(page.url()).pathname + new URL(page.url()).search;
+  const fourthRow = page.getByTestId("r3-updates-row").nth(3);
+  expect(await fourthRow.getAttribute("data-link")).toBe("");
+  expect(await fourthRow.getAttribute("data-href")).toBe("");
+  await fourthRow.locator("button").click();
+  await expect.poll(() => patchedIds.filter((x) => x === "u6-4").length, { timeout: 10_000 }).toBe(1);
+  const afterNoLink = new URL(page.url()).pathname + new URL(page.url()).search;
+  console.log(`[u6-nolink] link=<none> patched=${patchedIds.filter((x) => x === "u6-4").length} panel=${await page.getByTestId("r3-updates-panel").count()} url=${afterNoLink}`);
+  expect(afterNoLink, "a row with no link goes nowhere").toBe(beforeNoLink);
+  expect(await page.getByTestId("r3-updates-panel").count()).toBe(1);
+
+  // [u6-read]: row 1 resolves to /plans/<id>, the final href adds surface=r3, and the tap navigates exactly there.
+  const firstRow = page.getByTestId("r3-updates-row").first();
+  const linkHref = await firstRow.getAttribute("data-link");
+  const finalHref = await firstRow.getAttribute("data-href");
+  await firstRow.locator("button").click();
+  await expect
+    .poll(() => { const u = new URL(page.url()); return u.pathname + u.search; }, { timeout: 10_000 })
+    .toBe(`/plans/${tripId}?surface=r3`);
+  await expect(page.getByTestId("r3-updates-panel")).toHaveCount(0);
+  await expect(page.getByTestId("r3-topbar")).toBeVisible();
+  const readUrl = new URL(page.url()).pathname + new URL(page.url()).search;
+  console.log(`[u6-read] link=${linkHref} href=${finalHref} patched=${patchedIds.filter((x) => x === "u6-1").length} panel=${await page.getByTestId("r3-updates-panel").count()} url=${readUrl}`);
+  expect(linkHref).toBe(`/plans/${tripId}`);
+  expect(finalHref).toBe(`/plans/${tripId}?surface=r3`);
+  expect(patchedIds.filter((x) => x === "u6-1").length).toBe(1);
+  await page.waitForLoadState("load");
+
+  await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3&capture=1`);
+  await page.getByTestId("r3-bar-bell").click();
+  await expect(page.getByTestId("r3-updates-panel")).toHaveAttribute("data-state", "list");
+  await page.getByTestId("r3-updates-mark-all").click();
+  await expect.poll(() => patchedIds.length >= 0 && posted, { timeout: 10_000 }).toBe(1);
+  // wait for the refetch the invalidation causes, then read the counts
+  await expect.poll(() => page.locator('[data-testid="r3-updates-row"][data-unread="true"]').count(), { timeout: 10_000 }).toBe(0);
+  const unreadAfter = await page.locator('[data-testid="r3-updates-row"][data-unread="true"]').count();
+  const markAllAfter = await page.getByTestId("r3-updates-mark-all").count();
+  console.log(`[u6-markall] posted=${posted} unread=${unreadAfter} markall=${markAllAfter}`);
+  expect(unreadAfter).toBe(0);
+  expect(markAllAfter).toBe(0);
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OUT_DIR, "u6-all-read-1280.png"), fullPage: true });
+
+  // empty
+  mode = "empty";
+  await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3&capture=1`);
+  await page.getByTestId("r3-bar-bell").click();
+  await expect(page.getByTestId("r3-updates-panel")).toHaveAttribute("data-state", "empty");
+  console.log(`[u6-empty] state=empty rows=${await page.getByTestId("r3-updates-row").count()} markall=${await page.getByTestId("r3-updates-mark-all").count()}`);
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OUT_DIR, "u6-empty-1280.png"), fullPage: true });
+
+  // error
+  mode = "error";
+  await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3&capture=1`);
+  await page.getByTestId("r3-bar-bell").click();
+  await expect(page.getByTestId("r3-updates-panel")).toHaveAttribute("data-state", "error");
+  console.log(`[u6-error] state=error rows=${await page.getByTestId("r3-updates-row").count()}`);
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OUT_DIR, "u6-error-1280.png"), fullPage: true });
+
+  // 390
+  mode = "list";
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3&capture=1`);
+  await page.getByTestId("r3-bar-bell").click();
+  await expect(page.getByTestId("r3-updates-panel")).toHaveAttribute("data-state", "list");
+  const box = await page.getByTestId("r3-updates-panel").boundingBox();
+  const fits = !!box && box.x >= 0 && box.x + box.width <= 390;
+  console.log(`[u6-390] state=list rows=${await page.getByTestId("r3-updates-row").count()} fits=${fits}`);
+  expect(fits, "the panel sits inside a 390 viewport").toBe(true);
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OUT_DIR, "u6-updates-390.png"), fullPage: true });
+});
