@@ -18,6 +18,8 @@ import { db } from "../db";
 import { localExpertForms, serviceProviderForms, serviceBookings, webhookEvents, adminNotifications, users } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
 import { getStripeSecretKey, getStripeWebhookSecret } from "../utils/stripe-key";
+import { getStagingConnectWebhookDiagnostic } from "../utils/staging-connect-webhook-diagnostics";
+import { logger } from "../infrastructure/logger";
 import { handleStripeDispute } from "../services/stripe-dispute.service";
 import { markCheckoutPaymentFailed } from "../services/checkout-claim.service";
 import { isCanonicalBookingEmailPersistenceError } from "../services/canonical-booking-email.service";
@@ -640,6 +642,10 @@ export function createConnectStripeWebhookHandler(
   return async (req: any, res: any) => {
     const sig = req.headers["stripe-signature"] as string | undefined;
     const webhookSecret = getStripeWebhookSecret("connect");
+    const diagnostic = getStagingConnectWebhookDiagnostic(req.rawBody);
+    if (diagnostic) {
+      logger.info(diagnostic, "staging Connect webhook diagnostic");
+    }
     let event: Stripe.Event;
 
     if (!webhookSecret) {

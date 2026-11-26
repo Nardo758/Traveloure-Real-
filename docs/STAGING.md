@@ -281,3 +281,40 @@ expert complete, and retries on the next boot.
 - [ ] A bot-created plan reaches a final version; Versions / Review and the Trip Card open for its owner.
 - [ ] Checkout and paid actions complete with Stripe **test** cards only; no email leaves.
 - [ ] The CI staging auth smoke passes with the two new GitHub secrets set.
+
+### 6.4 Temporary Connect webhook signature diagnostic
+
+For the staging signature investigation, the existing Connect webhook handler logs
+`staging Connect webhook diagnostic` before verification, but **only when
+`ENVIRONMENT` normalizes to `staging`**. It does not change signature enforcement,
+the raw bytes, responses, or webhook processing. Production and other environments
+emit no diagnostic.
+
+The record contains exactly four fields:
+
+- `secretVariable`: the Connect signing-secret variable selected by the existing
+  resolver. A production Node process uses `STRIPE_CONNECT_WEBHOOK_SECRET_TEST`
+  only with `ALLOW_TEST_ACCOUNTS=1`; otherwise it uses the non-TEST variable.
+- `secretMatchesExpected`: whether the effective value matches a one-way SHA-256
+  reference to the Connect destination created for this staging sandbox.
+- `rawBodyIsBuffer`: whether the captured raw request body is a Node Buffer.
+- `rawBodyBytes`: the Buffer's byte count, or `null` for a non-Buffer.
+
+No signing secret, digest, signature header, payload, user identifier or email is
+logged. The reference digest is not a credential and cannot authenticate requests.
+It belongs to the staging **Connect** destination, not the platform-payments
+destination. If the destination's signing secret is rotated, update the reference
+before treating a mismatch as evidence. Remove this temporary instrumentation
+after the investigation.
+
+Interpretation: a false secret match means the selected runtime value differs
+from the reference (including whitespace differences); it does not authorize
+changing production secrets. A false Buffer check warrants investigating body
+capture. A matching secret and a Buffer with continued verification failures
+requires investigating the signed bytes/header, not bypassing verification.
+
+Tests are offline only:
+`npx tsx --test server/__tests__/staging-connect-webhook-diagnostics.unit.test.ts server/__tests__/stripe-key-resolver.unit.test.ts`.
+They use synthetic credentials, make no Stripe requests, and do not touch a
+database. This instrumentation still requires review and an operator-controlled
+staging publish before it can diagnose a live delivery.
