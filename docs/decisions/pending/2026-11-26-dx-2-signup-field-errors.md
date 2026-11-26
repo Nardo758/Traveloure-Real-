@@ -1,5 +1,1 @@
-# R? - DX-2: sign-up field errors
-
-| # | Ruling | Where | Why |
-|---|---|---|---|
-| R? | On `/signup`, each server `errors[]` message shows under its field, with `aria-invalid` and `aria-describedby`; when every error is placed under a field the `Validation failed` banner is not also shown. The banner stays for errors that cannot be placed, or when there is no `errors[]`. | `client/src/lib/auth-response.ts`, `client/src/components/auth/SignupForm.tsx`, `client/src/pages/Signup.tsx` | DX-2 brief (Leon, Nov 26 2026); D3 confirmed with Leon. Server messages only, no new strings; the sign-in pop-up is unchanged. |
+| 2026-11-26-dx-2-signup-field-errors | 2026-11-26 | [guarded: client/src/lib/__tests__/dx2-auth-field-errors.test.ts] (On /signup, each server errors[] message shows under its field with aria-invalid and aria-describedby; when every error is placed under a field the "Validation failed" banner is not also shown, and the banner stays for errors that cannot be placed or when there is no errors[]. Server messages only, no new strings; the sign-in pop-up is unchanged. Client only, no migration.) | **R? — the server's field messages show under their sign-up fields** | client/src/lib/auth-response.ts; client/src/components/auth/SignupForm.tsx; client/src/pages/Signup.tsx | numeric citation R? |
