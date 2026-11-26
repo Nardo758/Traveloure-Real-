@@ -172,6 +172,32 @@ jobs:
         run: npx tsx scripts/generate-mutation-auth-manifest.ts --self-test
       - name: Generated mutation-auth manifest is current (rail set, not bytes)
         run: npm run check:mutation-auth
+      # F4 (Leon, Nov 18 2026): the live audit's one home. This job already has PostgreSQL, migrations and a running
+      # app, which is everything the audit needs; a workstation without a database cannot produce the evidence. Run it
+      # by hand (`gh workflow run suite-mutation-auth.yml --ref <branch>`), download the `mutation-auth-evidence`
+      # artifact, commit the JSON, then regenerate the coverage files - never mark a row tested by hand.
+      - name: Live mutation-auth audit (evidence for the coverage report)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          JOURNEY_BASE_URL: http://127.0.0.1:5000
+        run: npm run run:mutation-auth-live-audit
+
+      - name: Upload the mutation-auth evidence
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-auth-evidence
+          # The audit script writes this fixed path (scripts/run-mutation-auth-live-audit.ts) - it reads no env override.
+          path: generated/security/mutation-auth-evidence.json
+          if-no-files-found: error
+          retention-days: 14
+
+      # A dispatch run PRODUCES evidence, so it cannot also demand that the committed report already matches
+      # the bytes of the report the audit just wrote (`--check` is a byte compare and the report embeds the audit
+      # timestamp). On pull_request the check is the proof that the committed files are current - that is the run
+      # that matters, and the one this PR cites.
       - name: Generated mutation-auth coverage is current
+        if: github.event_name != 'workflow_dispatch'
         run: npm run check:mutation-auth-coverage
 
