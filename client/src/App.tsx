@@ -36,6 +36,7 @@ import { MaintenanceGate } from "@/components/maintenance-screen";
 import { GUEST_SESSION_STORAGE_KEY } from "@/lib/guest-session-key";
 
 const LandingPage = lazy(() => import("@/pages/landing"));
+import { R3NoPlanSwitch } from "@/pages/r3-no-plan";
 const LandingMockups = lazy(() => import("@/pages/landing-mockups"));
 const Dashboard = lazy(() => import("@/pages/dashboard"));
 const DashboardListing = lazy(() => import("@/pages/dashboard-listing"));

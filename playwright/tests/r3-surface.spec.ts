@@ -671,3 +671,93 @@ test("U4: the switcher with three plans (current, no dates, past)", async ({ pag
   await shootStable(page, path.join(OUT_DIR, "u4-switcher-three-1280.png"));
   await page.unroute("**/api/trips");
 });
+
+test("U5: the no-plan landing - bar, cities, waitlist and the empty switcher", async ({ page }) => {
+  fs.mkdirSync(OUT_DIR, { recursive: true });
+  // LOOKS CAPTURE ONLY - NOT DATA COVERAGE. The admin market list is stubbed: Kyoto live, Porto dated, Edinburgh
+  // closed with no date, so all three row states can be photographed and checked.
+  await page.route("**/api/public/live-markets**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ launch: "kyoto", live: ["kyoto"], beta: ["edinburgh"], dates: { porto: "2027-03-01" } }),
+    });
+  });
+
+  await registerAndSignIn(
+    page.request,
+    { email: `e2e-r3-noplan-${uid()}@example.com`, password: "R3Surface123!", firstName: "No", lastName: "Plan" },
+    BASE_URL,
+  );
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`${BASE_URL}/?start=1&surface=r3&capture=1`);
+  await expect(page.getByTestId("landing-root").or(page.getByTestId("r3-no-plan-gate"))).toBeVisible({ timeout: 30_000 });
+  const gate = page.getByTestId("r3-no-plan-gate");
+  const gateCount = await gate.count();
+  console.log(
+    `[u5-gate] present=${gateCount > 0} decision=${gateCount ? await gate.first().getAttribute("data-decision") : "<absent>"} ` +
+      `page=${await page.getByTestId("r3-no-plan-page").count()} skeleton=${await page.getByTestId("r3-no-plan-skeleton").count()} ` +
+      `home=${await page.getByTestId("landing-root").count()}`,
+  );
+  await expect(page.getByTestId("r3-no-plan-page")).toBeVisible();
+  await expect(page.getByTestId("r3-no-plan-title")).toContainText("Where are you going?");
+  await expect(page.getByTestId("r3-no-plan-open-line")).toContainText("Now open in");
+  const porto = page.getByTestId("r3-no-plan-waitlist-row").filter({ hasText: "Porto" });
+  const edinburgh = page.getByTestId("r3-no-plan-waitlist-row").filter({ hasText: "Edinburgh" });
+  await expect(porto).toContainText("Opening March 2027");
+  await expect(edinburgh).toBeVisible();
+  await expect(edinburgh.getByTestId("r3-no-plan-opening")).toHaveCount(0);
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OUT_DIR, "u5-no-plan-1280.png"), fullPage: true });
+
+  await page.getByTestId("r3-plan-switcher-button").click();
+  await expect(page.getByTestId("r3-plan-switcher-panel")).toBeVisible();
+  await expect(page.getByTestId("r3-plan-row")).toHaveCount(0);
+  await expect(page.getByTestId("r3-plan-start")).toBeVisible();
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OUT_DIR, "u5-switcher-1280.png"), fullPage: true });
+  await page.getByTestId("r3-plan-switcher-button").click();
+
+  await page.getByTestId("r3-no-plan-waitlist").scrollIntoViewIfNeeded();
+  await expect(page.getByTestId("r3-no-plan-waitlist")).toBeVisible();
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OUT_DIR, "u5-waitlist-1280.png"), fullPage: true });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${BASE_URL}/?start=1&surface=r3&capture=1`);
+  await expect(page.getByTestId("r3-no-plan-page")).toBeVisible({ timeout: 30_000 });
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OUT_DIR, "u5-no-plan-390.png"), fullPage: true });
+});
+
+test("U5: guests keep today's home on the door URL", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`${BASE_URL}/?start=1&surface=r3&capture=1`);
+  await expect(page.getByTestId("landing-root").or(page.getByTestId("r3-no-plan-gate"))).toBeVisible({ timeout: 30_000 });
+  console.log(
+    `[u5-gate] present=${await page.getByTestId("r3-no-plan-gate").count() > 0} page=${await page.getByTestId("r3-no-plan-page").count()} ` +
+      `home=${await page.getByTestId("landing-root").count()} (guest)`,
+  );
+  await expect(page.getByTestId("landing-root")).toBeVisible();
+  await expect(page.getByTestId("r3-no-plan-page")).toHaveCount(0);
+});
+
+test("U5: a traveller WITH a plan keeps today's home on the door URL", async ({ page }) => {
+  await registerAndSignIn(
+    page.request,
+    { email: `e2e-r3-hasplan-${uid()}@example.com`, password: "R3Surface123!", firstName: "Has", lastName: "Plan" },
+    BASE_URL,
+  );
+  const created = await page.request.post(`${BASE_URL}/api/trips`, { data: { title: `U5 has a plan ${uid()}`, destination: "Kyoto, Japan" } });
+  expect(created.ok(), "the fixture trip must be created").toBe(true);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`${BASE_URL}/?start=1&surface=r3&capture=1`);
+  await expect(page.getByTestId("landing-root").or(page.getByTestId("r3-no-plan-gate"))).toBeVisible({ timeout: 30_000 });
+  console.log(
+    `[u5-gate] present=${await page.getByTestId("r3-no-plan-gate").count() > 0} page=${await page.getByTestId("r3-no-plan-page").count()} ` +
+      `home=${await page.getByTestId("landing-root").count()} (has a plan)`,
+  );
+  await expect(page.getByTestId("landing-root")).toBeVisible();
+  await expect(page.getByTestId("r3-no-plan-page")).toHaveCount(0);
+});
