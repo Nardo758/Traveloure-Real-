@@ -7,6 +7,7 @@
 import { useState } from "react";
 import { Link } from "wouter";
 import { Bell, ChevronDown } from "lucide-react";
+import { UpdatesPanel } from "@/components/r3/UpdatesPanel";
 import { BOARD_CELL, BOARD_FILL, BOARD_INK, BOARD_LINE, BOARD_TEXT } from "@/components/r3/tokens";
 import { PLAN_START_HREF } from "@/lib/plan-entry";
 import { r3IsPast, r3WhenLine } from "@/lib/r3-surface";
@@ -20,7 +21,7 @@ export interface BarPlan {
 }
 
 export function R3TopBar({ plan, plans, tripId }: { plan: BarPlan | null; plans: BarPlan[]; tripId: string | null }) {
-  const [openPanel, setOpenPanel] = useState<"plans" | "account" | null>(null);
+  const [openPanel, setOpenPanel] = useState<"plans" | "updates" | "account" | null>(null);
   const { user, logout } = useAuth();
   const initials = ((user?.firstName?.[0] || "") + (user?.lastName?.[0] || "")).toUpperCase() || "U";
   const when = plan ? r3WhenLine(plan.startDate, plan.endDate) : "";
@@ -94,9 +95,24 @@ export function R3TopBar({ plan, plans, tripId }: { plan: BarPlan | null; plans:
 
           {/* the account trigger and its menu share one relative box, right-aligned inside the bar */}
           <div className="relative ml-auto flex items-center gap-2">
-            <button type="button" aria-label="Updates" className="min-h-11 min-w-11 rounded-full border" style={{ borderColor: BOARD_LINE }} data-testid="r3-bar-bell">
-              <Bell className="mx-auto h-4 w-4" style={{ color: BOARD_INK }} />
-            </button>
+            <div className="relative">
+              <button
+                type="button"
+                aria-label="Updates"
+                aria-expanded={openPanel === "updates"}
+                onClick={() => setOpenPanel((p) => (p === "updates" ? null : "updates"))}
+                className="min-h-11 min-w-11 rounded-full border"
+                style={{ borderColor: BOARD_LINE }}
+                data-testid="r3-bar-bell"
+              >
+                <Bell className="mx-auto h-4 w-4" style={{ color: BOARD_INK }} />
+              </button>
+              {openPanel === "updates" ? (
+                <div className="absolute right-0 top-full z-40 mt-1 max-lg:fixed max-lg:inset-x-3 max-lg:top-16 max-lg:mt-0">
+                  <UpdatesPanel plans={plans} onNavigate={() => setOpenPanel(null)} />
+                </div>
+              ) : null}
+            </div>
             <button
               type="button"
               aria-label="Account"

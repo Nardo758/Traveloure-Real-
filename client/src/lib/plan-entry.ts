@@ -477,10 +477,6 @@ export function planEntryHref(step?: string | null): string {
 }
 
 /**
- * R3 U5: the pop-up's open URL, carrying `surface` over from the live query string and nothing else (R4-5 keeps every
- * other parameter dropping). One line for callers, and one place to test it.
- */
-/**
  * R3 U5: carry `surface` from the live query string into an already-built URL, and nothing else (R4-5 keeps every other
  * parameter dropping). Kept separate so `writeEntryUrl`'s open branch stays the literal `planEntryHref(step)`.
  */
