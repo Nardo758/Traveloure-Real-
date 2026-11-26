@@ -2435,6 +2435,9 @@ jobs:
       - if: ${{ !cancelled() }}
         name: Email verification gate (S-09)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/email-verification-gate.http.test.ts
+      # R3 U5: the GET /api/trips list contract the no-plan landing decides from.
+      - name: GET /api/trips (R3 U5)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/r3-trips-list-own.http.test.ts
 
 
   quote-born-charge:

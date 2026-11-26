@@ -465,8 +465,21 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
-  /** The R3 no-plan landing's door: "/" with start=1 and surface=r3. Nothing else is affected. */
-  const r3DoorOwnsTheUrl = () => {
+  /**
+   * R3 U5: the no-plan landing signals through its gate marker. On the landing's own door the pop-up waits for that
+   * signal instead of opening over the landing. Flag off, guest, has-plans and "still waiting" all keep today's behaviour.
+   */
+  const r3GateSays = (): "landing" | "home" | "unknown" => {
+    if (typeof document === "undefined") return "unknown";
+    const el = document.querySelector('[data-testid="r3-no-plan-gate"]');
+    const show = el?.getAttribute("data-show") ?? "";
+    if (show === "landing") return "landing";
+    if (show.startsWith("home:")) return "home";
+    return "unknown";
+  };
+
+  /** True when this URL is the R3 landing's door ("/" + start=1 + surface=r3). */
+  const isR3Door = () => {
     if (typeof window === "undefined") return false;
     const params = new URLSearchParams(window.location.search);
     return window.location.pathname === "/" && params.get("start") === "1" && params.get("surface") === "r3";
@@ -476,16 +489,30 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const sync = () => {
-      // R3 U5: on the no-plan landing's own door the landing owns the URL. Auto-opening here rewrites it (start/step) and
-      // drops the surface, so the pop-up waits for a city or "Start a plan" tap instead. Every other door is unchanged.
-      if (r3DoorOwnsTheUrl()) return;
-      if (planEntryUrlRequested(window.location.search)) {
-        suppressEntryPush.current = true;
-        open({ newPlan: true });
-      } else {
+      const wantsEntry = planEntryUrlRequested(window.location.search);
+      if (!wantsEntry) {
         entryUrlPushed.current = false;
         setEntryOpen(false);
+        return;
       }
+      const openIt = () => {
+        suppressEntryPush.current = true;
+        open({ newPlan: true });
+      };
+      // Every door that is not the R3 landing's own opens exactly as it always has.
+      if (!isR3Door()) {
+        openIt();
+        return;
+      }
+      // On the R3 door, let the gate decide first (it answers within a tick or two); a landing suppresses the pop-up.
+      const startedAt = Date.now();
+      const tick = () => {
+        const verdict = r3GateSays();
+        if (verdict === "landing") return;
+        if (verdict === "home" || Date.now() - startedAt > 1500) openIt();
+        else window.setTimeout(tick, 50);
+      };
+      tick();
     };
     if (planEntryUrlRequested(window.location.search)) sync();
     window.addEventListener("popstate", sync);

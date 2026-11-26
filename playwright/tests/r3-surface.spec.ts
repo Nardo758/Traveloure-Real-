@@ -709,6 +709,9 @@ test("U5: the no-plan landing - bar, cities, waitlist and the empty switcher", a
   ).toBeVisible({ timeout: 30_000 });
   await logGate(page);
   await expect(page.getByTestId("r3-no-plan-page")).toBeVisible();
+  // u5-popup: the landing is showing, so the pop-up must NOT have opened, and surface=r3 must survive the load.
+  await expect(page.getByRole("dialog"), "the landing does not open the pop-up").toHaveCount(0);
+  expect(new URL(page.url()).searchParams.get("surface"), "surface=r3 survives the landing load").toBe("r3");
   await expect(page.getByTestId("r3-no-plan-title")).toContainText("Where are you going?");
   await expect(page.getByTestId("r3-no-plan-open-line")).toContainText("Now open in");
   const porto = page.getByTestId("r3-no-plan-waitlist-row").filter({ hasText: "Porto" });
@@ -718,6 +721,11 @@ test("U5: the no-plan landing - bar, cities, waitlist and the empty switcher", a
   await expect(edinburgh.getByTestId("r3-no-plan-opening")).toHaveCount(0);
   await maskEmails(page);
   await page.screenshot({ path: path.join(OUT_DIR, "u5-no-plan-1280.png"), fullPage: true });
+
+  // A tap on "Start a plan" opens the pop-up (the landing only suppresses the automatic open).
+  await page.getByTestId("r3-no-plan-start").click();
+  await expect(page.getByRole("dialog"), "a tap on Start a plan opens the pop-up").toBeVisible({ timeout: 10_000 });
+  await page.keyboard.press("Escape");
 
   await page.getByTestId("r3-plan-switcher-button").click();
   await expect(page.getByTestId("r3-plan-switcher-panel")).toBeVisible();
@@ -754,6 +762,8 @@ test("U5: guests keep today's home on the door URL", async ({ page }) => {
   await expect(page.getByTestId("landing-root")).toBeVisible();
   await expect(page.getByTestId("r3-no-plan-page")).toHaveCount(0);
   expect(unauthorized, "a guest never asks for the plans list").toHaveLength(0); // r3-trips-401
+  // u5-popup: a guest keeps today's pop-up on this URL.
+  await expect(page.getByRole("dialog"), "the pop-up opens here as today").toBeVisible({ timeout: 10_000 });
 });
 
 test("U5: a traveller WITH a plan keeps today's home on the door URL", async ({ page }) => {
@@ -770,6 +780,26 @@ test("U5: a traveller WITH a plan keeps today's home on the door URL", async ({ 
     page.getByTestId("landing-root").or(page.getByTestId("r3-no-plan-page")).first(),
   ).toBeVisible({ timeout: 30_000 });
   await logGate(page, "(has a plan)");
+  // u5-popup: a traveller with a plan keeps today's pop-up on this URL.
+  await expect(page.getByRole("dialog"), "the pop-up opens here as today").toBeVisible({ timeout: 10_000 });
   await expect(page.getByTestId("landing-root")).toBeVisible();
   await expect(page.getByTestId("r3-no-plan-page")).toHaveCount(0);
+});
+
+test("U5: with the R3 flag off the pop-up opens as today and there is no gate", async ({ page }) => {
+  // The switch is off on the server for this load, so nothing of the landing may appear.
+  await page.route("**/api/public/r3-surface**", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ on: false }) });
+  });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`${BASE_URL}/?start=1&surface=r3&capture=1`);
+  await expect(page.getByTestId("landing-root").or(page.getByTestId("r3-no-plan-page")).first()).toBeVisible({ timeout: 30_000 });
+  // flag off: gate=0 (no marker at all), the home, and today's pop-up
+  expect(await page.getByTestId("r3-no-plan-gate").count(), "flag-off: gate=0").toBe(0);
+  console.log(
+    `[u5-popup] flag-off: gate=${await page.getByTestId("r3-no-plan-gate").count()} page=${await page.getByTestId("r3-no-plan-page").count()} home=${await page.getByTestId("landing-root").count()}`,
+  );
+  await expect(page.getByTestId("landing-root")).toBeVisible();
+  await expect(page.getByTestId("r3-no-plan-page")).toHaveCount(0);
+  await expect(page.getByRole("dialog"), "the pop-up opens here as today").toBeVisible({ timeout: 10_000 });
 });

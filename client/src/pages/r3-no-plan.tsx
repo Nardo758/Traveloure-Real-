@@ -17,6 +17,7 @@ import { launchCityName, marketStatus } from "@shared/ticker";
 import { useAuth } from "@/hooks/use-auth";
 import { useMarketStatusSettings } from "@/lib/signup-mode";
 import { readR3SurfaceFlag } from "@/lib/r3-surface";
+import { usePlanningOptional } from "@/contexts/PlanningContext";
 import { planEntryHref } from "@/lib/plan-entry";
 import { waitlistMarketPath } from "@/lib/waitlist-markets";
 
@@ -33,6 +34,8 @@ export function openingLine(value: string | null | undefined): string | null {
 
 export function R3NoPlanPage() {
   const { settings } = useMarketStatusSettings();
+  // The landing suppresses the AUTOMATIC open; a tap opens the pop-up explicitly, through the app's own door.
+  const planning = usePlanningOptional();
   const cities = useMemo(() => {
     const set = new Set<string>();
     for (const slug of [...settings.live, ...settings.beta, ...Object.keys(settings.dates)]) set.add(slug);
@@ -59,16 +62,17 @@ export function R3NoPlanPage() {
 
         <div className="mt-4 flex flex-wrap gap-2" data-testid="r3-no-plan-cities">
           {cities.map((slug) => (
-            <Link
+            <button
               key={slug}
-              href={firstStep}
+              type="button"
+              onClick={() => (planning ? planning.open({ newPlan: true }) : window.location.assign(firstStep))}
               className="flex min-h-11 items-center rounded-full border px-4 text-[13px] font-medium"
               style={{ borderColor: BOARD_LINE, color: BOARD_INK }}
               data-testid="r3-no-plan-city"
               data-city={slug}
             >
               {launchCityName(slug)}
-            </Link>
+            </button>
           ))}
         </div>
 
@@ -76,14 +80,15 @@ export function R3NoPlanPage() {
           <p className="mt-3 text-[13px] text-muted-foreground" data-testid="r3-no-plan-open-line">{openLine}</p>
         ) : null}
 
-        <Link
-          href={firstStep}
+        <button
+          type="button"
+          onClick={() => (planning ? planning.open({ newPlan: true }) : window.location.assign(firstStep))}
           className="mt-5 inline-block rounded-lg px-5 py-3 text-[14px] font-semibold text-white"
           style={{ backgroundColor: BOARD_INK }}
           data-testid="r3-no-plan-start"
         >
           Start a plan
-        </Link>
+        </button>
 
         {closed.length ? (
           <div className="mt-6 space-y-3" data-testid="r3-no-plan-waitlist">
@@ -162,6 +167,7 @@ export function R3NoPlanSwitch({ children }: { children: ReactNode }) {
   const marker = <span hidden data-testid="r3-no-plan-gate" data-decision={show} data-show={show} />;
 
   if (!asked) return <>{children}</>;
+  if (show === "home:flag-off") return <>{children}</>; // flag off: no gate marker, today's page
   if (show === "landing") {
     return (
       <>
