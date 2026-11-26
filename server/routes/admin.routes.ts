@@ -1,4 +1,6 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
+import { resendDiagnosticHandler } from "./resend-diagnostic";
+import { getBuildInfo } from "../services/build-info";
 import { EVENT_OUTSIDE_CITY_THRESHOLD_SETTING, isValidOutsideCityThresholdSetting } from "@shared/city-events";
 import { BOT_FACT_DEFAULT_EXPIRY_SETTING, isValidExpiryDaysSetting } from "@shared/bot-proposals";
 import { WELCOME_VERIFICATION_WINDOW_SETTING, isValidWelcomeVerificationWindowSetting } from "@shared/welcome-verification";
@@ -7581,6 +7583,14 @@ router.get("/api/admin/system/health", isAuthenticated, async (req, res) => {
     }
     return { reason: suppressed, error: `Refused before send (${suppressed})` };
   }
+
+  router.post("/api/admin/system/email-key-diagnostic", isAuthenticated, resendDiagnosticHandler({
+    isAdmin: async (userId) => {
+      const user = await getFullAdminUser(userId);
+      return Boolean(user && isAdminRole(user.role));
+    },
+    buildCommit: () => getBuildInfo().commit,
+  }));
 
   router.post("/api/admin/system/test-email", isAuthenticated, async (req, res) => {
     try {
