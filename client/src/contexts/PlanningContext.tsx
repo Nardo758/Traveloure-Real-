@@ -43,7 +43,7 @@ import { OCCASION_SAVE_FAILED, sendWithRetry } from "@/lib/occasion-save";
 import { type OccasionPickerGroup } from "@shared/experience-group";
 import { travelersForSave } from "@shared/plan-vocabulary";
 import type { ExperiencesPick } from "@/lib/plan-entry";
-import { planEntryHref, planEntryMintBasics, planEntryUrlRequested, withPlanEntryUrl } from "@/lib/plan-entry";
+import { planEntryHref, withSurfaceParam, planEntryMintBasics, planEntryUrlRequested, withPlanEntryUrl } from "@/lib/plan-entry";
 // The ONE resolver of an earner's public path (LD 40) — read by D15's return-to below.
 import { earnerProfilePath } from "@/lib/earner-address";
 import { withPlanTripId } from "@/lib/experts-browse";
@@ -239,6 +239,9 @@ export interface PlanningSource {
 
 interface PlanningApi {
   open: (source?: PlanningSource) => void;
+  /** R3 U5: while the no-plan landing owns the door, the pop-up must not open by itself. */
+  holdAutoOpen: boolean;
+  setHoldAutoOpen: (hold: boolean) => void;
   close: () => void;
   /**
    * START A PLAN from an inline PlanEntry (E3: the /experiences page). The SAME mint the pop-up's
@@ -344,6 +347,13 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
 
   /** The edit-only window over the BOUND plan (E2 ruling 1). */
   const [modalOpen, setModalOpen] = useState(false);
+  const [holdAutoOpen, setHoldAutoOpenState] = useState(false);
+  const holdAutoOpenRef = useRef(false);
+  const setHoldAutoOpen = useCallback((hold: boolean) => {
+    holdAutoOpenRef.current = hold;
+    setHoldAutoOpenState(hold);
+  }, []);
+  const pendingOpen = useRef(false);
   /** PlanEntry — the one way a NEW plan starts (E2). */
   const [entryOpen, setEntryOpen] = useState(false);
   const [source, setSource] = useState<PlanningSource | null>(null);
@@ -452,7 +462,10 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
     setModalOpen(false);
     setEntryOpen(false);
     if (typeof window !== "undefined" && planEntryUrlRequested(window.location.search)) {
-      if (entryUrlPushed.current) window.history.back();
+      if (holdAutoOpenRef.current) {
+        // R3 U5: closing over the landing returns to the landing's own URL - no step, surface kept.
+        window.history.replaceState(window.history.state, "", "/?start=1&surface=r3");
+      } else if (entryUrlPushed.current) window.history.back();
       else writeEntryUrl("replace", false);
     }
     entryUrlPushed.current = false;
@@ -465,17 +478,37 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
+  // The moment the landing releases the hold, a pending `?start=1` opens as it always would.
+  useEffect(() => {
+    if (holdAutoOpen || !pendingOpen.current) return;
+    if (typeof window === "undefined" || !planEntryUrlRequested(window.location.search)) return;
+    pendingOpen.current = false;
+    suppressEntryPush.current = true;
+    open({ newPlan: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [holdAutoOpen]);
+
   // A link (or Forward) to `?start=1` opens the pop-up; Back to a URL without it closes it.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const sync = () => {
-      if (planEntryUrlRequested(window.location.search)) {
-        suppressEntryPush.current = true;
-        open({ newPlan: true });
-      } else {
+      const wantsEntry = planEntryUrlRequested(window.location.search);
+      if (!wantsEntry) {
         entryUrlPushed.current = false;
         setEntryOpen(false);
+        return;
       }
+      const openIt = () => {
+        suppressEntryPush.current = true;
+        open({ newPlan: true });
+      };
+      // The R3 no-plan landing asks for the hold while it decides and while it is showing; nothing else sets it.
+      if (holdAutoOpenRef.current) {
+        pendingOpen.current = true;
+        return;
+      }
+      pendingOpen.current = false;
+      openIt();
     };
     if (planEntryUrlRequested(window.location.search)) sync();
     window.addEventListener("popstate", sync);
@@ -734,8 +767,8 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
     [startFromEntry],
   );
   const api = useMemo(
-    () => ({ open, close, start, experiencesPick, reportExperiencesPick }),
-    [open, close, start, experiencesPick, reportExperiencesPick],
+    () => ({ open, close, start, experiencesPick, reportExperiencesPick, holdAutoOpen, setHoldAutoOpen }),
+    [open, close, start, experiencesPick, reportExperiencesPick, holdAutoOpen, setHoldAutoOpen],
   );
 
   return (
@@ -779,8 +812,10 @@ function writeEntryUrl(mode: "push" | "replace", openFlag: boolean, step?: strin
   const url = openFlag
     ? planEntryHref(step)
     : `${window.location.pathname}${withPlanEntryUrl(window.location.search, false, null)}${window.location.hash}`;
-  if (mode === "push") window.history.pushState({ ...(window.history.state ?? {}), planEntry: true }, "", url);
-  else window.history.replaceState(window.history.state, "", url);
+  // R3 U5: an open URL carries `surface` over (nothing else); every other URL is untouched.
+  const final = openFlag ? withSurfaceParam(url, window.location.search) : url;
+  if (mode === "push") window.history.pushState({ ...(window.history.state ?? {}), planEntry: true }, "", final);
+  else window.history.replaceState(window.history.state, "", final);
 }
 
 /** A PlanEntry start as the v2 sign-in record's answers (the guest map reads the same shape). */

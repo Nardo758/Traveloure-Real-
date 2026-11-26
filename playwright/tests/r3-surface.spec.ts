@@ -188,6 +188,17 @@ async function pagesTilesLoaded(page: Page): Promise<boolean> {
   });
 }
 
+/** The one line per case: present/show/page/home, read after the root is visible. */
+async function logGate(page: Page, suffix = "") {
+  const gate = page.getByTestId("r3-no-plan-gate");
+  const present = (await gate.count()) > 0;
+  const show = present ? await gate.first().getAttribute("data-show") : "<absent>";
+  console.log(
+    `[u5-gate] present=${present} show=${show} page=${await page.getByTestId("r3-no-plan-page").count()} ` +
+      `home=${await page.getByTestId("landing-root").count()}${suffix ? " " + suffix : ""}`,
+  );
+}
+
 const OUT_DIR = path.join(process.cwd(), "playwright", "r3-captures");
 const uid = () => Math.random().toString(36).slice(2, 10);
 
@@ -670,4 +681,147 @@ test("U4: the switcher with three plans (current, no dates, past)", async ({ pag
   await maskEmails(page);
   await shootStable(page, path.join(OUT_DIR, "u4-switcher-three-1280.png"));
   await page.unroute("**/api/trips");
+});
+
+test("U5: the no-plan landing - bar, cities, waitlist and the empty switcher", async ({ page }) => {
+  fs.mkdirSync(OUT_DIR, { recursive: true });
+  // Rule out a stale bundle: these loads bypass the HTTP cache.
+  await page.setExtraHTTPHeaders({ "cache-control": "no-cache", pragma: "no-cache" });
+  // LOOKS CAPTURE ONLY - NOT DATA COVERAGE. The admin market list is stubbed: Kyoto live, Porto dated, Edinburgh
+  // closed with no date, so all three row states can be photographed and checked.
+  await page.route("**/api/public/live-markets**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ launch: "kyoto", live: ["kyoto"], beta: ["edinburgh"], dates: { porto: "2027-03-01" } }),
+    });
+  });
+
+  await registerAndSignIn(
+    page.request,
+    { email: `e2e-r3-noplan-${uid()}@example.com`, password: "R3Surface123!", firstName: "No", lastName: "Plan" },
+    BASE_URL,
+  );
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`${BASE_URL}/?start=1&surface=r3&capture=1`);
+  await expect(
+    page.getByTestId("landing-root").or(page.getByTestId("r3-no-plan-page")).first(),
+  ).toBeVisible({ timeout: 30_000 });
+  await logGate(page);
+  await expect(page.getByTestId("r3-no-plan-page")).toBeVisible();
+  // u5-popup: the landing is showing, so the pop-up must NOT have opened, and surface=r3 must survive the load.
+  await expect(page.getByRole("dialog"), "the landing does not open the pop-up").toHaveCount(0);
+  expect(new URL(page.url()).searchParams.get("surface"), "surface=r3 survives the landing load").toBe("r3");
+  await expect(page.getByTestId("r3-no-plan-title")).toContainText("Where are you going?");
+  await expect(page.getByTestId("r3-no-plan-open-line")).toContainText("Now open in");
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OUT_DIR, "u5-no-plan-1280.png"), fullPage: true });
+
+  // A tap on "Start a plan" opens the pop-up (the landing only suppresses the automatic open).
+  await page.getByTestId("r3-no-plan-start").click();
+  await expect(page.getByRole("dialog"), "a tap on Start a plan opens the pop-up").toBeVisible({ timeout: 10_000 });
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog"), "the pop-up closes").toHaveCount(0, { timeout: 10_000 });
+  await expect
+    .poll(() => new URL(page.url()).search, { message: "closing over the landing restores the door URL" })
+    .toBe("?start=1&surface=r3");
+  // Fifth case: after opening and closing the pop-up from the landing, the landing is still what shows.
+  await logGate(page, "(after close)");
+  expect(await page.getByTestId("r3-no-plan-gate").first().getAttribute("data-show"), "(after close): show=landing").toBe("landing");
+  // A reload of the restored door URL shows the landing again, with no dialog.
+  await page.reload();
+  await expect(page.getByTestId("r3-no-plan-page")).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await logGate(page, "(after reload)");
+
+  await page.getByTestId("r3-plan-switcher-button").click();
+  await expect(page.getByTestId("r3-plan-switcher-panel")).toBeVisible();
+  await expect(page.getByTestId("r3-plan-row")).toHaveCount(0);
+  await expect(page.getByTestId("r3-plan-start")).toBeVisible();
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OUT_DIR, "u5-switcher-1280.png"), fullPage: true });
+  await page.getByTestId("r3-plan-switcher-button").click();
+
+  // Porto is closed and dated: choose its pill, which shows its opening line and its waitlist button.
+  await page.getByTestId("r3-no-plan-city").filter({ hasText: "Porto" }).click(); // porto pill
+  await expect(page.getByTestId("r3-no-plan-waitlist")).toHaveAttribute("data-city", "porto");
+  await expect(page.getByTestId("r3-no-plan-opening")).toContainText("Opening March 2027");
+  await page.getByTestId("r3-no-plan-waitlist").scrollIntoViewIfNeeded();
+  await expect(page.getByTestId("r3-no-plan-waitlist")).toBeVisible();
+  // u5-waitlist: captured WHILE Porto is chosen - filled pill, "Opening March 2027", purple join button.
+  await expect(page.getByTestId("r3-no-plan-city").filter({ hasText: "Porto" })).toHaveAttribute("data-selected", "true");
+  await expect(page.getByTestId("r3-no-plan-waitlist-cta")).toContainText("Join the Porto waitlist");
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OUT_DIR, "u5-waitlist-1280.png"), fullPage: true });
+
+  // Edinburgh is closed with no date: its block offers its waitlist button and shows NO opening line.
+  await page.getByTestId("r3-no-plan-city").filter({ hasText: "Edinburgh" }).click();
+  const edinburgh = page.getByTestId("r3-no-plan-waitlist");
+  await expect(edinburgh).toHaveAttribute("data-city", "edinburgh");
+  await expect(edinburgh.getByTestId("r3-no-plan-waitlist-cta")).toContainText("Join the Edinburgh waitlist");
+  await expect(edinburgh.getByTestId("r3-no-plan-opening")).toHaveCount(0);
+  await expect(edinburgh).not.toContainText("Opening");
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${BASE_URL}/?start=1&surface=r3&capture=1`);
+  await expect(page.getByTestId("r3-no-plan-page")).toBeVisible({ timeout: 30_000 });
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OUT_DIR, "u5-no-plan-390.png"), fullPage: true });
+});
+
+test("U5: guests keep today's home on the door URL", async ({ page }) => {
+  const unauthorized: string[] = [];
+  page.on("response", (r) => {
+    if (r.url().includes("/api/trips") && r.status() === 401) unauthorized.push(r.url());
+  });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`${BASE_URL}/?start=1&surface=r3&capture=1`);
+  await expect(
+    page.getByTestId("landing-root").or(page.getByTestId("r3-no-plan-page")).first(),
+  ).toBeVisible({ timeout: 30_000 });
+  await logGate(page, "(guest)");
+  await expect(page.getByTestId("landing-root")).toBeVisible();
+  await expect(page.getByTestId("r3-no-plan-page")).toHaveCount(0);
+  expect(unauthorized, "a guest never asks for the plans list").toHaveLength(0); // r3-trips-401
+  // u5-popup: a guest keeps today's pop-up on this URL.
+  await expect(page.getByRole("dialog"), "the pop-up opens here as today").toBeVisible({ timeout: 10_000 });
+});
+
+test("U5: a traveller WITH a plan keeps today's home on the door URL", async ({ page }) => {
+  await registerAndSignIn(
+    page.request,
+    { email: `e2e-r3-hasplan-${uid()}@example.com`, password: "R3Surface123!", firstName: "Has", lastName: "Plan" },
+    BASE_URL,
+  );
+  const created = await page.request.post(`${BASE_URL}/api/trips`, { data: { title: `U5 has a plan ${uid()}`, destination: "Kyoto, Japan" } });
+  expect(created.ok(), "the fixture trip must be created").toBe(true);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`${BASE_URL}/?start=1&surface=r3&capture=1`);
+  await expect(
+    page.getByTestId("landing-root").or(page.getByTestId("r3-no-plan-page")).first(),
+  ).toBeVisible({ timeout: 30_000 });
+  await logGate(page, "(has a plan)");
+  // u5-popup: a traveller with a plan keeps today's pop-up on this URL.
+  await expect(page.getByRole("dialog"), "the pop-up opens here as today").toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId("landing-root")).toBeVisible();
+  await expect(page.getByTestId("r3-no-plan-page")).toHaveCount(0);
+});
+
+test("U5: with the R3 flag off the pop-up opens as today and there is no gate", async ({ page }) => {
+  // The switch is off on the server for this load, so nothing of the landing may appear.
+  await page.route("**/api/public/r3-surface**", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ on: false }) });
+  });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`${BASE_URL}/?start=1&surface=r3&capture=1`);
+  await expect(page.getByTestId("landing-root").or(page.getByTestId("r3-no-plan-page")).first()).toBeVisible({ timeout: 30_000 });
+  // flag off: gate=0 (no marker at all), the home, and today's pop-up
+  expect(await page.getByTestId("r3-no-plan-gate").count(), "flag-off: gate=0").toBe(0);
+  console.log(
+    `[u5-popup] flag-off: gate=${await page.getByTestId("r3-no-plan-gate").count()} page=${await page.getByTestId("r3-no-plan-page").count()} home=${await page.getByTestId("landing-root").count()}`,
+  );
+  await expect(page.getByTestId("landing-root")).toBeVisible();
+  await expect(page.getByTestId("r3-no-plan-page")).toHaveCount(0);
+  await expect(page.getByRole("dialog"), "the pop-up opens here as today").toBeVisible({ timeout: 10_000 });
 });

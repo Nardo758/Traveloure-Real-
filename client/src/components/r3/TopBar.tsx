@@ -19,7 +19,7 @@ export interface BarPlan {
   endDate?: string | null;
 }
 
-export function R3TopBar({ plan, plans, tripId }: { plan: BarPlan | null; plans: BarPlan[]; tripId: string }) {
+export function R3TopBar({ plan, plans, tripId }: { plan: BarPlan | null; plans: BarPlan[]; tripId: string | null }) {
   const [openPanel, setOpenPanel] = useState<"plans" | "account" | null>(null);
   const { user, logout } = useAuth();
   const initials = ((user?.firstName?.[0] || "") + (user?.lastName?.[0] || "")).toUpperCase() || "U";
@@ -44,8 +44,8 @@ export function R3TopBar({ plan, plans, tripId }: { plan: BarPlan | null; plans:
               style={{ borderColor: BOARD_LINE, color: BOARD_INK }}
               data-testid="r3-plan-switcher-button"
             >
-              <span className="max-w-[170px] truncate">{plan?.title ?? "Your plan"}</span>
-              <span className="hidden text-[12px] text-muted-foreground sm:inline">{when || "No dates yet"}</span>
+              <span className="max-w-[170px] truncate">{plan?.title ?? (tripId ? "Your plan" : "Start a plan")}</span>
+              {tripId ? <span className="hidden text-[12px] text-muted-foreground sm:inline">{when || "No dates yet"}</span> : null}
               <ChevronDown className="h-4 w-4" />
             </button>
             {openPanel === "plans" ? (
