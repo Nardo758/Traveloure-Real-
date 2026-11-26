@@ -464,7 +464,7 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
     if (typeof window !== "undefined" && planEntryUrlRequested(window.location.search)) {
       if (holdAutoOpenRef.current) {
         // R3 U5: closing over the landing returns to the landing's own URL - no step, surface kept.
-        window.history.replaceState(window.history.state, "", "/?start=1&surface=r3");
+        window.history.replaceState(window.history.state, "", withSurfaceParam(planEntryHref(), window.location.search));
       } else if (entryUrlPushed.current) window.history.back();
       else writeEntryUrl("replace", false);
     }

@@ -6,6 +6,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { BOARD_CELL, BOARD_CTA, BOARD_INK, BOARD_LINE, BOARD_TEXT } from "@/components/r3/tokens";
 import { resolveNotificationLink, type ApiNotification } from "@/lib/notification-icons";
+import { apiRequest } from "@/lib/queryClient";
 import { r3UpdateHref, r3UpdateSubline, type UpdatePlan } from "@/lib/r3-updates";
 
 const PANEL_W = "w-[360px] max-w-full";
@@ -22,9 +23,9 @@ export function UpdatesPanel({ plans, onNavigate }: { plans: readonly UpdatePlan
   /** Unread rows are patched without awaiting; the panel's own invalidation runs after it may have unmounted. */
   const markRead = (n: ApiNotification) => {
     if (n.isRead) return;
-    void fetch(`/api/notifications/${n.id}/read`, { method: "PATCH", credentials: "same-origin" })
+    void apiRequest("PATCH", `/api/notifications/${n.id}/read`)
       .then(() => queryClient.invalidateQueries({ queryKey: ["/api/notifications"] }))
-      .catch(() => undefined);
+      .catch(() => undefined); // a row patch may stay silent
   };
 
   /** Addendum 1: resolve, patch, close, navigate - one method, no full page load, no Link. */
@@ -36,7 +37,11 @@ export function UpdatesPanel({ plans, onNavigate }: { plans: readonly UpdatePlan
   };
 
   const markAll = async () => {
-    await fetch("/api/notifications/mark-all-read", { method: "POST", credentials: "same-origin" });
+    try {
+      await apiRequest("POST", "/api/notifications/mark-all-read");
+    } catch {
+      return; // failure keeps the unread state; nothing new is shown
+    }
     await queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
   };
 
@@ -67,7 +72,9 @@ export function UpdatesPanel({ plans, onNavigate }: { plans: readonly UpdatePlan
         ) : null}
       </div>
 
-      <div className="mt-2 max-h-[70vh] overflow-y-auto">
+      <div className="mt-2 border-t" style={{ borderColor: BOARD_LINE }} data-testid="r3-updates-header-rule" />
+
+      <div className="max-h-[70vh] overflow-y-auto">
         {state === "loading" ? (
           <div className="space-y-2 py-2" aria-hidden="true">
             {[0, 1, 2].map((i) => (

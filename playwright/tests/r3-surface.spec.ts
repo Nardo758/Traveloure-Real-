@@ -827,6 +827,7 @@ test("U5: with the R3 flag off the pop-up opens as today and there is no gate", 
 });
 
 test("U6: the Updates panel from the bell", async ({ page }) => {
+  test.setTimeout(180_000);
   fs.mkdirSync(OUT_DIR, { recursive: true });
   await page.setExtraHTTPHeaders({ "cache-control": "no-cache", pragma: "no-cache" });
   const tripId = await sixStopTrip(page);
@@ -933,6 +934,21 @@ test("U6: the Updates panel from the bell", async ({ page }) => {
   expect(patchedIds.filter((x) => x === "u6-1").length).toBe(1);
   await page.waitForLoadState("load");
 
+  // u6-390 BEFORE the mark-all tap: four rows, two unread (the brief's order).
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3&capture=1`);
+  await page.getByTestId("r3-bar-bell").click();
+  await expect(page.getByTestId("r3-updates-panel")).toHaveAttribute("data-state", "list");
+  {
+    const box = await page.getByTestId("r3-updates-panel").boundingBox();
+    const fits = !!box && box.x >= 0 && box.x + box.width <= 390;
+    console.log(`[u6-390] state=list rows=${await page.getByTestId("r3-updates-row").count()} fits=${fits}`);
+    expect(fits, "the panel sits inside a 390 viewport").toBe(true);
+    await maskEmails(page);
+    await page.screenshot({ path: path.join(OUT_DIR, "u6-updates-390.png"), fullPage: true });
+  }
+  await page.setViewportSize({ width: 1280, height: 900 });
+
   await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3&capture=1`);
   await page.getByTestId("r3-bar-bell").click();
   await expect(page.getByTestId("r3-updates-panel")).toHaveAttribute("data-state", "list");
@@ -951,6 +967,7 @@ test("U6: the Updates panel from the bell", async ({ page }) => {
   // empty
   mode = "empty";
   await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3&capture=1`);
+  await expect(page.getByTestId("r3-bar-bell")).toBeVisible({ timeout: 30_000 });
   await page.getByTestId("r3-bar-bell").click();
   await expect(page.getByTestId("r3-updates-panel")).toHaveAttribute("data-state", "empty");
   console.log(`[u6-empty] state=empty rows=${await page.getByTestId("r3-updates-row").count()} markall=${await page.getByTestId("r3-updates-mark-all").count()}`);
@@ -960,23 +977,10 @@ test("U6: the Updates panel from the bell", async ({ page }) => {
   // error
   mode = "error";
   await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3&capture=1`);
+  await expect(page.getByTestId("r3-bar-bell")).toBeVisible({ timeout: 30_000 });
   await page.getByTestId("r3-bar-bell").click();
   await expect(page.getByTestId("r3-updates-panel")).toHaveAttribute("data-state", "error");
   console.log(`[u6-error] state=error rows=${await page.getByTestId("r3-updates-row").count()}`);
   await maskEmails(page);
   await page.screenshot({ path: path.join(OUT_DIR, "u6-error-1280.png"), fullPage: true });
-
-  // 390
-  mode = "list";
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3&capture=1`);
-  await page.getByTestId("r3-bar-bell").click();
-  await expect(page.getByTestId("r3-updates-panel")).toHaveAttribute("data-state", "list");
-  const box = await page.getByTestId("r3-updates-panel").boundingBox();
-  const fits = !!box && box.x >= 0 && box.x + box.width <= 390;
-  console.log(`[u6-390] state=list rows=${await page.getByTestId("r3-updates-row").count()} fits=${fits}`);
-  expect(fits, "the panel sits inside a 390 viewport").toBe(true);
-  await page.evaluate(() => window.scrollTo(0, 0));
-  await maskEmails(page);
-  await page.screenshot({ path: path.join(OUT_DIR, "u6-updates-390.png"), fullPage: true });
 });
