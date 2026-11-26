@@ -165,7 +165,7 @@ import { eq, and, or, ilike, sql, desc, count, ne, inArray, asc, isNull } from "
 import Anthropic from "@anthropic-ai/sdk";
 import { toPublicListing } from "./utils/public-service-listing";
 import { scoreKnowledgeProof, KNOWLEDGE_PROOF_QUESTIONS, type KnowledgeProofAnswerInput } from "./services/expertise-scoring.service";
-import { stampNoNeighborhoodsAvailable } from "./services/neighborhood-claims.service";
+import { saveApplicationClaims, stampNoNeighborhoodsAvailable } from "./services/neighborhood-claims.service";
 // W2 (Trip-Canon Lane 1 Phase 1b): `cart_items` has exactly ONE writer — the projection module.
 // Every cart write below goes through `cartProjection.*`; the functions are thin passthroughs to
 // the storage layer, so behavior is identical to the pre-funnel code. Do not call
@@ -2747,6 +2747,12 @@ ${bannedCopyPromptLine()}`;
     }
   }
 
+  // DX-3 (option A): the application carries its picked neighborhoods; the service applies the cap.
+  const applicationNeighborhoodClaimsSchema = z.object({
+    neighborhoodClaims: z.array(z.object({ neighborhoodId: z.string().min(1) })).max(100).optional(),
+    neighborhoodCapture: z.unknown().optional(),
+  });
+
   // Submit expert application
   app.post("/api/expert-application", isAuthenticated, strictRateLimiter, async (req, res) => {
     try {
@@ -2760,10 +2766,18 @@ ${bannedCopyPromptLine()}`;
           const input = sanitizeObject(insertLocalExpertFormSchema.parse(req.body));
           const imgErr = validateImageDataUrl(input.govId, "govId") ?? validateImageDataUrl(input.travelLicence, "travelLicence");
           if (imgErr) return res.status(400).json({ message: imgErr });
+          const claimsParsed = applicationNeighborhoodClaimsSchema.safeParse(req.body ?? {});
+          if (!claimsParsed.success) return res.status(400).json(zodErrorBody(claimsParsed.error));
           const form = await storage.updateLocalExpertForm(existing.id, {
             ...input,
             status: "pending",
             rejectionMessage: null,
+          });
+          const neighborhoodClaims = await saveApplicationClaims({
+            userId,
+            city: form!.city ?? null,
+            claims: claimsParsed.data.neighborhoodClaims ?? [],
+            capture: claimsParsed.data.neighborhoodCapture,
           });
           await mirrorBioToUsersRow(userId, input.bio);
           void scoreKnowledgeProof(
@@ -2782,6 +2796,7 @@ ${bannedCopyPromptLine()}`;
           return res.status(200).json({
             ...pickPublicFields(form!, EXPERT_APPLICATION_PUBLIC_FIELDS),
             offeringTypeKeyUnrecorded: offeringKeyUnrecorded(input.offeringTypeKey, form!.offeringTypeKey),
+            neighborhoodClaims,
           });
         }
         return res.status(400).json({ message: "You already have an application submitted" });
@@ -2791,7 +2806,15 @@ ${bannedCopyPromptLine()}`;
       const input = sanitizeObject(insertLocalExpertFormSchema.parse(req.body));
       const imgErr = validateImageDataUrl(input.govId, "govId") ?? validateImageDataUrl(input.travelLicence, "travelLicence");
       if (imgErr) return res.status(400).json({ message: imgErr });
+      const claimsParsed = applicationNeighborhoodClaimsSchema.safeParse(req.body ?? {});
+      if (!claimsParsed.success) return res.status(400).json(zodErrorBody(claimsParsed.error));
       const form = await storage.createLocalExpertForm({ ...input, userId });
+      const neighborhoodClaims = await saveApplicationClaims({
+        userId,
+        city: form.city ?? null,
+        claims: claimsParsed.data.neighborhoodClaims ?? [],
+        capture: claimsParsed.data.neighborhoodCapture,
+      });
       await mirrorBioToUsersRow(userId, input.bio);
       // Field-knowledge Phase 0 D5 (amended): when the picker had no city_neighborhoods rows for
       // this city and the applicant holds no claim, stamp the honest skip so ops can backfill the
@@ -2827,6 +2850,7 @@ ${bannedCopyPromptLine()}`;
       res.status(201).json({
         ...pickPublicFields(form, EXPERT_APPLICATION_PUBLIC_FIELDS),
         offeringTypeKeyUnrecorded: offeringKeyUnrecorded(input.offeringTypeKey, form.offeringTypeKey),
+        neighborhoodClaims,
       });
     } catch (err) {
       if (err instanceof z.ZodError) {

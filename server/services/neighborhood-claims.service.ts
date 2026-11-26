@@ -54,6 +54,7 @@ import {
   normalizeVenueName,
   publicClaimStatus,
   EVIDENCE_UNLOCKS,
+  MAX_APPLICATION_NEIGHBORHOOD_CLAIMS,
   type EvidenceUnlock,
   type ScorerJson,
   type ClaimActorType,
@@ -266,6 +267,85 @@ export async function saveDraftCapture(opts: {
     .returning();
   if (!row) return fail(409, "not_editable", "This claim is with us for review and can't be edited right now");
   return { ok: true, value: row };
+}
+
+/** DX-3: a capture is only sent to saveDraftCapture when it carries at least one answer. */
+function hasCaptureContent(capture: unknown): boolean {
+  if (!capture || typeof capture !== "object" || Array.isArray(capture)) return false;
+  const c = capture as { p1?: unknown; p2?: unknown; p3?: unknown; p4?: unknown };
+  if (Array.isArray(c.p1) && c.p1.length > 0) return true;
+  if (c.p2 && typeof c.p2 === "object" && Object.keys(c.p2).length > 0) return true;
+  if (c.p3 && typeof c.p3 === "object" && Object.keys(c.p3).length > 0) return true;
+  if (Array.isArray(c.p4) && c.p4.length > 0) return true;
+  return false;
+}
+
+/**
+ * DX-3 (option A): create the application's picked neighborhoods as draft claims.
+ *
+ * Called by POST /api/expert-application after the form row exists and before the
+ * no-neighborhoods stamp. It never throws and never submits: every row is a draft, so the
+ * application itself cannot fail because of a claim. Duplicate ids are dropped; ids past
+ * the cap count as failed. The first saved claim's answers are saved when supplied.
+ */
+export async function saveApplicationClaims(opts: {
+  userId: string;
+  city: string | null;
+  claims: Array<{ neighborhoodId: string }>;
+  capture?: unknown;
+}): Promise<{ saved: number; failed: number }> {
+  const result = { saved: 0, failed: 0 };
+  try {
+    const seen = new Set<string>();
+    const unique: string[] = [];
+    for (const claim of opts.claims) {
+      if (!claim || typeof claim.neighborhoodId !== "string" || !claim.neighborhoodId) continue;
+      if (seen.has(claim.neighborhoodId)) continue;
+      seen.add(claim.neighborhoodId);
+      unique.push(claim.neighborhoodId);
+    }
+    const kept = unique.slice(0, MAX_APPLICATION_NEIGHBORHOOD_CLAIMS);
+    result.failed += unique.length - kept.length;
+    const city = (opts.city ?? "").trim().toLowerCase();
+
+    let firstSaved = false;
+    for (const neighborhoodId of kept) {
+      const [nb] = await db
+        .select({ id: cityNeighborhoods.id, city: cityNeighborhoods.city })
+        .from(cityNeighborhoods)
+        .where(eq(cityNeighborhoods.id, neighborhoodId))
+        .limit(1);
+      if (!nb || String(nb.city ?? "").trim().toLowerCase() !== city) {
+        result.failed += 1;
+        continue;
+      }
+      const created = await createClaim({
+        expertId: opts.userId,
+        neighborhoodId,
+        actorType: "expert",
+        actorId: opts.userId,
+      });
+      if (!created.ok) {
+        result.failed += 1;
+        continue;
+      }
+      result.saved += 1;
+      if (!firstSaved) {
+        firstSaved = true;
+        if (hasCaptureContent(opts.capture)) {
+          const saved = await saveDraftCapture({
+            claimId: created.value.claim.id,
+            expertId: opts.userId,
+            payload: opts.capture,
+          });
+          if (!saved.ok) result.failed += 1;
+        }
+      }
+    }
+  } catch (err: any) {
+    console.error("[neighborhood-claims] application claims failed:", err?.message ?? err);
+  }
+  return result;
 }
 
 // ── Submit: validate → materialize typed rows → flip, all in one transaction ─────────────────
