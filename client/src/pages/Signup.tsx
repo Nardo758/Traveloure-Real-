@@ -13,7 +13,7 @@ import {
 } from "@/lib/wlb-signup-copy";
 import { supplySignupContinuation } from "@shared/supply-entry";
 import { sanitizeReturnTo } from "@/lib/safe-return-to";
-import { authFailureMessage, readAuthResponse } from "@/lib/auth-response";
+import { authFailureMessage, authFieldErrors, readAuthResponse, type AuthResponseRead } from "@/lib/auth-response";
 import { useTranslation } from "react-i18next";
 import {
   EMPTY_SIGNUP_DRAFT,
@@ -24,6 +24,25 @@ import {
   useWaitlistSignupGate,
   type SignupDraft,
 } from "@/components/auth/SignupForm";
+
+const SIGNUP_FIELDS = new Set(["firstName", "lastName", "email", "password", "consent"]);
+
+/** True only when every server error can be placed under one of the five fields. */
+function everyErrorPlaced(read: AuthResponseRead, placed: Record<string, string>): boolean {
+  if (read.kind !== "json" || !Array.isArray(read.data.errors) || read.data.errors.length === 0) return false;
+  return read.data.errors.every((entry) => {
+    if (!entry || typeof entry !== "object") return false;
+    const message = (entry as { message?: unknown }).message;
+    const path = (entry as { path?: unknown }).path;
+    return (
+      typeof message === "string" &&
+      Array.isArray(path) &&
+      typeof path[0] === "string" &&
+      SIGNUP_FIELDS.has(path[0]) &&
+      placed[path[0]] === message
+    );
+  });
+}
 
 export function SignupPage() {
   const { t } = useTranslation("auth");
@@ -65,15 +84,33 @@ export function SignupPage() {
 
   // N-2 (round 2): the shared form's fields — the same as the home modal's.
   const [draft, setDraft] = useState<SignupDraft>(EMPTY_SIGNUP_DRAFT);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [checkEmail, setCheckEmail] = useState(false);
+
+  /** Editing one field clears that field's server error; the other messages stay. */
+  const handleDraftChange = (next: SignupDraft) => {
+    setFieldErrors((prev) => {
+      const kept = { ...prev };
+      let changed = false;
+      for (const key of Object.keys(next) as (keyof SignupDraft)[]) {
+        if (next[key] !== draft[key] && key in kept) {
+          delete kept[key];
+          changed = true;
+        }
+      }
+      return changed ? kept : prev;
+    });
+    setDraft(next);
+  };
 
   if (supplyContinuation.kind !== "account") return null;
 
   const handleSubmit = async () => {
     setLoading(true);
     setError("");
+    setFieldErrors({});
     try {
       const { response: res, read, checkEmail: neutral } = await submitRegistration(
         {
@@ -112,6 +149,15 @@ export function SignupPage() {
         return;
       }
       if (read.kind === "non-json" || !res.ok) {
+        if (res.status === 400) {
+          const placed = authFieldErrors(read);
+          setFieldErrors(placed);
+          // D3: when every server error is placed under a field, the banner is noise.
+          if (!everyErrorPlaced(read, placed)) {
+            setError(authFailureMessage(read, t("signupPage.genericError"), t("signupPage.failed")));
+          }
+          return;
+        }
         setError(authFailureMessage(read, t("signupPage.genericError"), t("signupPage.failed")));
         return;
       }
@@ -160,7 +206,7 @@ export function SignupPage() {
         )}
 
         <div className="space-y-4">
-          {signupGate === "form" ? <SignupFields draft={draft} onChange={setDraft} /> : (
+          {signupGate === "form" ? <SignupFields draft={draft} onChange={handleDraftChange} errors={fieldErrors} /> : (
             <p className="text-sm text-gray-500" data-testid="signup-gate-checking" aria-busy="true" />
           )}
 

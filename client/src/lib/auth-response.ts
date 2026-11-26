@@ -15,6 +15,7 @@ export const AUTH_GENERIC_ERROR = "Something went wrong";
 
 export interface AuthJsonBody {
   message?: unknown;
+  errors?: unknown;
   code?: unknown;
   redirectTo?: unknown;
   emailVerificationRequired?: unknown;
@@ -68,4 +69,25 @@ export function authFailureMessage(read: AuthResponseRead, generic: string, json
   const message = read.data.message;
   if (typeof message === "string" && message.trim()) return message;
   return jsonFallback;
+}
+
+/**
+ * The server's field-level messages, keyed by the first `path` segment.
+ * Only a JSON body with an array `errors` contributes; each entry needs a
+ * string `message` and a string first path. The first message per field wins.
+ */
+export function authFieldErrors(read: AuthResponseRead): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (read.kind !== "json") return out;
+  const errors = read.data.errors;
+  if (!Array.isArray(errors)) return out;
+  for (const entry of errors) {
+    if (!entry || typeof entry !== "object") continue;
+    const message = (entry as { message?: unknown }).message;
+    const path = (entry as { path?: unknown }).path;
+    if (typeof message !== "string") continue;
+    if (!Array.isArray(path) || typeof path[0] !== "string") continue;
+    if (!(path[0] in out)) out[path[0]] = message;
+  }
+  return out;
 }

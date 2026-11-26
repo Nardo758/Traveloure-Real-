@@ -38,7 +38,15 @@ export function signupDraftReady(d: SignupDraft): boolean {
 }
 
 /** The fields both containers draw, in one order. */
-export function SignupFields({ draft, onChange }: { draft: SignupDraft; onChange: (next: SignupDraft) => void }) {
+export function SignupFields({
+  draft,
+  onChange,
+  errors,
+}: {
+  draft: SignupDraft;
+  onChange: (next: SignupDraft) => void;
+  errors?: Record<string, string>;
+}) {
   const { t } = useTranslation("auth");
   const set = (patch: Partial<SignupDraft>) => onChange({ ...draft, ...patch });
   return (
@@ -56,8 +64,15 @@ export function SignupFields({ draft, onChange }: { draft: SignupDraft; onChange
               onChange={(e) => set({ firstName: e.target.value })}
               required
               data-testid="input-first-name"
+              aria-invalid={errors?.firstName ? true : undefined}
+              aria-describedby={errors?.firstName ? "signup-firstName-error" : undefined}
             />
           </div>
+          {errors?.firstName && (
+            <p id="signup-firstName-error" data-testid="error-signup-firstName" className="text-xs text-red-700">
+              {errors.firstName}
+            </p>
+          )}
         </div>
         <div className="space-y-2">
           <Label htmlFor="signup-last-name">{t("fields.lastName")}</Label>
@@ -71,8 +86,15 @@ export function SignupFields({ draft, onChange }: { draft: SignupDraft; onChange
               onChange={(e) => set({ lastName: e.target.value })}
               required
               data-testid="input-last-name"
+              aria-invalid={errors?.lastName ? true : undefined}
+              aria-describedby={errors?.lastName ? "signup-lastName-error" : undefined}
             />
           </div>
+          {errors?.lastName && (
+            <p id="signup-lastName-error" data-testid="error-signup-lastName" className="text-xs text-red-700">
+              {errors.lastName}
+            </p>
+          )}
         </div>
       </div>
       <div className="space-y-2">
@@ -90,8 +112,15 @@ export function SignupFields({ draft, onChange }: { draft: SignupDraft; onChange
             onChange={(e) => set({ email: e.target.value })}
             required
             data-testid="input-email"
+            aria-invalid={errors?.email ? true : undefined}
+            aria-describedby={errors?.email ? "signup-email-error" : undefined}
           />
         </div>
+        {errors?.email && (
+          <p id="signup-email-error" data-testid="error-signup-email" className="text-xs text-red-700">
+            {errors.email}
+          </p>
+        )}
       </div>
       <div className="space-y-2">
         <Label htmlFor="signup-password">{t("fields.password")}</Label>
@@ -109,8 +138,15 @@ export function SignupFields({ draft, onChange }: { draft: SignupDraft; onChange
             required
             minLength={8}
             data-testid="input-password"
+            aria-invalid={errors?.password ? true : undefined}
+            aria-describedby={errors?.password ? "signup-password-error" : undefined}
           />
         </div>
+        {errors?.password && (
+          <p id="signup-password-error" data-testid="error-signup-password" className="text-xs text-red-700">
+            {errors.password}
+          </p>
+        )}
       </div>
       <div className="flex items-start gap-2.5 rounded-lg border bg-muted/30 p-3">
         <Checkbox
@@ -119,6 +155,8 @@ export function SignupFields({ draft, onChange }: { draft: SignupDraft; onChange
           onCheckedChange={(checked) => set({ consent: checked === true })}
           required
           aria-required="true"
+          aria-invalid={errors?.consent ? true : undefined}
+          aria-describedby={errors?.consent ? "signup-consent-error" : undefined}
           data-testid="checkbox-signup-consent"
         />
         {/* N-2 (round 2 rulings, Nov 4, 2026): one required box for both agreements. */}
@@ -133,6 +171,11 @@ export function SignupFields({ draft, onChange }: { draft: SignupDraft; onChange
           </a>
         </label>
       </div>
+      {errors?.consent && (
+        <p id="signup-consent-error" data-testid="error-signup-consent" className="text-xs text-red-700">
+          {errors.consent}
+        </p>
+      )}
     </div>
   );
 }
