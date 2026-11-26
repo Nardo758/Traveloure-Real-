@@ -7,7 +7,7 @@
 import { useEffect, useState } from "react";
 import { Redirect, useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { BOARD_CELL, BOARD_INK, BOARD_LINE } from "@/components/r3/tokens";
+import { BOARD_CELL, BOARD_DANGER, BOARD_INK, BOARD_LINE } from "@/components/r3/tokens";
 import { R3TopBar } from "@/components/r3/TopBar";
 import { useAuth } from "@/hooks/use-auth";
 import { readR3SurfaceFlag } from "@/lib/r3-surface";
@@ -86,7 +86,8 @@ export function R3SettingsPage() {
             type="button"
             disabled={rowDisabled}
             onClick={() => setConfirm("ask")}
-            className="mt-2 block w-full py-2 text-left text-[14px] font-semibold text-destructive disabled:opacity-50"
+            className="mt-2 block w-full py-2 text-left text-[14px] font-semibold disabled:opacity-50"
+            style={{ color: BOARD_DANGER }}
             data-testid="r3-settings-delete-row"
           >
             Request account deletion
@@ -96,7 +97,7 @@ export function R3SettingsPage() {
         {confirm ? (
           <div
             className="mt-4 rounded-xl border-2 p-4"
-            style={{ ...cardStyle, borderColor: "hsl(var(--destructive))" }}
+            style={{ ...cardStyle, borderColor: BOARD_DANGER }}
             data-testid="r3-settings-confirm"
             data-state={confirm}
           >
@@ -123,7 +124,8 @@ export function R3SettingsPage() {
                     type="button"
                     onClick={send}
                     disabled={confirm === "sending"}
-                    className="min-h-11 rounded-lg bg-destructive px-4 text-[13px] font-semibold text-white disabled:opacity-50"
+                    className="min-h-11 rounded-lg px-4 text-[13px] font-semibold text-white hover:brightness-95 disabled:opacity-50"
+                    style={{ backgroundColor: BOARD_DANGER }}
                     data-testid="r3-settings-confirm-request"
                   >
                     Request deletion

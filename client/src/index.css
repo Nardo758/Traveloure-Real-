@@ -14,6 +14,7 @@
   --r3-board-col: #f4f3ef;
   /* an OPAQUE cell surface: --card is an hsl fragment, so background: var(--card) computes to transparent */
   --r3-cell: #ffffff;
+  --r3-danger: #a3322b;
   /* The R3 map (Leon, Nov 23 2026): pins in the board ink, the stay as a hollow purple ring, no frame. */
   --r3-pin-ink: #1a1a18;
   --r3-pin-text: #ffffff;
