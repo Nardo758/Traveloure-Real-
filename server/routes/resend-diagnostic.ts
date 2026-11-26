@@ -1,12 +1,12 @@
 import type { RequestHandler } from "express";
 import { getUserId } from "../utils/auth";
-import { diagnoseResendKey } from "../services/resend-diagnostic";
+import { diagnoseLoadedResendKey } from "../services/resend-diagnostic";
 
 /** Dependencies keep authorization testable without opening a database or sending mail. */
 export function resendDiagnosticHandler(deps: {
   isAdmin: (userId: string) => Promise<boolean>;
   buildCommit: () => string | null;
-  diagnose?: typeof diagnoseResendKey;
+  diagnose?: typeof diagnoseLoadedResendKey;
 }): RequestHandler {
   return async (req, res) => {
     res.setHeader("Cache-Control", "no-store");
@@ -17,9 +17,7 @@ export function resendDiagnosticHandler(deps: {
         res.status(403).json({ message: "Admin access required" });
         return;
       }
-      const diagnostic = await (deps.diagnose ?? diagnoseResendKey)(
-        process.env.RESEND_API_KEY, deps.buildCommit(),
-      );
+      const diagnostic = await (deps.diagnose ?? diagnoseLoadedResendKey)(deps.buildCommit());
       res.json(diagnostic);
     } catch {
       res.status(500).json({ message: "Could not run the email key diagnostic" });

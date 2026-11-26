@@ -54,9 +54,15 @@ test("route is explicitly mounted behind authentication and full-admin lookup", 
   assert.ok(section.includes("isAdminRole(user.role)"));
 });
 
+test("the route probes the key the server sends with, through the shared lookup", () => {
+  const route = readFileSync("server/routes/resend-diagnostic.ts", "utf8");
+  assert.ok(route.includes("diagnoseLoadedResendKey"));
+  assert.ok(!route.includes("process.env.RESEND_API_KEY"));
+});
+
 test("admin System mounts the no-send diagnostic and UI covers results and failures", () => {
   assert.ok(readFileSync("client/src/pages/admin/system.tsx", "utf8").includes("<ResendKeyDiagnostic />"));
   const ui = readFileSync("client/src/components/admin/ResendKeyDiagnostic.tsx", "utf8");
-  for (const expected of ["button-resend-key-diagnostic", "resend-key-diagnostic-result", "result.key.fingerprint", "result.checkedAt", "result.buildCommit", "setResult(null)", "disabled={busy}", 'role="status"', 'apiRequest("POST", "/api/admin/system/email-key-diagnostic")']) assert.ok(ui.includes(expected), expected);
+  for (const expected of ["button-resend-key-diagnostic", "resend-key-diagnostic-result", "result.key.fingerprint", "result.key.source", "resend-key-diagnostic-source", "result.checkedAt", "result.buildCommit", "setResult(null)", "disabled={busy}", 'role="status"', 'apiRequest("POST", "/api/admin/system/email-key-diagnostic")']) assert.ok(ui.includes(expected), expected);
   assert.ok(!ui.includes("<Input"));
 });

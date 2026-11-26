@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import type { ResendAuthState, ResendDiagnostic } from "../../shared/resend-diagnostic";
+import type { ResendAuthState, ResendDiagnostic, ResendKeySource } from "../../shared/resend-diagnostic";
+import { resolveResendKey } from "./resend-key";
 
 /** A read-only probe. Never log keys, exceptions, or upstream response bodies here. */
 export async function diagnoseResendKey(
@@ -7,6 +8,7 @@ export async function diagnoseResendKey(
   buildCommit: string | null,
   fetcher: typeof fetch = fetch,
   timeoutMs = 5_000,
+  source: ResendKeySource | null = null,
 ): Promise<ResendDiagnostic> {
   const present = typeof key === "string" && key.length > 0;
   const result: ResendDiagnostic = {
@@ -14,6 +16,7 @@ export async function diagnoseResendKey(
     buildCommit,
     key: {
       present,
+      source: present ? source : null,
       fingerprint: present ? createHash("sha256").update(key!, "utf8").digest("hex").slice(0, 16) : null,
       surroundingWhitespace: present && key !== key!.trim(),
       surroundingQuotes: present && /^['"]|['"]$/.test(key!.trim()),
@@ -62,4 +65,19 @@ export async function diagnoseResendKey(
     clearTimeout(timer);
   }
   return result;
+}
+
+/**
+ * Probe the credential this server actually sends with: the same lookup as
+ * sendEmail (`resolveResendKey`), so the fingerprint is of the key in use and
+ * the result names the variable it was loaded from.
+ */
+export async function diagnoseLoadedResendKey(
+  buildCommit: string | null,
+  env: Record<string, string | undefined> = process.env,
+  fetcher: typeof fetch = fetch,
+  timeoutMs = 5_000,
+): Promise<ResendDiagnostic> {
+  const { key, source } = resolveResendKey(env);
+  return diagnoseResendKey(key, buildCommit, fetcher, timeoutMs, source);
 }
