@@ -239,6 +239,9 @@ export interface PlanningSource {
 
 interface PlanningApi {
   open: (source?: PlanningSource) => void;
+  /** R3 U5: while the no-plan landing owns the door, the pop-up must not open by itself. */
+  holdAutoOpen: boolean;
+  setHoldAutoOpen: (hold: boolean) => void;
   close: () => void;
   /**
    * START A PLAN from an inline PlanEntry (E3: the /experiences page). The SAME mint the pop-up's
@@ -344,6 +347,13 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
 
   /** The edit-only window over the BOUND plan (E2 ruling 1). */
   const [modalOpen, setModalOpen] = useState(false);
+  const [holdAutoOpen, setHoldAutoOpenState] = useState(false);
+  const holdAutoOpenRef = useRef(false);
+  const setHoldAutoOpen = useCallback((hold: boolean) => {
+    holdAutoOpenRef.current = hold;
+    setHoldAutoOpenState(hold);
+  }, []);
+  const pendingOpen = useRef(false);
   /** PlanEntry — the one way a NEW plan starts (E2). */
   const [entryOpen, setEntryOpen] = useState(false);
   const [source, setSource] = useState<PlanningSource | null>(null);
@@ -465,25 +475,15 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
-  /**
-   * R3 U5: the no-plan landing signals through its gate marker. On the landing's own door the pop-up waits for that
-   * signal instead of opening over the landing. Flag off, guest, has-plans and "still waiting" all keep today's behaviour.
-   */
-  const r3GateSays = (): "landing" | "home" | "unknown" => {
-    if (typeof document === "undefined") return "unknown";
-    const el = document.querySelector('[data-testid="r3-no-plan-gate"]');
-    const show = el?.getAttribute("data-show") ?? "";
-    if (show === "landing") return "landing";
-    if (show.startsWith("home:")) return "home";
-    return "unknown";
-  };
-
-  /** True when this URL is the R3 landing's door ("/" + start=1 + surface=r3). */
-  const isR3Door = () => {
-    if (typeof window === "undefined") return false;
-    const params = new URLSearchParams(window.location.search);
-    return window.location.pathname === "/" && params.get("start") === "1" && params.get("surface") === "r3";
-  };
+  // The moment the landing releases the hold, a pending `?start=1` opens as it always would.
+  useEffect(() => {
+    if (holdAutoOpen || !pendingOpen.current) return;
+    if (typeof window === "undefined" || !planEntryUrlRequested(window.location.search)) return;
+    pendingOpen.current = false;
+    suppressEntryPush.current = true;
+    open({ newPlan: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [holdAutoOpen]);
 
   // A link (or Forward) to `?start=1` opens the pop-up; Back to a URL without it closes it.
   useEffect(() => {
@@ -499,20 +499,13 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
         suppressEntryPush.current = true;
         open({ newPlan: true });
       };
-      // Every door that is not the R3 landing's own opens exactly as it always has.
-      if (!isR3Door()) {
-        openIt();
+      // The R3 no-plan landing asks for the hold while it decides and while it is showing; nothing else sets it.
+      if (holdAutoOpenRef.current) {
+        pendingOpen.current = true;
         return;
       }
-      // On the R3 door, let the gate decide first (it answers within a tick or two); a landing suppresses the pop-up.
-      const startedAt = Date.now();
-      const tick = () => {
-        const verdict = r3GateSays();
-        if (verdict === "landing") return;
-        if (verdict === "home" || Date.now() - startedAt > 1500) openIt();
-        else window.setTimeout(tick, 50);
-      };
-      tick();
+      pendingOpen.current = false;
+      openIt();
     };
     if (planEntryUrlRequested(window.location.search)) sync();
     window.addEventListener("popstate", sync);
@@ -771,8 +764,8 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
     [startFromEntry],
   );
   const api = useMemo(
-    () => ({ open, close, start, experiencesPick, reportExperiencesPick }),
-    [open, close, start, experiencesPick, reportExperiencesPick],
+    () => ({ open, close, start, experiencesPick, reportExperiencesPick, holdAutoOpen, setHoldAutoOpen }),
+    [open, close, start, experiencesPick, reportExperiencesPick, holdAutoOpen, setHoldAutoOpen],
   );
 
   return (

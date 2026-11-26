@@ -10,7 +10,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation, useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { BOARD_INK, BOARD_LINE, BOARD_TEXT, BOARD_FILL } from "@/components/r3/tokens";
+import { BOARD_CTA, BOARD_INK, BOARD_LINE, BOARD_TEXT, BOARD_FILL } from "@/components/r3/tokens";
 import { R3TopBar } from "@/components/r3/TopBar";
 import { LAUNCH_MARKETS } from "@shared/launch-markets";
 import { launchCityName, marketStatus } from "@shared/ticker";
@@ -34,20 +34,28 @@ export function openingLine(value: string | null | undefined): string | null {
 
 export function R3NoPlanPage() {
   const { settings } = useMarketStatusSettings();
-  // The landing suppresses the AUTOMATIC open; a tap opens the pop-up explicitly, through the app's own door.
+  // A tap opens the pop-up explicitly, through the app's own door.
   const planning = usePlanningOptional();
-  const cities = useMemo(() => {
-    const set = new Set<string>();
-    for (const slug of [...settings.live, ...settings.beta, ...Object.keys(settings.dates)]) set.add(slug);
-    if (set.size === 0) for (const c of LAUNCH_MARKETS) set.add(String(c).toLowerCase());
-    return Array.from(set).sort();
+  const [chosen, setChosen] = useState<string | null>(null);
+
+  // Open cities first, in the admin's order, then the closed ones (beta before dated), as the board draws them.
+  const { open, closed } = useMemo(() => {
+    const admin = settings.live.filter((slug) => marketStatus(slug, settings) === "live");
+    const closedSlugs = [...settings.beta, ...Object.keys(settings.dates)]
+      .filter((slug) => marketStatus(slug, settings) !== "live")
+      .filter((slug, i, all) => all.indexOf(slug) === i);
+    const fallback = admin.length + closedSlugs.length === 0 ? LAUNCH_MARKETS.map((c) => String(c).toLowerCase()) : [];
+    return { open: admin.length ? admin : fallback, closed: closedSlugs };
   }, [settings]);
 
-  const openCities = cities.filter((c) => marketStatus(c, settings) === "live");
-  const closed = cities.filter((c) => marketStatus(c, settings) !== "live");
-  const openNames = openCities.map((c) => launchCityName(c)).filter(Boolean);
+  const all = [...open, ...closed];
+  const openNames = open.map((c) => launchCityName(c)).filter(Boolean);
   const openLine = openNames.length ? `Now open in ${openNames.join(", ")}.` : "";
   const firstStep = planEntryHref("around");
+  const chosenSlug = chosen && closed.includes(chosen) ? chosen : null;
+  const chosenOpening = chosenSlug ? openingLine(settings.dates[chosenSlug]) : null;
+
+  const openPopUp = () => (planning ? planning.open({ newPlan: true }) : window.location.assign(firstStep));
 
   return (
     <div className="min-h-screen" data-testid="r3-no-plan-page">
@@ -61,19 +69,30 @@ export function R3NoPlanPage() {
         </h1>
 
         <div className="mt-4 flex flex-wrap gap-2" data-testid="r3-no-plan-cities">
-          {cities.map((slug) => (
-            <button
-              key={slug}
-              type="button"
-              onClick={() => (planning ? planning.open({ newPlan: true }) : window.location.assign(firstStep))}
-              className="flex min-h-11 items-center rounded-full border px-4 text-[13px] font-medium"
-              style={{ borderColor: BOARD_LINE, color: BOARD_INK }}
-              data-testid="r3-no-plan-city"
-              data-city={slug}
-            >
-              {launchCityName(slug)}
-            </button>
-          ))}
+          {all.map((slug) => {
+            const isOpen = open.includes(slug);
+            const selected = slug === chosenSlug;
+            return (
+              <button
+                key={slug}
+                type="button"
+                onClick={() => (isOpen ? openPopUp() : setChosen((c) => (c === slug ? null : slug)))}
+                aria-pressed={isOpen ? undefined : selected}
+                className="flex min-h-11 items-center rounded-full border px-4 text-[13px] font-medium"
+                style={
+                  isOpen || selected
+                    ? { borderColor: BOARD_TEXT, backgroundColor: BOARD_FILL, color: BOARD_TEXT }
+                    : { borderColor: BOARD_LINE, color: BOARD_INK }
+                }
+                data-testid="r3-no-plan-city"
+                data-city={slug}
+                data-open={isOpen ? "true" : "false"}
+                data-selected={selected ? "true" : "false"}
+              >
+                {launchCityName(slug)}
+              </button>
+            );
+          })}
         </div>
 
         {openLine ? (
@@ -82,36 +101,29 @@ export function R3NoPlanPage() {
 
         <button
           type="button"
-          onClick={() => (planning ? planning.open({ newPlan: true }) : window.location.assign(firstStep))}
+          onClick={openPopUp}
           className="mt-5 inline-block rounded-lg px-5 py-3 text-[14px] font-semibold text-white"
-          style={{ backgroundColor: BOARD_INK }}
+          style={{ backgroundColor: BOARD_CTA }}
           data-testid="r3-no-plan-start"
         >
           Start a plan
         </button>
 
-        {closed.length ? (
-          <div className="mt-6 space-y-3" data-testid="r3-no-plan-waitlist">
-            {closed.map((slug) => {
-              const opening = openingLine(settings.dates[slug]);
-              return (
-                <div key={slug} className="rounded-xl border p-4" style={{ borderColor: BOARD_LINE }} data-testid="r3-no-plan-waitlist-row" data-city={slug}>
-                  <p className="text-[14px] font-semibold" style={{ color: BOARD_INK }}>{launchCityName(slug)}</p>
-                  {opening ? (
-                    <p className="mt-1 text-[12px] text-muted-foreground" data-testid="r3-no-plan-opening">{`Opening ${opening}`}</p>
-                  ) : null}
-                  <Link
-                    href={waitlistMarketPath(slug)}
-                    className="mt-2 inline-flex min-h-11 items-center rounded-lg px-4 text-[13px] font-medium"
-                    style={{ backgroundColor: BOARD_FILL, color: BOARD_TEXT }}
-                    data-testid="r3-no-plan-waitlist-cta"
-                    data-city={slug}
-                  >
-                    {`Join the ${launchCityName(slug)} waitlist`}
-                  </Link>
-                </div>
-              );
-            })}
+        {chosenSlug ? (
+          <div className="mt-6 rounded-xl border p-4" style={{ borderColor: BOARD_LINE }} data-testid="r3-no-plan-waitlist" data-city={chosenSlug}>
+            <p className="text-[14px] font-semibold" style={{ color: BOARD_INK }}>{launchCityName(chosenSlug)}</p>
+            {chosenOpening ? (
+              <p className="mt-1 text-[12px] text-muted-foreground" data-testid="r3-no-plan-opening">{`Opening ${chosenOpening}`}</p>
+            ) : null}
+            <Link
+              href={waitlistMarketPath(chosenSlug)}
+              className="mt-2 inline-flex min-h-11 items-center rounded-lg px-4 text-[13px] font-semibold text-white"
+              style={{ backgroundColor: BOARD_CTA }}
+              data-testid="r3-no-plan-waitlist-cta"
+              data-city={chosenSlug}
+            >
+              {`Join the ${launchCityName(chosenSlug)} waitlist`}
+            </Link>
           </div>
         ) : null}
       </main>
@@ -165,6 +177,15 @@ export function R3NoPlanSwitch({ children }: { children: ReactNode }) {
 
   // One marker for rows 2-9, so every [u5-gate] line says why.
   const marker = <span hidden data-testid="r3-no-plan-gate" data-decision={show} data-show={show} />;
+
+  const planning = usePlanningOptional();
+  // The landing asks for the hold while it is deciding and while it is showing. A guest, a has-plans traveller and a
+  // flag-off load never set it, so their pop-up opens exactly as today.
+  const holding = asked && (show.startsWith("wait:") || show === "landing");
+  useEffect(() => {
+    if (!planning) return;
+    planning.setHoldAutoOpen(holding);
+  }, [planning, holding]);
 
   if (!asked) return <>{children}</>;
   if (show === "home:flag-off") return <>{children}</>; // flag off: no gate marker, today's page
