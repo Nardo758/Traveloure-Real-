@@ -43,7 +43,7 @@ import { OCCASION_SAVE_FAILED, sendWithRetry } from "@/lib/occasion-save";
 import { type OccasionPickerGroup } from "@shared/experience-group";
 import { travelersForSave } from "@shared/plan-vocabulary";
 import type { ExperiencesPick } from "@/lib/plan-entry";
-import { planEntryHref, planEntryMintBasics, planEntryUrlRequested, withPlanEntryUrl } from "@/lib/plan-entry";
+import { planEntryHref, withSurfaceParam, planEntryMintBasics, planEntryUrlRequested, withPlanEntryUrl } from "@/lib/plan-entry";
 // The ONE resolver of an earner's public path (LD 40) — read by D15's return-to below.
 import { earnerProfilePath } from "@/lib/earner-address";
 import { withPlanTripId } from "@/lib/experts-browse";
@@ -809,20 +809,13 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
  */
 function writeEntryUrl(mode: "push" | "replace", openFlag: boolean, step?: string | null): void {
   if (typeof window === "undefined") return;
-  // R3 U5: the open URL carries `surface` over from the live query string (and nothing else - R4-5 keeps every other
-  // parameter dropping). Without this the landing loses its surface the moment the pop-up opens.
   const url = openFlag
-    ? (() => {
-        const href = planEntryHref(step);
-        const surface = new URLSearchParams(window.location.search).get("surface");
-        if (!surface) return href;
-        const next = new URLSearchParams(href.startsWith("/?") ? href.slice(2) : "");
-        next.set("surface", surface);
-        return `/?${next.toString()}`;
-      })()
+    ? planEntryHref(step)
     : `${window.location.pathname}${withPlanEntryUrl(window.location.search, false, null)}${window.location.hash}`;
-  if (mode === "push") window.history.pushState({ ...(window.history.state ?? {}), planEntry: true }, "", url);
-  else window.history.replaceState(window.history.state, "", url);
+  // R3 U5: an open URL carries `surface` over (nothing else); every other URL is untouched.
+  const final = openFlag ? withSurfaceParam(url, window.location.search) : url;
+  if (mode === "push") window.history.pushState({ ...(window.history.state ?? {}), planEntry: true }, "", final);
+  else window.history.replaceState(window.history.state, "", final);
 }
 
 /** A PlanEntry start as the v2 sign-in record's answers (the guest map reads the same shape). */

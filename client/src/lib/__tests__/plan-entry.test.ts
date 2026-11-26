@@ -44,6 +44,7 @@ import {
   typedCity,
   withEvent,
   withPlanEntryUrl,
+  withSurfaceParam,
   withNight,
 } from "../plan-entry";
 
@@ -294,4 +295,11 @@ test("withPlanEntryUrl keeps unrelated params and only adds or removes start/ste
   assert.equal(withPlanEntryUrl("?start=1&surface=r3", true), "?surface=r3&start=1"); // start is re-set, so it moves last
   assert.equal(withPlanEntryUrl("?ref=ig&capture=1", true, "around"), "?ref=ig&capture=1&start=1&step=around");
   assert.equal(withPlanEntryUrl("?ref=ig&capture=1&start=1&step=around", false), "?ref=ig&capture=1");
+});
+
+test("planEntryHrefKeepingSurface carries surface and nothing else", () => {
+  // R3 U5: opening the pop-up must not un-ask for the landing; every other parameter still drops (R4-5).
+  assert.equal(withSurfaceParam("/?start=1&step=around", "?start=1&surface=r3&capture=1&ref=ig"), "/?start=1&step=around&surface=r3");
+  assert.equal(withSurfaceParam("/?start=1", "?surface=r3"), "/?start=1&surface=r3");
+  assert.equal(withSurfaceParam("/?start=1&step=around", "?start=1&ref=ig"), "/?start=1&step=around");
 });
