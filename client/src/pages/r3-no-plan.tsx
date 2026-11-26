@@ -119,81 +119,64 @@ export function R3NoPlanPage() {
  * skeleton forever). With `&step=` present the pop-up is open, so this falls through too.
  */
 export function R3NoPlanSwitch({ children }: { children: ReactNode }) {
-  const [path] = useLocation();
-  const search = useSearch();
+  // The real URL, read synchronously. (The router's hooks answered without the query string in this position, which left
+  // `asked` false and made every case fall through to the home.)
+  const { search: liveSearch, pathname: livePath } = typeof window === "undefined"
+    ? { search: "", pathname: "/" }
+    : window.location;
+  const params = new URLSearchParams(liveSearch.startsWith("?") ? liveSearch.slice(1) : liveSearch);
   const { user, isLoading: authLoading } = useAuth();
-  const params = new URLSearchParams(search);
-  const asked = params.get("surface") === "r3";
-  const startRequested = params.get("start") === "1";
-  // `step` is read ONCE, at mount: the pop-up adds it after opening, and that must not change this decision.
-  const stepAtMount = useRef(params.has("step")).current;
-  const onDoor = startRequested && !stepAtMount && path === "/";
+  // The door is "/" + start=1 + surface=r3.
+  const asked = (livePath === "/" || livePath === "") && params.get("start") === "1" && params.get("surface") === "r3";
 
-  // The R3 flag: one read per page load, and the gate does not decide until it has answered.
+  // Three states: null (the one read has not answered), true, false. `useR3SurfaceOn` only has two, so it is not used here.
   const [flag, setFlag] = useState<boolean | null>(null);
-  const flagAt = useRef<number | null>(null);
   useEffect(() => {
-    if (!asked) {
-      setFlag(false);
-      return;
-    }
+    if (!asked) return;
     let alive = true;
     readR3SurfaceFlag().then((on) => {
-      if (!alive) return;
-      flagAt.current = Date.now();
-      setFlag(on);
+      if (alive) setFlag(on);
     });
     return () => {
       alive = false;
     };
   }, [asked]);
-  const flagSettled = flag !== null;
-  const r3 = flag === true && asked;
 
+  // The plans read only runs for a signed-in traveller: a guest never triggers GET /api/trips (no 401 in the log).
   const { data: plans, isLoading: plansLoading, isError: plansError } = useQuery<Array<{ id: string }>>({
     queryKey: ["/api/trips"],
-    enabled: asked && r3 && onDoor && !authLoading && !!user,
+    enabled: asked && flag === true && !authLoading && !!user,
   });
 
-  const authResolved = !authLoading;
-  const plansResolved = plans !== undefined || plansError || !user;
-  const decision = {
-    r3,
-    flagResolved: flagSettled,
-    flagAt: flagAt.current,
-    start: startRequested,
-    stepAtMount,
-    user: !!user,
-    authLoading,
-    plansLoading,
-    plansShape: Array.isArray(plans) ? "array" : plans === undefined ? "undefined" : typeof plans,
-    plansLen: Array.isArray(plans) ? plans.length : -1,
-    path,
-    resolved: flagSettled && authResolved && plansResolved,
-    error: plansError ? "plans-error" : "none",
-  };
+  const show =
+    flag === null ? "wait:flag"
+    : flag === false ? "home:flag-off"
+    : authLoading ? "wait:auth"
+    : !user ? "home:guest"
+    : plansLoading ? "wait:plans"
+    : plansError ? "home:plans-error"
+    : Array.isArray(plans) && plans.length > 0 ? "home:has-plans"
+    : "landing";
 
-  // Not this door, not this surface request: today's page, untouched.
-  if (!asked || !onDoor) return <>{children}</>;
+  // One marker for rows 2-9, so every [u5-gate] line says why.
+  const marker = <span hidden data-testid="r3-no-plan-gate" data-decision={show} data-show={show} />;
 
-  // ON THE DOOR: nothing but the skeleton until flag, auth and plans have all resolved. Children never mount early,
-  // so the pop-up cannot push `&step=` into a cold load.
-  if (!flagSettled || !authResolved || !plansResolved) {
+  if (!asked) return <>{children}</>;
+  if (show === "landing") {
     return (
       <>
-        <span hidden data-testid="r3-no-plan-gate" data-decision={JSON.stringify(decision)} />
+        {marker}
+        <R3NoPlanPage />
+      </>
+    );
+  }
+  if (show.startsWith("wait:")) {
+    return (
+      <>
+        {marker}
         <div className="min-h-[40vh]" data-testid="r3-no-plan-skeleton" />
       </>
     );
   }
-  const gate = <span hidden data-testid="r3-no-plan-gate" data-decision={JSON.stringify(decision)} />;
-  if (!r3) return <>{gate}{children}</>;
-  if (plansError) return <>{gate}{children}</>;
-  const list = Array.isArray(plans) ? plans : [];
-  return (
-    <>
-      {gate}
-      {list.length === 0 ? <R3NoPlanPage /> : children}
-    </>
-  );
+  return <>{marker}{children}</>;
 }

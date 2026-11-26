@@ -188,6 +188,17 @@ async function pagesTilesLoaded(page: Page): Promise<boolean> {
   });
 }
 
+/** The one line per case: present/show/page/home, read after the root is visible. */
+async function logGate(page: Page, suffix = "") {
+  const gate = page.getByTestId("r3-no-plan-gate");
+  const present = (await gate.count()) > 0;
+  const show = present ? await gate.first().getAttribute("data-show") : "<absent>";
+  console.log(
+    `[u5-gate] present=${present} show=${show} page=${await page.getByTestId("r3-no-plan-page").count()} ` +
+      `home=${await page.getByTestId("landing-root").count()}${suffix ? " " + suffix : ""}`,
+  );
+}
+
 const OUT_DIR = path.join(process.cwd(), "playwright", "r3-captures");
 const uid = () => Math.random().toString(36).slice(2, 10);
 
@@ -693,14 +704,10 @@ test("U5: the no-plan landing - bar, cities, waitlist and the empty switcher", a
   );
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`${BASE_URL}/?start=1&surface=r3&capture=1`);
-  await expect(page.getByTestId("landing-root").or(page.getByTestId("r3-no-plan-gate"))).toBeVisible({ timeout: 30_000 });
-  const gate = page.getByTestId("r3-no-plan-gate");
-  const gateCount = await gate.count();
-  console.log(
-    `[u5-gate] present=${gateCount > 0} decision=${gateCount ? await gate.first().getAttribute("data-decision") : "<absent>"} ` +
-      `page=${await page.getByTestId("r3-no-plan-page").count()} skeleton=${await page.getByTestId("r3-no-plan-skeleton").count()} ` +
-      `home=${await page.getByTestId("landing-root").count()}`,
-  );
+  await expect(
+    page.getByTestId("landing-root").or(page.getByTestId("r3-no-plan-page")).first(),
+  ).toBeVisible({ timeout: 30_000 });
+  await logGate(page);
   await expect(page.getByTestId("r3-no-plan-page")).toBeVisible();
   await expect(page.getByTestId("r3-no-plan-title")).toContainText("Where are you going?");
   await expect(page.getByTestId("r3-no-plan-open-line")).toContainText("Now open in");
@@ -734,15 +741,19 @@ test("U5: the no-plan landing - bar, cities, waitlist and the empty switcher", a
 });
 
 test("U5: guests keep today's home on the door URL", async ({ page }) => {
+  const unauthorized: string[] = [];
+  page.on("response", (r) => {
+    if (r.url().includes("/api/trips") && r.status() === 401) unauthorized.push(r.url());
+  });
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`${BASE_URL}/?start=1&surface=r3&capture=1`);
-  await expect(page.getByTestId("landing-root").or(page.getByTestId("r3-no-plan-gate"))).toBeVisible({ timeout: 30_000 });
-  console.log(
-    `[u5-gate] present=${await page.getByTestId("r3-no-plan-gate").count() > 0} page=${await page.getByTestId("r3-no-plan-page").count()} ` +
-      `home=${await page.getByTestId("landing-root").count()} (guest)`,
-  );
+  await expect(
+    page.getByTestId("landing-root").or(page.getByTestId("r3-no-plan-page")).first(),
+  ).toBeVisible({ timeout: 30_000 });
+  await logGate(page, "(guest)");
   await expect(page.getByTestId("landing-root")).toBeVisible();
   await expect(page.getByTestId("r3-no-plan-page")).toHaveCount(0);
+  expect(unauthorized, "a guest never asks for the plans list").toHaveLength(0); // r3-trips-401
 });
 
 test("U5: a traveller WITH a plan keeps today's home on the door URL", async ({ page }) => {
@@ -755,11 +766,10 @@ test("U5: a traveller WITH a plan keeps today's home on the door URL", async ({ 
   expect(created.ok(), "the fixture trip must be created").toBe(true);
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`${BASE_URL}/?start=1&surface=r3&capture=1`);
-  await expect(page.getByTestId("landing-root").or(page.getByTestId("r3-no-plan-gate"))).toBeVisible({ timeout: 30_000 });
-  console.log(
-    `[u5-gate] present=${await page.getByTestId("r3-no-plan-gate").count() > 0} page=${await page.getByTestId("r3-no-plan-page").count()} ` +
-      `home=${await page.getByTestId("landing-root").count()} (has a plan)`,
-  );
+  await expect(
+    page.getByTestId("landing-root").or(page.getByTestId("r3-no-plan-page")).first(),
+  ).toBeVisible({ timeout: 30_000 });
+  await logGate(page, "(has a plan)");
   await expect(page.getByTestId("landing-root")).toBeVisible();
   await expect(page.getByTestId("r3-no-plan-page")).toHaveCount(0);
 });
