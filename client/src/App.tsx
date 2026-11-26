@@ -36,6 +36,7 @@ import { MaintenanceGate } from "@/components/maintenance-screen";
 import { GUEST_SESSION_STORAGE_KEY } from "@/lib/guest-session-key";
 
 const LandingPage = lazy(() => import("@/pages/landing"));
+const R3SettingsPage = lazy(() => import("@/pages/r3-settings").then((m) => ({ default: m.R3SettingsPage })));
 import { R3NoPlanSwitch } from "@/pages/r3-no-plan";
 const LandingMockups = lazy(() => import("@/pages/landing-mockups"));
 const Dashboard = lazy(() => import("@/pages/dashboard"));
@@ -942,6 +943,17 @@ function Router() {
       </Route>
       <Route path="/profile">
         {() => <DashboardLayout><ProtectedRoute component={Profile} /></DashboardLayout>}
+      </Route>
+      <Route path="/settings">
+        {() =>
+          new URLSearchParams(window.location.search).get("surface") === "r3" ? (
+            <Suspense fallback={<PageLoader />}>
+              <ProtectedRoute component={R3SettingsPage} skipTermsCheck={false} />
+            </Suspense>
+          ) : (
+            <Redirect to="/profile" replace />
+          )
+        }
       </Route>
       
       {/* FP-3: credits system retired (per-use fee funnel + one-click saved-card is the

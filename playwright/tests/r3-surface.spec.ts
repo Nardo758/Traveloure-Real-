@@ -984,3 +984,157 @@ test("U6: the Updates panel from the bell", async ({ page }) => {
   await maskEmails(page);
   await page.screenshot({ path: path.join(OUT_DIR, "u6-error-1280.png"), fullPage: true });
 });
+
+test("U7: Settings and the account-deletion request", async ({ page }) => {
+  test.setTimeout(180_000);
+  fs.mkdirSync(OUT_DIR, { recursive: true });
+  let flagReads = 0;
+  let posts = 0;
+  let deletes = 0;
+  const postBodies: any[] = [];
+  let contactStatus = 200;
+
+  await page.route("**/api/public/r3-surface**", async (route) => {
+    flagReads += 1;
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ on: true }) });
+  });
+  await page.route("**/api/auth/account**", async (route) => {
+    deletes += 1;
+    await route.fulfill({ status: 500, body: "no" });
+  });
+  await page.route("**/api/contact", async (route) => {
+    posts += 1;
+    postBodies.push(route.request().postDataJSON());
+    await route.fulfill({ status: contactStatus, contentType: "application/json", body: JSON.stringify({ ok: contactStatus < 400 }) });
+  });
+
+  // signed in on the PAGE's context (same helper the U5/U6 blocks use), then confirm the session
+  await registerAndSignIn(
+    page.request,
+    { email: `e2e-r3-u7-${uid()}@example.com`, password: "R3Surface123!", firstName: "Set", lastName: "Tings" },
+    BASE_URL,
+  );
+  const tripId = await sixStopTrip(page);
+
+  // [u7-noparam]: no surface in the URL -> /profile, and the flag is never read
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`${BASE_URL}/settings`);
+  await page.waitForURL("**/profile", { timeout: 30_000 });
+  console.log(`[u7-noparam] from=/settings to=${new URL(page.url()).pathname} flagreads=${flagReads}`);
+  expect(new URL(page.url()).pathname).toBe("/profile");
+  expect(flagReads).toBe(0);
+
+  // [u7-flag-off]
+  flagReads = 0;
+  await page.route("**/api/public/r3-surface**", async (route) => {
+    flagReads += 1;
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ on: false }) });
+  });
+  await page.goto(`${BASE_URL}/settings?surface=r3`);
+  await page.waitForURL("**/profile", { timeout: 30_000 });
+  console.log(`[u7-flag-off] from=/settings?surface=r3 to=${new URL(page.url()).pathname} page=${await page.getByTestId("r3-settings-page").count()}`);
+  expect(new URL(page.url()).pathname).toBe("/profile");
+  expect(await page.getByTestId("r3-settings-page").count()).toBe(0);
+
+  // back on, and signed in
+  await page.unroute("**/api/public/r3-surface**");
+  await page.route("**/api/public/r3-surface**", async (route) => {
+    flagReads += 1;
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ on: true }) });
+  });
+  // [u7-menu]
+  await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3`);
+  await expect(page.getByTestId("r3-account-button")).toBeVisible({ timeout: 30_000 });
+  await page.getByTestId("r3-account-button").click();
+  const settingsHref = await page.getByTestId("r3-account-settings").getAttribute("href");
+  const profileHref = await page.getByTestId("r3-account-profile").getAttribute("href");
+  console.log(`[u7-menu] settings_href=${settingsHref} profile_href=${profileHref}`);
+  expect(settingsHref).toBe("/settings?surface=r3");
+  expect(profileHref).toBe("/profile");
+  await page.getByTestId("r3-account-button").click();
+
+  // [u7-page]
+  await page.goto(`${BASE_URL}/settings?surface=r3`);
+  await expect(page.getByTestId("r3-settings-page")).toHaveAttribute("data-state", "ready", { timeout: 30_000 });
+  const rows = (await page.getByTestId("r3-settings-email-prefs").count()) + (await page.getByTestId("r3-settings-delete-row").count());
+  console.log(`[u7-page] state=ready rows=${rows} confirm=${await page.getByTestId("r3-settings-confirm").count()} posts=${posts} deletes=${deletes}`);
+  expect(rows).toBe(2);
+  expect(await page.getByTestId("r3-settings-confirm").count()).toBe(0);
+  expect(posts).toBe(0);
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OUT_DIR, "u7-settings-1280.png"), fullPage: true });
+
+  // [u7-prefs]
+  const prefsHref = await page.getByTestId("r3-settings-email-prefs").getAttribute("href");
+  console.log(`[u7-prefs] href=${prefsHref}`);
+  expect(prefsHref).toBe("/email-preferences");
+
+  // [u7-confirm]
+  await page.getByTestId("r3-settings-delete-row").click();
+  await expect(page.getByTestId("r3-settings-confirm")).toHaveAttribute("data-state", "ask");
+  console.log(`[u7-confirm] confirm=ask posts=${posts} deletes=${deletes}`);
+  expect(posts).toBe(0);
+  expect(deletes).toBe(0);
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OUT_DIR, "u7-confirm-1280.png"), fullPage: true });
+
+  // the same card on the phone
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.evaluate(() => window.scrollTo(0, 0));
+  const box = await page.getByTestId("r3-settings-page").boundingBox();
+  const fits = !!box && box.x >= 0 && box.x + box.width <= 390;
+  console.log(`[u7-390] state=ready fits=${fits}`);
+  expect(fits).toBe(true);
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OUT_DIR, "u7-confirm-390.png"), fullPage: true });
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  // [u7-keep]
+  await page.getByTestId("r3-settings-confirm-keep").click();
+  await expect(page.getByTestId("r3-settings-confirm")).toHaveCount(0);
+  console.log(`[u7-keep] confirm=0 posts=${posts} deletes=${deletes}`);
+  expect(posts).toBe(0);
+
+  // [u7-request]
+  await page.getByTestId("r3-settings-delete-row").click();
+  await page.getByTestId("r3-settings-confirm-request").click();
+  await expect(page.getByTestId("r3-settings-confirm")).toHaveAttribute("data-state", "sent", { timeout: 15_000 });
+  const sentBody = postBodies[postBodies.length - 1] ?? {};
+  const rowDisabled = await page.getByTestId("r3-settings-delete-row").isDisabled();
+  const me = await page.request.get(`${BASE_URL}/api/auth/user`);
+  const signedIn = me.ok();
+  console.log(
+    `[u7-request] posts=${posts} subject="${sentBody.subject ?? ""}" confirm=sent row_disabled=${rowDisabled} signed_in=${signedIn} deletes=${deletes}`,
+  );
+  expect(posts).toBe(1);
+  expect(sentBody.subject).toBe("Data Deletion Request");
+  expect(rowDisabled).toBe(true);
+  expect(signedIn).toBe(true);
+  expect(deletes).toBe(0);
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OUT_DIR, "u7-sent-1280.png"), fullPage: true });
+
+  // [u7-error]: a failed request keeps the card and both buttons
+  contactStatus = 500;
+  posts = 0;
+  await page.goto(`${BASE_URL}/settings?surface=r3`);
+  await expect(page.getByTestId("r3-settings-page")).toHaveAttribute("data-state", "ready", { timeout: 30_000 });
+  await page.getByTestId("r3-settings-delete-row").click();
+  await page.getByTestId("r3-settings-confirm-request").click();
+  await expect(page.getByTestId("r3-settings-confirm")).toHaveAttribute("data-state", "error", { timeout: 15_000 });
+  const buttons = (await page.getByTestId("r3-settings-confirm-request").count()) + (await page.getByTestId("r3-settings-confirm-keep").count());
+  console.log(`[u7-error] posts=${posts} confirm=error buttons=${buttons} deletes=${deletes}`);
+  expect(buttons).toBe(2);
+  expect(deletes).toBe(0);
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OUT_DIR, "u7-error-1280.png"), fullPage: true });
+
+  // the settings card alone on the phone
+  contactStatus = 200;
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${BASE_URL}/settings?surface=r3`);
+  await expect(page.getByTestId("r3-settings-page")).toHaveAttribute("data-state", "ready", { timeout: 30_000 });
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OUT_DIR, "u7-settings-390.png"), fullPage: true });
+});
