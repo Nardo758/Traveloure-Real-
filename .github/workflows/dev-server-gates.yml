@@ -588,6 +588,22 @@ jobs:
           path: playwright/a2-captures/
           retention-days: 14
           if-no-files-found: warn
+      - name: "dx2-signup-field-errors: field messages under the sign-up fields, at 1280 and 390"
+        id: dx2_signup_field_errors
+        if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
+        run: npx playwright test dx2-signup-field-errors --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          CI: 'true'
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      - name: Upload the DX2 screenshots
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: dx2-captures-${{ github.sha }}
+          path: playwright/dx2-captures/
+          retention-days: 14
+          if-no-files-found: warn
       - name: "r3-surface: the Revision 3 shell, at 1280 and 390, with screenshots"
         # R3 P0 (Leon, Nov 22 2026): the shell behind ?surface=r3. It asserts r3-surface is on the page, so a
         # green step is never a picture of the old page.
