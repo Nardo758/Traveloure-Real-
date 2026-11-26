@@ -1,5 +1,1 @@
-# R? - R3 U6: the bell opens the Updates panel
-
-| # | Ruling | Where | Why |
-|---|---|---|---|
-| R? | On the R3 top bar the bell opens the **Updates** panel (V24 v4, panel 8). It lists the traveller's notifications with unread dots and "Mark all as read"; there is **no per-row delete** on this surface, and **no request is made before the bell is opened**. | `client/src/components/r3/TopBar.tsx`, `client/src/components/r3/UpdatesPanel.tsx` | Board V24 v4 panel 8 (Leon, Nov 26 2026); the no-request rule is D2 in the U6 brief. |
+| 2026-11-26-r3-u6-updates-panel | 2026-11-26 | [guarded: client/src/lib/__tests__/r3-updates.test.ts] (Leon, Nov 26 2026, board V24 v4 panel 8: on the R3 bar the bell opens the Updates panel; unread dots and "Mark all as read", no per-row delete; the panel requests /api/notifications only when opened (refetchOnMount always); a row with a link marks read, closes and navigates to /plans/<id>?surface=r3; a row with no link marks read and stays. The old console bell's pre-existing fetch is out of scope. Client only, no migration.) | **R? — the bell opens Updates; the panel fetches only when opened** | client/src/components/r3/TopBar.tsx; client/src/components/r3/UpdatesPanel.tsx; client/src/lib/r3-updates.ts | numeric citation R? |
