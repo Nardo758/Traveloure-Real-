@@ -465,10 +465,20 @@ export function PlanningProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
+  /** The R3 no-plan landing's door: "/" with start=1 and surface=r3. Nothing else is affected. */
+  const r3DoorOwnsTheUrl = () => {
+    if (typeof window === "undefined") return false;
+    const params = new URLSearchParams(window.location.search);
+    return window.location.pathname === "/" && params.get("start") === "1" && params.get("surface") === "r3";
+  };
+
   // A link (or Forward) to `?start=1` opens the pop-up; Back to a URL without it closes it.
   useEffect(() => {
     if (typeof window === "undefined") return;
     const sync = () => {
+      // R3 U5: on the no-plan landing's own door the landing owns the URL. Auto-opening here rewrites it (start/step) and
+      // drops the surface, so the pop-up waits for a city or "Start a plan" tap instead. Every other door is unchanged.
+      if (r3DoorOwnsTheUrl()) return;
       if (planEntryUrlRequested(window.location.search)) {
         suppressEntryPush.current = true;
         open({ newPlan: true });

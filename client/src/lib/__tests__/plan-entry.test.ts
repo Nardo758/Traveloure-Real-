@@ -43,6 +43,7 @@ import {
   thisWeekend,
   typedCity,
   withEvent,
+  withPlanEntryUrl,
   withNight,
 } from "../plan-entry";
 
@@ -285,4 +286,12 @@ test("TB1.1: /experiences?group= draws its one filtered chip active for every gr
     // "More specific" with a chosen occasion hides the group highlight (unchanged rule).
     assert.equal(groupChipActive({ ...filtered, moreSpecific: true, occasionSlug: "wedding" }), false);
   }
+});
+
+test("withPlanEntryUrl keeps unrelated params and only adds or removes start/step", () => {
+  // R3 U5: the pop-up used to lose `surface` (and `capture`, `ref`) when it opened; it must only touch start/step.
+  assert.equal(withPlanEntryUrl("?start=1&surface=r3", false), "?surface=r3");
+  assert.equal(withPlanEntryUrl("?start=1&surface=r3", true), "?surface=r3&start=1"); // start is re-set, so it moves last
+  assert.equal(withPlanEntryUrl("?ref=ig&capture=1", true, "around"), "?ref=ig&capture=1&start=1&step=around");
+  assert.equal(withPlanEntryUrl("?ref=ig&capture=1&start=1&step=around", false), "?ref=ig&capture=1");
 });
