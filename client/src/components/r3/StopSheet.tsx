@@ -11,6 +11,7 @@ import { BOARD_CELL, BOARD_INK, BOARD_LINE, BOARD_TEXT } from "@/components/r3/t
 import { itemOriginChip } from "@/lib/item-origin";
 import { sheetFactLines } from "@/lib/place-facts";
 import { ItemAskLocalPanel } from "@/components/plan/ItemAskLocalPanel";
+import { SLIP_ASK_EXPERT_LABEL } from "@/lib/slip-item-tools";
 
 function pinnedTag(dayLabel: string | null): string | null {
   return dayLabel ? `Pinned to ${dayLabel}` : null;
@@ -209,7 +210,7 @@ export function StopSheet({
             onClick={() => setAskOpen(true)}
             data-testid="r3-sheet-ask"
           >
-            Ask an expert
+            {SLIP_ASK_EXPERT_LABEL}
           </button>
           {askOpen ? (
             <div className="mt-2" data-testid="r3-sheet-ask-panel">

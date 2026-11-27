@@ -23,6 +23,7 @@ import { PhoneDayBody, PhoneDayStrip, PhoneHint, PhoneTabs, type PhoneTab } from
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { StopSheet } from "@/components/r3/StopSheet";
+import { BOARD_CELL, BOARD_LINE } from "@/components/r3/tokens";
 import { stopStateFor } from "@/lib/r3-stop-state";
 import { apiRequest } from "@/lib/queryClient";
 import { DaysMapPanel } from "@/components/plan/DaysMapPanel";
@@ -454,7 +455,7 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
       {pendingRemoval ? (
         <div
           className="fixed bottom-4 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-xl border px-3 py-2 text-[13px] shadow-lg"
-          style={{ backgroundColor: "#ffffff", borderColor: "var(--r3-line, #dad9d1)" }}
+          style={{ backgroundColor: BOARD_CELL, borderColor: BOARD_LINE }}
           data-testid="r3-stop-removed"
         >
           <span>{`Removed ${String(pendingRemoval.stop?.name ?? pendingRemoval.stop?.title ?? "stop")}`}</span>
