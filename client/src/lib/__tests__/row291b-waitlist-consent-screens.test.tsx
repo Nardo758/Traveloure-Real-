@@ -183,7 +183,7 @@ describe("W4 — the posted bodies pass the strict schema", () => {
   it("traveler and provider, box 2 ticked and not", () => {
     for (const marketingConsent of [true, false]) {
       const traveler = {
-        role: "traveler", email: "a@b.co", market: "kyoto", consent: true, marketingConsent,
+        role: "traveler", email: "a@b.co", contactName: "T", market: "kyoto", consent: true, marketingConsent,
         source: "kyoto", ref: "abc", tripType: "wedding", roughMonth: "2027-04", worry: "x", otherCity: "Lisbon",
       };
       const provider = {
