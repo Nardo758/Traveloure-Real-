@@ -58,6 +58,37 @@ export const stripe = new Stripe(getStripeSecretKey() || '', {
 });
 
 /**
+ * R3 U8a (D2, Leon Nov 26 2026): the FIRST saved card becomes the default, and only then. True only when this call set
+ * it. It never creates a customer, never charges, writes no local row and logs no payment-method detail.
+ *
+ * Amendments to ledger `2026-10-21-saved-method-required`: `payment_method.attached` may set this one default; the event
+ * stays record-only in every other respect.
+ */
+export async function defaultFirstSavedMethod(
+  customerId: string,
+  paymentMethodId: string,
+  client: Pick<Stripe, "customers" | "paymentMethods"> = stripe,
+): Promise<boolean> {
+  try {
+    const customer = (await client.customers.retrieve(customerId)) as Stripe.Customer | Stripe.DeletedCustomer;
+    if ((customer as Stripe.DeletedCustomer).deleted) return false;
+    const live = customer as Stripe.Customer;
+    if (live.invoice_settings?.default_payment_method) return false;
+    const list = await client.paymentMethods.list({ customer: customerId, limit: 2 });
+    if (list.data.length !== 1) return false;
+    const only = list.data[0];
+    if (only.id !== paymentMethodId) return false;
+    const mapped = mapStripePaymentMethod(only);
+    if (!savedMethodConfirmsOnClick(mapped)) return false; // D10: saved Apple Pay is never made the default
+    await client.customers.update(customerId, { invoice_settings: { default_payment_method: paymentMethodId } });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+
+/**
  * D-51 (ledger `2026-09-16-bundle-partial-settlement`): the `metadata.source` a partial-settlement
  * refund carries, so the `charge.refunded` webhook can tell it from a whole-row refund
  * (`service_booking`) and promote the right record. Stated ONCE; both the issuer and the webhook
@@ -899,9 +930,16 @@ class StripePaymentService {
       // Saved-method events are a record only. They must not fall through into a
       // payment handler, and they must not grow a local card table.
       if (vaultWebhookDisposition(event.type) === "record_only") {
-        console.info(vaultRecordLogLine(event.type));
-        return;
-      }
+          console.info(vaultRecordLogLine(event.type));
+          // R3 U8a: one amendment to the record-only ruling. `payment_method.attached` may set the default, and only when
+          // this is the traveller's only card and none is default (D2, D9). Everything else here is unchanged.
+          if (event.type === "payment_method.attached") {
+            const pm = event.data.object as Stripe.PaymentMethod;
+            const customerId = typeof pm.customer === "string" ? pm.customer : (pm.customer?.id ?? null);
+            if (customerId) await defaultFirstSavedMethod(customerId, pm.id);
+          }
+          return;
+        }
       switch (event.type) {
         case 'payment_intent.succeeded':
           await this.handlePaymentSucceeded(event.data.object as Stripe.PaymentIntent);
