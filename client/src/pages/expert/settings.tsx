@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -24,7 +24,6 @@ import {
   Zap,
   Edit,
   Eye,
-  EyeOff,
   Save,
   ShieldCheck,
   CheckCircle2,
@@ -342,7 +341,6 @@ export default function ExpertSettings() {
   });
   const [enableLeaderboard, setEnableLeaderboard] = useState(true);
   const [twoFaEnabled, setTwoFaEnabled] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
 
@@ -596,8 +594,7 @@ export default function ExpertSettings() {
                   </UnavailableNote>
                   <div>
                     <Label className="text-sm font-semibold">Current Password</Label>
-                    <Input
-                      type={showPassword ? "text" : "password"}
+                    <PasswordInput
                       placeholder="••••••••"
                       value={currentPassword}
                       onChange={(e) => setCurrentPassword(e.target.value)}
@@ -609,25 +606,14 @@ export default function ExpertSettings() {
 
                   <div>
                     <Label className="text-sm font-semibold">New Password</Label>
-                    <div className="relative mt-2">
-                      <Input
-                        type={showPassword ? "text" : "password"}
-                        placeholder="••••••••"
-                        value={newPassword}
-                        onChange={(e) => setNewPassword(e.target.value)}
-                        disabled
-                        data-testid="input-new-password"
-                      />
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-2 top-1/2 -translate-y-1/2"
-                        data-testid="button-toggle-password-visibility"
-                      >
-                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </Button>
-                    </div>
+                    <PasswordInput
+                      placeholder="••••••••"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      className="mt-2"
+                      disabled
+                      data-testid="input-new-password"
+                    />
                   </div>
 
                   <Button

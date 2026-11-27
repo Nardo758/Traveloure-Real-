@@ -3,6 +3,7 @@ import { PAYOUT_SETUP_COPY, payoutSetupBlock } from "@/lib/payout-setup";
 import { useState } from "react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { EmailVerificationRefusal, isEmailVerificationRefusal } from "@/components/auth/EmailVerificationRefusal";
 import { ArrowUpRight } from "lucide-react";
 import { ExpertLayout } from "@/components/expert/expert-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -94,6 +95,7 @@ interface EarningsDetails {
 export default function ExpertEarnings() {
   const { toast } = useToast();
   const [requested, setRequested] = useState(false);
+  const [verificationRefusal, setVerificationRefusal] = useState(false);
   const { data, isLoading } = useQuery<EarningsDetails>({
     queryKey: ["/api/expert/earnings/details"],
   });
@@ -107,10 +109,15 @@ export default function ExpertEarnings() {
   const payoutMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/payouts/request"),
     onSuccess: () => {
+      setVerificationRefusal(false);
       setRequested(true);
       toast({ title: "Payout requested", description: "It's pending review — you'll be paid to your connected account once approved." });
     },
     onError: (err: any) => {
+      if (isEmailVerificationRefusal(err)) {
+        setVerificationRefusal(true);
+        return;
+      }
       const msg = String(err?.message ?? "");
       if (msg.includes("payout_request_pending")) {
         setRequested(true);
@@ -181,6 +188,7 @@ export default function ExpertEarnings() {
             </Button>
           }
         />
+        {verificationRefusal && <EmailVerificationRefusal />}
         <ExpertRateLine />
 
         <StripeConnectCard />

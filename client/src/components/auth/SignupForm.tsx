@@ -16,6 +16,7 @@ import { type ReactNode } from "react";
 import { Mail, Lock, User } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { readAuthResponse, type AuthResponseRead } from "@/lib/auth-response";
@@ -126,10 +127,9 @@ export function SignupFields({
         <Label htmlFor="signup-password">{t("fields.password")}</Label>
         <div className="relative">
           <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
+          <PasswordInput
             id="signup-password"
             name="password"
-            type="password"
             autoComplete="new-password"
             placeholder={t("fields.passwordPlaceholderSignup")}
             className="pl-9"

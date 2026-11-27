@@ -27,7 +27,7 @@ import { Router } from "express";
 import { storage } from "../storage";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
-import { refuseUnverifiedTravelerSender } from "../services/verified-email-action-gate";
+import { refuseUnverifiedTravelerSender, requireVerifiedEmail } from "../services/verified-email-action-gate";
 import { getUserId } from "../utils/auth";
 import { verifyTripOwnership } from "../utils/trip-ownership";
 import { isTripAdvisor } from "../utils/trip-advisor";
@@ -291,7 +291,7 @@ router.post("/api/handoffs/:id/withdraw", isAuthenticated, async (req: any, res)
   }
 });
 
-router.post("/api/handoffs/:id/on-trip-support", isAuthenticated, async (req: any, res) => {
+router.post("/api/handoffs/:id/on-trip-support", isAuthenticated, requireVerifiedEmail("checkout"), async (req: any, res) => {
   const o = await ownedHandoff(req, res);
   if (!o) return;
   if (!emptyBody.safeParse(req.body ?? {}).success) return res.status(400).json({ message: "No body expected" });
