@@ -292,6 +292,12 @@ router.post("/api/handoffs/:id/withdraw", isAuthenticated, async (req: any, res)
 });
 
 router.post("/api/handoffs/:id/on-trip-support", isAuthenticated, requireVerifiedEmail("checkout"), async (req: any, res) => {
+  const userId = getUserId(req)!;
+  // WG-1: no payment starts in traveler waitlist mode. Run before loading the handoff or calling Stripe.
+  const waitlistGate = await waitlistPurchaseDecisionFor(userId);
+  if (!waitlistGate.allowed) {
+    return res.status(403).json({ code: TRAVELER_WAITLIST, message: TRAVELER_WAITLIST_MESSAGE });
+  }
   const o = await ownedHandoff(req, res);
   if (!o) return;
   if (!emptyBody.safeParse(req.body ?? {}).success) return res.status(400).json({ message: "No body expected" });
@@ -306,6 +312,12 @@ router.post("/api/handoffs/:id/on-trip-support", isAuthenticated, requireVerifie
 });
 
 router.post("/api/handoffs/:id/on-trip-support/confirm", isAuthenticated, async (req: any, res) => {
+  const userId = getUserId(req)!;
+  // WG-1: no payment may start in traveler waitlist mode, including this confirm door.
+  const waitlistGate = await waitlistPurchaseDecisionFor(userId);
+  if (!waitlistGate.allowed) {
+    return res.status(403).json({ code: TRAVELER_WAITLIST, message: TRAVELER_WAITLIST_MESSAGE });
+  }
   const o = await ownedHandoff(req, res);
   if (!o) return;
   if (!emptyBody.safeParse(req.body ?? {}).success) return res.status(400).json({ message: "No body expected" });

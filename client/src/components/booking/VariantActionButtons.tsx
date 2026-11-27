@@ -10,6 +10,7 @@ import StripeCheckout from './StripeCheckout';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { queryClient } from '@/lib/queryClient';
+import { useBookingActionsShown } from '@/lib/signup-mode';
 import {
   Dialog,
   DialogContent,
@@ -76,6 +77,7 @@ export default function VariantActionButtons({
   userEmail,
 }: VariantActionButtonsProps) {
   // Expert Review Modal
+  const waitlist = !useBookingActionsShown();
   const [showExpertModal, setShowExpertModal] = useState(false);
   const [expertServiceType, setExpertServiceType] = useState<'review' | 'review_and_book' | 'full_concierge'>('review');
   const [expertNotes, setExpertNotes] = useState('');
@@ -287,6 +289,7 @@ export default function VariantActionButtons({
       {/* Centered Action Buttons */}
       <div className="flex items-center justify-center gap-2">
         {/* Expert Review */}
+        {!waitlist && (
         <Button
           onClick={() => setShowExpertModal(true)}
           className="text-xs px-3"
@@ -297,6 +300,7 @@ export default function VariantActionButtons({
           <UserCheck className="w-3 h-3 mr-1" />
           Expert Review
         </Button>
+        )}
       </div>
 
       {/* Expert Review Modal */}
