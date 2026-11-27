@@ -22,6 +22,7 @@ import {
   TRAVELER_WAITLIST_MESSAGE,
 } from "@shared/launch-signup";
 import { CURRENT_TERMS_VERSION, CURRENT_PRIVACY_VERSION } from "@shared/legal-versions";
+import { COMMON_PASSWORD_ERROR, isCommonPassword } from "@shared/common-passwords";
 import { REGISTRATION_NEUTRAL_STATUS, registrationNeutralBody } from "@shared/registration-neutral";
 import {
   RESET_TOKEN_TTL_MIN, issuePasswordResetToken, consumePasswordResetToken, hashAuthToken,
@@ -78,7 +79,12 @@ const registerSchema = z.object({
   email: z.string().email("Invalid email address").max(254, "Email is too long"),
   // Cap password length too: bcrypt only reads the first 72 bytes, and an unbounded
   // password is a cheap CPU-DoS vector (hashing a multi-MB string). 8..200 is ample.
-  password: z.string().min(8, "Password must be at least 8 characters").max(200, "Password is too long"),
+  password: z.string().min(8, "Password must be at least 8 characters").max(200, "Password is too long")
+    .superRefine((value, ctx) => {
+      if (isCommonPassword(value)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: [], message: COMMON_PASSWORD_ERROR });
+      }
+    }),
   firstName: z.string().trim().min(1, "First name is required").max(100, "First name is too long"),
   lastName: z.string().trim().min(1, "Last name is required").max(100, "Last name is too long"),
   // N-2 (round 2 rulings, Nov 4, 2026): the one consent box ("I agree to the Terms of Service and Privacy Policy") is
@@ -466,7 +472,12 @@ export function setupEmailAuth(app: Express): void {
     token: z.string().min(32, "Invalid reset token").max(128, "Invalid reset token"),
     // Cap length: hashPassword runs scrypt on this verbatim — an unbounded value is a
     // CPU/memory DoS vector on this public endpoint. Matches the register cap; no trim.
-    newPassword: z.string().min(8, "Password must be at least 8 characters").max(200, "Password is too long"),
+    newPassword: z.string().min(8, "Password must be at least 8 characters").max(200, "Password is too long")
+      .superRefine((value, ctx) => {
+        if (isCommonPassword(value)) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, path: [], message: COMMON_PASSWORD_ERROR });
+        }
+      }),
   });
 
   app.post("/api/auth/reset-password", async (req, res) => {
