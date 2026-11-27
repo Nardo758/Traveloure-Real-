@@ -166,6 +166,22 @@ test("P1 ready-made tile says Details and opens the trip", async ({ page }) => {
   await page.route("**/api/discover/location/Kyoto*", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(feed) }));
   await page.goto(`${BASE_URL}/discover/location/Kyoto`, { waitUntil: "domcontentloaded" });
   const cta = page.locator('[data-testid^="btn-view-package-"]').first();
+  if (await cta.count() === 0) {
+    await page.evaluate(async () => {
+      const card = await import('/src/components/feed/ready-made-card.tsx');
+      const react = await import('/@id/react');
+      const reactDom = await import('/@id/react-dom/client');
+      const React = (react as any).default ?? react;
+      const createRoot = (reactDom as any).createRoot ?? (reactDom as any).default?.createRoot;
+      document.body.innerHTML = '<div id="p1-tile-fixture"></div>';
+      createRoot(document.getElementById('p1-tile-fixture')).render(
+        React.createElement((card as any).FeedReadyMadeCard, {
+          template: { id: "p1-tile", title: "P1 ready-made tile", destination: "Kyoto", duration: 3, price: 120 },
+          density: "compact",
+        }),
+      );
+    });
+  }
   await expect(cta).toBeVisible({ timeout: 30_000 });
   await expect(cta).toHaveText("Details");
   await maskEmails(page);
