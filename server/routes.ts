@@ -11573,6 +11573,11 @@ ${bannedCopyPromptLine()}`;
   app.post("/api/coordination-states/:id/pay", isAuthenticated, requireVerifiedEmail("checkout"), async (req, res) => {
     const coordinationId = req.params.id;
     const userId = getUserId(req)!;
+    // WG-1: in traveler waitlist mode no payment may start. This gate runs before any read or Stripe call.
+    const waitlistGate = await waitlistPurchaseDecisionFor(userId);
+    if (!waitlistGate.allowed) {
+      return res.status(403).json({ code: TRAVELER_WAITLIST, message: TRAVELER_WAITLIST_MESSAGE });
+    }
     let claimedCreditCents = 0;
     try {
       const state = await storage.getCoordinationState(coordinationId);
