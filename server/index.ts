@@ -13,6 +13,7 @@ import { mountWellKnown } from "./well-known";
 import { runMigrations } from "./migrations/run-migrations";
 import { describeLegacyBookingsCutoff } from "./config/legacy-bookings.config";
 import { retiredMapsBrowserKeyWarning } from "@shared/maps-browser-key-retired";
+import { qaDomainRefusal } from "@shared/qa-domain-guard";
 import { seedCategories } from "./seed-categories";
 import { seedExperienceTypes } from "./seed-experience-types";
 import { seedExpertServices, seedMockExperts, seedProviderServices } from "./seed-expert-services";
@@ -697,6 +698,16 @@ const FETCH_BLOCKED_PORTS = new Set([
   514, 515, 526, 530, 531, 532, 540, 548, 554, 556, 563, 587, 601, 636, 989, 990, 993, 995, 1719, 1720,
   1723, 2049, 3659, 4045, 4190, 5060, 5061, 6000, 6566, 6665, 6666, 6667, 6668, 6669, 6679, 6697, 10080,
 ]);
+// S5 (ledger `2026-11-27-s5-qa-domain-boot-guard`): a production boot must not carry the QA account bypass, which
+// passes those addresses through every waitlist pay gate (`2026-11-27-wg1-waitlist-pay-gates`). The check is a BOOT
+// refusal, before anything binds a port, so there is no window in which the bypass is live. The CI gates' own shape
+// (production bundle + ALLOW_TEST_ACCOUNTS=1 + the domain) is the one explicit exemption - see `shared/qa-domain-guard.ts`.
+const qaDomainRefusalMessage = qaDomainRefusal(process.env);
+if (qaDomainRefusalMessage) {
+  console.error(`[server] ${qaDomainRefusalMessage}`);
+  process.exit(1);
+}
+
 if (process.env.NODE_ENV !== "production" && FETCH_BLOCKED_PORTS.has(_listenPort)) {
   console.error(
     `[server] PORT ${_listenPort} is on the fetch "bad ports" list — Node's fetch and browsers refuse it, ` +
