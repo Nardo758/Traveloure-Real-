@@ -618,50 +618,9 @@ test('S2: ready-made "3 days in Kyoto" build referencing A/B/C', async ({ page }
     // harness never tried". Only attempted once (title/plan-type/price alone were never enough
     // to reach `approved` for a fresh build with no hero).
     if (!(await testid(page, 'img-listing-hero').isVisible().catch(() => false))) {
-      const chooseHero = testid(page, 'button-choose-hero');
-      if (await appears(chooseHero, 4000)) {
-        await chooseHero.click().catch(() => {});
-        const modal = testid(page, 'modal-hero-picker');
-        if (await appears(modal, 4000)) {
-          await shot(page, 'S2-readymade', '03b', 'hero-picker-open');
-          const unavailable = testid(page, 'text-hero-unavailable');
-          const option = testid(page, 'button-hero-option');
-          let pickedHero = false;
-          for (let i = 0; i < 10; i++) {
-            if (await unavailable.isVisible().catch(() => false)) break;
-            if (await option.first().isVisible().catch(() => false)) {
-              await option.first().click({ timeout: 3000 }).catch(() => {});
-              await page.waitForTimeout(700);
-              pickedHero = await testid(page, 'img-listing-hero').isVisible().catch(() => false);
-              break;
-            }
-            await page.waitForTimeout(500);
-          }
-          if (!pickedHero) {
-            fileFinding({
-              journey: 'S2',
-              step: 'readymade:hero-unavailable',
-              class: 'SPEC_DIVERGENCE',
-              severity: 'P3',
-              known: null,
-              title: 'Ready-made cover photo could not be set through the real picker — Unsplash is not configured in this environment (HELD:unsplash)',
-              expected:
-                'n/a — this is an environment limit, not a product defect: /api/expert/ready-made/hero-search ' +
-                'correctly answers {ready:false, reason:"unsplash_not_configured"} with no UNSPLASH_ACCESS_KEY set, ' +
-                'and the picker correctly shows text-hero-unavailable rather than faking results (§13)',
-              actual:
-                'button-choose-hero opened modal-hero-picker; no button-hero-option ever became available within 5s ' +
-                'of polling (unavailable banner or empty). assertReadyMadeComplete (ready-made.routes.ts) requires ' +
-                'heroImageUrl + heroImageMeta.photographer, so submit would 400 on "hero" without an unblock — this ' +
-                'attempt is recorded BEFORE the coordinator-authorized R-1 seed below runs, so this finding records ' +
-                'what the real UI actually said.',
-              where: 'server/services/unsplash.service.ts isReady(); client/src/components/expert/ready-made-listing-panel.tsx',
-              evidence: { shot: 'shots/S2-readymade-03b-hero-picker-open.png' },
-              behavioural: true,
-            });
-          }
-          await testid(page, 'button-close-hero-picker').click({ timeout: 2000 }).catch(() => {});
-
+      // D1 (Leon, Nov 27 2026): the stock-by-name picker is gone, so this panel offers no UI path to a cover
+      // photo at all. The seed below is the only way to satisfy the server's hero requirement here.
+      const pickedHero = false;
           if (!pickedHero) {
             // Coordinator decision (Pass 2, R-1 exception — the same class as S1's
             // identity/business-verification seed and S3's meeting-pin seed): with no

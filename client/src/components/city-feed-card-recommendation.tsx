@@ -168,8 +168,8 @@ export function CityFeedCardRecommendation({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [candidate.offeringId]);
 
-  // Same photo pipeline as organic gem cards; offerings have no image column,
-  // so look one up by display name + city, with the category emoji fallback.
+  // D1 (Leon, Nov 27 2026): no photo lookup of any kind. A recommendation names an offering CATEGORY and has
+  // no image column, so it draws its category emoji and keeps its no-photo state.
   // D1: a recommendation names a category, not a row with a photo - it keeps its no-photo state.
   const photoUrl = null;
   const loading = false;

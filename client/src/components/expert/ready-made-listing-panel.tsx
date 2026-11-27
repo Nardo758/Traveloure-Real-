@@ -7,8 +7,8 @@
  * called, how long it runs, when it's best, what it costs, and the hero photo that sells it.
  *
  * Rules this surface upholds (all enforced server-side too — this is the honest UI of them):
- *  • The hero can only come from the Unsplash picker (D2 "Unsplash proves the photo"), and the
- *    photographer credit travels with it. There is deliberately no "paste an image URL" input.
+ *  • D1 (Leon, Nov 27 2026): the stock-by-name picker is GONE. The panel shows the hero the listing already stores,
+ *    with its existing Remove, or nothing at all - it offers no search and invents no words when there is no photo.
  *  • The author's take is READ from the fee band, never computed in the client (§8) — if the band
  *    is unavailable we say so rather than showing an invented split (§13).
  *  • Approval is not self-service: status is displayed, never edited here (D1a). Changing a
@@ -19,7 +19,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Check, ImageIcon, Loader2, Search, Send, X } from "lucide-react";
+import { Check, ImageIcon, Loader2, Send } from "lucide-react";
 import { READY_MADE_PLAN_TYPES, isCustomPlanType } from "@shared/ready-made-plan-types";
 import { trackEvent } from "@/lib/analytics";
 import {
@@ -75,13 +75,6 @@ interface EarningsPreview {
   expertEarningsCents?: number | null;
 }
 
-interface HeroResult {
-  url: string;
-  thumbnailUrl: string;
-  description: string | null;
-  meta: Record<string, unknown>;
-}
-
 const STATUS_COPY: Record<ReadyMadeListing["status"], { label: string; bg: string; fg: string; note: string }> = {
   draft: { label: "Draft", bg: "#F5F5F0", fg: G[600], note: "Only you can see this. Submit it for review when the build is ready." },
   submitted: { label: "In review", bg: "#FFFBEB", fg: "#B45309", note: "Our team is reviewing this listing. You can keep editing — material changes restart the review." },
@@ -132,9 +125,6 @@ export default function ReadyMadeListingPanel({
     // Dollars in the input, cents on the wire — the server is the only place a price is a number.
     price: listing.priceCents === null ? "" : (listing.priceCents / 100).toFixed(2),
   });
-  const [heroOpen, setHeroOpen] = useState(false);
-  const [heroQuery, setHeroQuery] = useState(listing.market);
-  const [heroSubmitted, setHeroSubmitted] = useState("");
 
   // Custom theme validation mirrors the server: 3..80 trimmed chars required when planType is
   // "custom" (shared/ready-made-plan-types.ts isCustomPlanType). Only evaluated/shown for the
@@ -173,11 +163,6 @@ export default function ReadyMadeListingPanel({
     el.style.outlineOffset = "2px";
     window.setTimeout(() => { el.style.outline = outline; el.style.outlineOffset = outlineOffset; }, 1600);
   };
-
-  // D1 (Leon, Nov 27 2026): the stock-by-name search is GONE. The picker opens on its existing unavailability line and
-  // makes no request, so the only cover this panel can show or clear is the one the listing already stores.
-  const heroResults = { ready: false as const, results: [] as HeroResult[] };
-  const heroFetching = false;
 
   const save = useMutation({
     mutationFn: async (patch: Record<string, unknown>) => {
@@ -391,9 +376,6 @@ export default function ReadyMadeListingPanel({
               </div>
             )}
             <div style={{ display: "flex", gap: 6, marginTop: 7 }}>
-              <button onClick={() => { setHeroOpen(true); setHeroSubmitted(heroQuery); }} data-testid="button-change-hero" style={{ flex: 1, padding: "6px", borderRadius: 8, border: `1px solid ${G[200]}`, background: "white", fontSize: 11.5, fontWeight: 600, color: G[700], cursor: "pointer" }}>
-                Change photo
-              </button>
               <button
                 onClick={() => save.mutate({ heroImageUrl: null })}
                 data-testid="button-remove-hero"
@@ -403,17 +385,7 @@ export default function ReadyMadeListingPanel({
               </button>
             </div>
           </div>
-        ) : (
-          <button
-            onClick={() => { setHeroOpen(true); setHeroSubmitted(heroQuery); }}
-            data-testid="button-choose-hero"
-            style={{ width: "100%", padding: "18px 12px", borderRadius: 10, border: `1.5px dashed ${G[300]}`, background: G[50], cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 6, color: G[500] }}
-          >
-            <ImageIcon style={{ width: 18, height: 18 }} />
-            <span style={{ fontSize: 12, fontWeight: 600 }}>Choose a cover photo</span>
-            <span style={{ fontSize: 10.5, color: G[400] }}>From Unsplash — the credit is added for you</span>
-          </button>
-        )}
+        ) : null}
       </div>
 
       {/* Details */}
@@ -664,79 +636,6 @@ export default function ReadyMadeListingPanel({
         )}
       </div>
 
-      {/* ── Unsplash picker ── */}
-      {heroOpen && (
-        <div
-          style={{ position: "fixed", inset: 0, background: "rgba(26,26,24,0.45)", zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
-          onClick={() => setHeroOpen(false)}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            data-testid="modal-hero-picker"
-            style={{ background: "white", borderRadius: 14, width: "min(620px, 100%)", maxHeight: "82vh", display: "flex", flexDirection: "column", overflow: "hidden" }}
-          >
-            <div style={{ padding: "12px 14px", borderBottom: `1px solid ${G[200]}`, display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ fontSize: 14, fontWeight: 700, color: G[900], flex: 1 }}>Choose a cover photo</span>
-              <button onClick={() => setHeroOpen(false)} data-testid="button-close-hero-picker" style={{ background: "none", border: "none", cursor: "pointer", color: G[400], display: "flex" }}>
-                <X style={{ width: 17, height: 17 }} />
-              </button>
-            </div>
-            <form
-              onSubmit={(e) => { e.preventDefault(); setHeroSubmitted(heroQuery); }}
-              style={{ padding: "10px 14px", display: "flex", gap: 7, borderBottom: `1px solid ${G[200]}` }}
-            >
-              <input
-                value={heroQuery}
-                onChange={(e) => setHeroQuery(e.target.value)}
-                data-testid="input-hero-search"
-                placeholder="kyoto autumn temple"
-                style={{ ...field, flex: 1 }}
-              />
-              <button type="submit" data-testid="button-hero-search" style={{ padding: "7px 12px", borderRadius: 8, border: "none", background: P, color: "white", fontSize: 12, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
-                <Search style={{ width: 12, height: 12 }} /> Search
-              </button>
-            </form>
-            <div style={{ flex: 1, overflowY: "auto", padding: 14 }}>
-              {heroFetching ? (
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
-                  {[0, 1, 2, 3, 4, 5].map((i) => <Skeleton key={i} className="h-24 rounded-lg" />)}
-                </div>
-              ) : heroResults?.ready === false ? (
-                // Honest unavailability — an empty grid would read as "no photos match" (§13).
-                <div data-testid="text-hero-unavailable" style={{ fontSize: 12.5, color: G[500], lineHeight: 1.55, textAlign: "center", padding: "20px 10px" }}>
-                  Photo search isn't connected yet. Ask an admin to configure the Unsplash key — until then a
-                  cover photo can't be chosen here, and we won't let you paste one from elsewhere.
-                </div>
-              ) : (heroResults?.results ?? []).length === 0 ? (
-                <div style={{ fontSize: 12.5, color: G[500], textAlign: "center", padding: "20px 10px" }}>
-                  No photos matched “{heroSubmitted}”. Try a different search.
-                </div>
-              ) : (
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
-                  {(heroResults?.results ?? []).map((r) => (
-                    <button
-                      key={r.url}
-                      data-testid="button-hero-option"
-                      onClick={() => {
-                        save.mutate({ heroImageUrl: r.url, heroImageMeta: r.meta });
-                        setHeroOpen(false);
-                      }}
-                      style={{ padding: 0, border: `1px solid ${G[200]}`, borderRadius: 9, overflow: "hidden", cursor: "pointer", background: "white", position: "relative" }}
-                    >
-                      <img src={r.thumbnailUrl} alt={r.description ?? ""} style={{ width: "100%", height: 86, objectFit: "cover", display: "block" }} />
-                      {listing.heroImageUrl === r.url && (
-                        <div style={{ position: "absolute", top: 5, right: 5, background: "#16A34A", borderRadius: 99, width: 17, height: 17, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                          <Check style={{ width: 11, height: 11, color: "white" }} />
-                        </div>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
