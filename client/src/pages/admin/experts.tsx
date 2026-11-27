@@ -587,7 +587,7 @@ export default function AdminExperts() {
                           qa.answer?.trim() && (
                             <div key={i} className="p-2 bg-amber-50 border border-amber-100 rounded text-xs">
                               <p className="font-medium text-amber-800 mb-0.5">Q{i + 1}: {qa.question?.slice(0, 70)}…</p>
-                              <p className="text-gray-700 italic">"{qa.answer.trim().slice(0, 200)}{qa.answer.trim().length > 200 ? "…" : ""}"</p>
+                              <p className="text-gray-700 italic [overflow-wrap:anywhere]">"{qa.answer.trim().slice(0, 200)}{qa.answer.trim().length > 200 ? "…" : ""}"</p>
                             </div>
                           )
                         ))}
