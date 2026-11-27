@@ -133,7 +133,7 @@ export function StopSheet({
             <p className="text-[11px] text-muted-foreground" data-testid="r3-sheet-time">
               {dayLabel ? `${dayLabel} \u00b7 ${time}` : time}
             </p>
-            <p className="text-[13px] font-semibold leading-snug" style={{ color: BOARD_INK }} data-testid="r3-sheet-name">
+            <p className="text-[16px] font-semibold leading-snug" style={{ color: BOARD_INK }} data-testid="r3-sheet-name">
               {String(stop?.name ?? stop?.title ?? "Stop")}
             </p>
             <div className="mt-1 flex flex-wrap items-center gap-1">

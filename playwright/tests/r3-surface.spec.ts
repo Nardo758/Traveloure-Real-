@@ -1721,25 +1721,32 @@ test("U9: the stop menu, the stop sheet, undo and the asked-for tags", async ({ 
   await expect(page.getByTestId("r3-stop-removed")).toBeVisible({ timeout: 10_000 });
   const goneCount = await page.getByTestId("r3-stop-card").count();
   const deletesBefore = deletes;
-  // The bar is fixed to the viewport; scroll to the end so it sits over the page's reserved padding, not a card.
-  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  // The bar is pinned to the viewport bottom and the page always reserves its height, so nothing is covered and
+  // nothing moves when it appears.
   const barBox = await page.getByTestId("r3-stop-removed").boundingBox();
-  const barStyle = await page.getByTestId("r3-stop-removed").evaluate((el) => getComputedStyle(el).backgroundColor);
+  const undoBox1280 = await page.getByTestId("r3-stop-undo").boundingBox();
   const fullWidth = !!barBox && Math.abs(barBox.x) < 1 && Math.abs(barBox.width - 1280) < 1;
-  const wide = !!barBox && Math.abs(barBox.width - 1280) < 1;
-  const darkBar = /^rgb\((1[0-9]|[1-9])[, ]/.test(barStyle);
+  const barPinned = !!barBox && Math.abs(barBox.y + barBox.height - 900) < 1;
+  const undoInViewport = !!undoBox1280 && undoBox1280.y >= 0 && undoBox1280.y + undoBox1280.height <= 900;
+  const barNoHscroll = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1);
   const overlap = await page.evaluate(() => {
     const bar = document.querySelector('[data-testid="r3-stop-removed"]')?.getBoundingClientRect();
     const opt = document.querySelector('[data-testid="r3-optimize-card"]')?.getBoundingClientRect();
     if (!bar || !opt) return false;
     return !(opt.bottom <= bar.top || opt.top >= bar.bottom || opt.right <= bar.left || opt.left >= bar.right);
   });
-  expect(fullWidth && wide && !overlap).toBe(true);
+  expect(fullWidth && barPinned && undoInViewport && barNoHscroll && !overlap).toBe(true);
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OUT_DIR, "u9-removed-undo-1280.png"), fullPage: false });
   console.log(`[u9-remove] stop_gone=${beforeCount - goneCount} toast=1 undo=${await page.getByTestId("r3-stop-undo").count()} deletes_before_10s=${deletesBefore}`);
   expect(goneCount).toBe(beforeCount - 1);
   expect(deletesBefore).toBe(0);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.evaluate(() => window.scrollTo(0, 0));
+  const undoBox390 = await page.getByTestId("r3-stop-undo").boundingBox();
+  const undoInViewport390 = !!undoBox390 && undoBox390.y >= 0 && undoBox390.y + undoBox390.height <= 844;
+  const barNoHscroll390 = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1);
+  expect(undoInViewport390 && barNoHscroll390).toBe(true);
   await maskEmails(page);
   await page.screenshot({ path: path.join(OUT_DIR, "u9-removed-undo-390.png"), fullPage: false });
   await page.setViewportSize({ width: 1280, height: 900 });
