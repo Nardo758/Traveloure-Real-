@@ -152,7 +152,7 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
   });
   const quotes = quotesData?.quotes ?? [];
   const [sheetFor, setSheetFor] = useState<{ stop: any; dayLabel: string } | null>(null);
-  const sheetTrigger = useRef<HTMLElement | null>(null);
+  const sheetTrigger = useRef<{ id: string; phone: boolean; el: HTMLElement | null } | null>(null);
   // The ask row needs a plan owner AND a city with an expert the door can reach.
   const { data: expertHelp } = useQuery<{ levels?: Array<{ expertCount?: number }> }>({
     queryKey: [`/api/trips/${tripId}/expert-help`],
@@ -238,7 +238,12 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
 
   const openSheet = (stop: any, dayLabel: string, trigger?: HTMLElement | null) => {
     setAskOpen(false);
-    sheetTrigger.current = trigger ?? (document.activeElement as HTMLElement | null);
+    const el = trigger ?? (document.activeElement as HTMLElement | null);
+    sheetTrigger.current = {
+      id: String(stop?.id ?? ""),
+      phone: el?.getAttribute("data-testid") === "r3-phone-stop-menu",
+      el,
+    };
     setSheetFor({ stop, dayLabel });
   };
   const question = order.find((k) => !answered[k] && !skipped.includes(k)) ?? null;
@@ -453,17 +458,30 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
           placeFacts={(data as any)?.placeFacts?.[String(sheetFor.stop.id)]}
           askOpen={askOpen}
           canAsk={canAsk}
-          returnFocusTo={sheetTrigger.current}
+          returnFocusTo={sheetTrigger.current?.el ?? null}
           onAskOpen={() => setAskOpen(true)}
           onAskClose={() => setAskOpen(false)}
           onClose={() => {
             setAskOpen(false);
             setSheetFor(null);
-            // Back to the very control that opened it (Step 2 item 5), at both widths.
+            // Back to the very control that opened it (Step 2 item 5), at both widths. The boards re-render while the
+            // sheet is open, so the button is found again by its test id and stop id rather than by the stale node.
             const trigger = sheetTrigger.current;
-            window.setTimeout(() => {
-              trigger?.focus();
-            }, 0);
+            if (!trigger) return;
+            // The boards re-render as the sheet unmounts, so keep trying for a few frames until the button holds focus.
+            let tries = 0;
+            const refocus = () => {
+              const sel = trigger.phone ? "r3-phone-stop-menu" : "r3-stop-menu";
+              const live = document.querySelector(
+                `[data-testid="${sel}"][data-stop-id="${trigger.id}"]`,
+              ) as HTMLElement | null;
+              (live ?? trigger.el)?.focus();
+              tries += 1;
+              if (document.activeElement !== (live ?? trigger.el) && tries < 8) {
+                requestAnimationFrame(refocus);
+              }
+            };
+            requestAnimationFrame(refocus);
           }}
           onLockedChange={() => queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] })}
         />
