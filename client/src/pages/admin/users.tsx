@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   Search,
@@ -566,9 +567,8 @@ export default function AdminUsers() {
               <label htmlFor="qa-reset-admin-password" className="text-sm font-medium text-gray-900">
                 Your current password
               </label>
-              <Input
+              <PasswordInput
                 id="qa-reset-admin-password"
-                type="password"
                 autoComplete="current-password"
                 value={adminPassword}
                 onChange={(event) => setAdminPassword(event.target.value)}
@@ -580,9 +580,8 @@ export default function AdminUsers() {
               <label htmlFor="qa-reset-new-password" className="text-sm font-medium text-gray-900">
                 New password
               </label>
-              <Input
+              <PasswordInput
                 id="qa-reset-new-password"
-                type="password"
                 autoComplete="new-password"
                 value={newPassword}
                 onChange={(event) => setNewPassword(event.target.value)}
@@ -600,9 +599,8 @@ export default function AdminUsers() {
               <label htmlFor="qa-reset-confirm-password" className="text-sm font-medium text-gray-900">
                 Confirm new password
               </label>
-              <Input
+              <PasswordInput
                 id="qa-reset-confirm-password"
-                type="password"
                 autoComplete="new-password"
                 value={confirmPassword}
                 onChange={(event) => setConfirmPassword(event.target.value)}
