@@ -284,7 +284,7 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
   );
 
   return (
-    <div className="mx-auto max-w-[1152px] px-4 py-6" data-testid="r3-surface" data-r3-part="p0">
+    <div className={pendingRemoval ? "mx-auto max-w-[1152px] px-4 py-6 pb-24" : "mx-auto max-w-[1152px] px-4 py-6"} data-testid="r3-surface" data-removing={pendingRemoval ? "true" : undefined} data-r3-part="p0">
       <header className={desktop ? "flex items-start justify-between gap-4" : "space-y-2"}>
         {desktop ? (
           <>
@@ -491,7 +491,7 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
 
       {pendingRemoval ? (
         <div
-          className="fixed inset-x-0 bottom-0 z-50 flex items-center justify-between gap-3 px-4 py-3 text-[13px]"
+          className="fixed inset-x-0 bottom-0 z-50 flex w-full items-center justify-between gap-3 px-4 py-3 text-[13px]"
           style={{ backgroundColor: BOARD_INK }}
           data-testid="r3-stop-removed"
         >

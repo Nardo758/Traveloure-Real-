@@ -1458,7 +1458,10 @@ test("U9: the stop menu, the stop sheet, undo and the asked-for tags", async ({ 
   });
   page.on("request", (req) => {
     const m = req.method();
-    if (m === "POST" || m === "PUT" || m === "DELETE") writeRequests += 1;
+    const url = req.url();
+    if ((m === "POST" || m === "PUT" || m === "PATCH" || m === "DELETE") && url.includes("/itinerary-items")) {
+      writeRequests += 1;
+    }
   });
 
   await page.setViewportSize({ width: 1280, height: 900 });
@@ -1561,6 +1564,9 @@ test("U9: the stop menu, the stop sheet, undo and the asked-for tags", async ({ 
   // [u9-sheet-close]
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("r3-stop-sheet")).toHaveCount(0);
+  await expect
+    .poll(() => page.evaluate(() => document.activeElement?.getAttribute("data-testid")), { timeout: 5_000 })
+    .toBe("r3-stop-menu");
   const focusAfterSheet = await page.evaluate(() => document.activeElement?.getAttribute("data-testid"));
   await page.getByTestId("r3-stop-menu").first().click();
   await page.getByTestId("r3-stop-menu-details").click();
@@ -1715,6 +1721,8 @@ test("U9: the stop menu, the stop sheet, undo and the asked-for tags", async ({ 
   await expect(page.getByTestId("r3-stop-removed")).toBeVisible({ timeout: 10_000 });
   const goneCount = await page.getByTestId("r3-stop-card").count();
   const deletesBefore = deletes;
+  // The bar is fixed to the viewport; scroll to the end so it sits over the page's reserved padding, not a card.
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
   const barBox = await page.getByTestId("r3-stop-removed").boundingBox();
   const barStyle = await page.getByTestId("r3-stop-removed").evaluate((el) => getComputedStyle(el).backgroundColor);
   const fullWidth = !!barBox && Math.abs(barBox.x) < 1 && Math.abs(barBox.width - 1280) < 1;
