@@ -61,6 +61,7 @@ import {
 import { suggestHandle } from "@shared/handle-suggestion";
 import { HANDLE_MAX_LENGTH } from "@shared/handle";
 import { savePendingHandle } from "@/lib/pending-handle";
+import { offeringNamesById } from "@/lib/expert-application-review";
 import { socialSignInHref, facebookReturnPath, supplySourceTag } from "@/lib/social-sign-in";
 import {
   saveApplicationDraft,
@@ -496,6 +497,8 @@ export default function TravelExpertsPage() {
   const { data: serviceCategories = [] } = useQuery<any[]>({
     queryKey: ["/api/expert-service-categories"],
   });
+  // DX-1: the Review step keeps ids in formData but shows the names the picker already has.
+  const offeringNames = useMemo(() => offeringNamesById(serviceCategories), [serviceCategories]);
 
   const updateFormData = (key: string, value: any) => {
     setFormData((prev) => ({ ...prev, [key]: value }));
@@ -1799,9 +1802,13 @@ export default function TravelExpertsPage() {
                     <div>
                       <span className="text-muted-foreground text-sm">Services Offered:</span>
                       <div className="flex flex-wrap gap-1 mt-1">
-                        {formData.selectedServices.map((s) => (
-                          <Badge key={s} variant="secondary" className="text-xs">{s}</Badge>
-                        ))}
+                        {formData.selectedServices.map((s) => {
+                          const name = offeringNames.get(s);
+                          // D2: an id with no known name prints nothing; never print the id.
+                          return name ? (
+                            <Badge key={s} variant="secondary" className="text-xs">{name}</Badge>
+                          ) : null;
+                        })}
                       </div>
                     </div>
                     <div className="space-y-3">
@@ -1810,7 +1817,7 @@ export default function TravelExpertsPage() {
                         ans.trim().length > 0 && (
                           <div key={i} className="p-3 bg-gray-50 rounded-lg text-sm">
                             <p className="font-medium text-[#374151] mb-1">Q{i + 1}: {KNOWLEDGE_PROOF_QUESTIONS[i].slice(0, 60)}…</p>
-                            <p className="text-muted-foreground italic">"{ans.trim().slice(0, 120)}{ans.trim().length > 120 ? "…" : ""}"</p>
+                            <p className="text-muted-foreground italic [overflow-wrap:anywhere]">"{ans.trim().slice(0, 120)}{ans.trim().length > 120 ? "…" : ""}"</p>
                           </div>
                         )
                       ))}
