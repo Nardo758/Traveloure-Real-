@@ -207,6 +207,7 @@ export function SignupPage() {
 
         <form
           className="space-y-4"
+          noValidate
           onSubmit={(event) => {
             event.preventDefault();
             void handleSubmit();
