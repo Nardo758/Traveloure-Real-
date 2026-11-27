@@ -4,6 +4,7 @@ import { savedRefKey } from "@/lib/saved-refs";
 import { GUEST_PLAN_COPY } from "@shared/guest-plan-copy";
 import { useEffect, useRef, useState } from "react";
 import { BUY_NOW_CART_PATH } from "@/lib/cart-intent";
+import { CART_ADD_FAILED_SENTENCE } from "@/lib/cart-copy";
 import { stopsPlaced } from "@/lib/itinerary-wording";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, Link, useLocation, useSearch } from "wouter";
@@ -688,7 +689,7 @@ export default function ServiceDetailPage() {
       showRefusal(
         err,
         "Added to your plan",
-        "It couldn't be moved to checkout automatically — send it to checkout from your plan.",
+        CART_ADD_FAILED_SENTENCE,
       );
       navigate(planRoute);
     }

@@ -20,7 +20,7 @@ import { routingCountsFromPlancard } from "@/lib/plan-row-model";
 const STATUS_LABELS: Record<RoutingStatus, string> = {
   in_planning: "planning",
   with_expert: "with expert",
-  ready_for_checkout: "checkout",
+  ready_for_checkout: "in cart",
   purchased: "purchased",
 };
 
