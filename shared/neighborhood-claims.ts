@@ -23,6 +23,9 @@ export function publicClaimStatus(status: string | null | undefined): PublicClai
 export const CLAIM_ACTOR_TYPES = ["expert", "ops", "scorer", "admin", "seed"] as const;
 export type ClaimActorType = (typeof CLAIM_ACTOR_TYPES)[number];
 
+/** DX-3: the most neighborhoods one application may carry (D1). */
+export const MAX_APPLICATION_NEIGHBORHOOD_CLAIMS = 3;
+
 // ── Dayparts (companion §1: a per-neighborhood parameter, default evening) ───────────────────
 export const DAYPARTS = ["morning", "midday", "afternoon", "late_afternoon", "evening", "night"] as const;
 export type Daypart = (typeof DAYPARTS)[number];
