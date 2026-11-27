@@ -701,6 +701,15 @@ jobs:
           path: playwright/wl1-captures/
           retention-days: 14
           if-no-files-found: warn
+      - name: "admin-banner-clip: the verify banner clears the sidebar at 1280 and 390"
+        id: admin_banner_clip
+        if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
+        run: npx playwright test admin-banner-clip --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          CAPTURE_DIR: after
+          CI: 'true'
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
       - name: "u8a-payment-methods: the Settings row, the page, and the first-card default at 1280 and 390"
         id: u8a_payment_methods
         if: ${{ !cancelled() && steps.ready.outcome == 'success' }}

@@ -13,6 +13,7 @@ import fs from "node:fs";
 import React from "react";
 import { renderToString } from "react-dom/server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { Router } from "wouter";
 import { VerifyEmailReminderBanner } from "../auth/VerifyEmailReminderBanner";
 import { VERIFY_REMINDER_COPY as T, resendVerification, showVerifyReminder, type ResendOutcome } from "@/lib/verify-reminder";
 
@@ -21,7 +22,7 @@ import { VERIFY_REMINDER_COPY as T, resendVerification, showVerifyReminder, type
 function render(user: unknown, initialOutcome: ResendOutcome | null = null) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
   client.setQueryData(["/api/auth/user"], user);
-  return renderToString(<QueryClientProvider client={client}><VerifyEmailReminderBanner initialOutcome={initialOutcome} /></QueryClientProvider>);
+  return renderToString(<Router ssrPath="/admin/waitlist"><QueryClientProvider client={client}><VerifyEmailReminderBanner initialOutcome={initialOutcome} /></QueryClientProvider></Router>);
 }
 const fakeFetch = (status: number, body: unknown) => {
   const calls: Array<{ url: string; init: RequestInit | undefined }> = [];
