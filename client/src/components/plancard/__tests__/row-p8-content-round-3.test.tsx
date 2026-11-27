@@ -124,8 +124,9 @@ describe("P-8 — content round 3", () => {
     // Lane 5 (K-7, K-8) removed 7 entries and 8 hits: 116 → 109 and 316 → 308.
     // W22 (ledger `2026-11-07-w22-build-around-copy`) deleted BuildAroundDialog's "ranked by" line: 109 → 108, 308 → 307.
     // The local-expert counter's "best results" sentence moved to shared/expert-answer-length.ts, outside this scan: 307 → 306.
-    assert.equal(entries, 108);
-    assert.equal(hits, 306);
+    // DOC-1: the shared/expert-hook.ts baseline entry adds one entry (108 → 109).
+    assert.equal(entries, 109);
+    assert.equal(hits, 308);
     assert.ok(entries < 133);
     const perfect = Object.values(b).filter((by) => "perfect" in by);
     assert.equal(perfect.length, 13, "files with a recorded 'perfect' hit");
