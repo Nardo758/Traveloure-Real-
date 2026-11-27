@@ -23,7 +23,7 @@ import { PhoneDayBody, PhoneDayStrip, PhoneHint, PhoneTabs, type PhoneTab } from
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { StopSheet } from "@/components/r3/StopSheet";
-import { BOARD_CELL, BOARD_LINE } from "@/components/r3/tokens";
+import { BOARD_CELL, BOARD_INK, BOARD_LINE } from "@/components/r3/tokens";
 import { stopStateFor } from "@/lib/r3-stop-state";
 import { apiRequest } from "@/lib/queryClient";
 import { DaysMapPanel } from "@/components/plan/DaysMapPanel";
@@ -190,7 +190,9 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
           next.delete(String(item.stop.id));
           return next;
         });
-        toast({ title: "Couldn't remove that stop", description: err?.message || "Please try again.", variant: "destructive" });
+        // The stamped sentence only; the raw error goes to the console.
+        console.error("[r3-stop-remove]", err);
+        toast({ title: "Couldn't remove that", variant: "destructive" });
       }
     })();
   };
@@ -477,7 +479,7 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
               ) as HTMLElement | null;
               (live ?? trigger.el)?.focus();
               tries += 1;
-              if (document.activeElement !== (live ?? trigger.el) && tries < 8) {
+              if (document.activeElement !== (live ?? trigger.el) && tries < 30) {
                 requestAnimationFrame(refocus);
               }
             };
@@ -489,12 +491,17 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
 
       {pendingRemoval ? (
         <div
-          className="fixed bottom-4 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-xl border px-3 py-2 text-[13px] shadow-lg"
-          style={{ backgroundColor: BOARD_CELL, borderColor: BOARD_LINE }}
+          className="fixed inset-x-0 bottom-0 z-50 flex items-center justify-between gap-3 px-4 py-3 text-[13px]"
+          style={{ backgroundColor: BOARD_INK }}
           data-testid="r3-stop-removed"
         >
-          <span>{`Removed ${String(pendingRemoval.stop?.name ?? pendingRemoval.stop?.title ?? "stop")}`}</span>
-          <button type="button" className="font-semibold underline underline-offset-2" onClick={undoRemoval} data-testid="r3-stop-undo">
+          <span className="text-white">{`Removed ${String(pendingRemoval.stop?.name ?? pendingRemoval.stop?.title ?? "stop")}`}</span>
+          <button
+            type="button"
+            className="min-h-[44px] rounded-lg px-3 text-[13px] font-semibold text-white underline underline-offset-2"
+            onClick={undoRemoval}
+            data-testid="r3-stop-undo"
+          >
             Undo
           </button>
         </div>

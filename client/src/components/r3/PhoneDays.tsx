@@ -14,6 +14,7 @@ import type { SlipData } from "@/components/plancard/SlipView";
 import { r3Columns } from "@/lib/r3-surface";
 import { MoveStopSheet } from "@/components/plan/MoveStopSheet";
 import { StopMenu } from "@/components/r3/StopMenu";
+import { weekdayOf } from "@/components/r3/DaysBoard";
 import { stopStateFor, stopStateTagLabel } from "@/lib/r3-stop-state";
 
 export const PHONE_HINT = "Tap a day to see it. Hold a stop to drag it onto a day above.";
@@ -158,7 +159,7 @@ export function PhoneDayBody({
                 variant="phone"
                 stopId={String(stop?.id ?? "")}
                 onSelect={(entry, trigger) => {
-                  if (entry === "details") onDetails?.(stop, `Day ${openDay}`, trigger);
+                  if (entry === "details") onDetails?.(stop, weekdayOf(columns.find((c) => c.day === openDay) ?? {}), trigger);
                   else if (entry === "move") setSheetFor(stop);
                   else if (entry === "remove") onRemove?.(stop, `Day ${openDay}`);
                 }}

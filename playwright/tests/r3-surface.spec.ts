@@ -1473,8 +1473,9 @@ test("U9: the stop menu, the stop sheet, undo and the asked-for tags", async ({ 
   console.log(`[u9-menu-owner] entries=${ownerCount} order=${(ownerOrder as string[]).map((x) => String(x).replace("r3-stop-menu-", "")).join(",")} swap=0`);
   expect(ownerCount).toBe(3);
   expect(ownerOrder).toEqual(["r3-stop-menu-details", "r3-stop-menu-move", "r3-stop-menu-remove"]);
+  await expect(page.getByTestId("r3-stop-menu-panel")).toBeVisible();
   await maskEmails(page);
-  await page.screenshot({ path: path.join(OUT_DIR, "u9-menu-owner-1280.png"), fullPage: true });
+  await page.screenshot({ path: path.join(OUT_DIR, "u9-menu-owner-1280.png"), fullPage: false });
 
   // [u9-menu-keys]
   await page.getByTestId("r3-stop-menu").first().focus();
@@ -1506,9 +1507,13 @@ test("U9: the stop menu, the stop sheet, undo and the asked-for tags", async ({ 
   const originChip = await page.getByTestId("r3-sheet-origin").count();
   const originText = originChip ? await page.getByTestId("r3-sheet-origin").innerText() : "";
   const pinned = await page.getByTestId("r3-sheet-pinned").count();
+  const pinnedText = pinned ? await page.getByTestId("r3-sheet-pinned").innerText() : "";
+  const headerTime = await page.getByTestId("r3-sheet-time").innerText();
   console.log(`[u9-sheet-header] origin_chip="${originText.toLowerCase()}" pinned=${pinned}`);
   expect(originText.toLowerCase()).toBe("you added");
   expect(pinned).toBe(1);
+  expect(pinnedText).toBe(`Pinned to ${headerTime.split("\u00b7")[0].trim()}`);
+  expect(headerTime).toMatch(/^[A-Z][a-z]{2}\s\u00b7\s\d{2}:\d{2}$/);
   await maskEmails(page);
   await page.screenshot({ path: path.join(OUT_DIR, "u9-sheet-1280.png"), fullPage: true });
 
@@ -1534,8 +1539,10 @@ test("U9: the stop menu, the stop sheet, undo and the asked-for tags", async ({ 
   await page.getByTestId("r3-stop-menu-details").click();
   await expect(page.getByTestId("r3-stop-sheet")).toBeVisible();
   const checkedAfter = await page.getByTestId("r3-sheet-keep-switch").getAttribute("aria-checked");
+  const keepState = await page.getByTestId("r3-sheet-keep-state").innerText();
   console.log(`[u9-sheet-keep] owner: switch=1 put=${puts} locked_after=${checkedAfter === "true"} expert: switch=0`);
   expect(checkedAfter).toBe("true");
+  expect(keepState).toBe("On");
 
   // [u9-sheet-ask]: the plan owner AND a city with an expert
   expertCountStub = 1;
@@ -1594,6 +1601,9 @@ test("U9: the stop menu, the stop sheet, undo and the asked-for tags", async ({ 
   console.log(`[u9-menu-phone] same_component=true entries=${phoneEntries} move_opens_sheet=${(phoneOrder as string[]).includes("r3-phone-move")}`);
   expect(phoneEntries).toBe(3);
   expect(phoneOrder).toContain("r3-phone-move");
+  await expect(page.getByTestId("r3-stop-menu-panel")).toBeVisible();
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OUT_DIR, "u9-menu-phone-390.png"), fullPage: false });
   await page.getByTestId("r3-stop-menu-details").click();
   await expect(page.getByTestId("r3-stop-sheet")).toBeVisible();
   const noOrigin = await page.getByTestId("r3-sheet-origin").count();
@@ -1625,8 +1635,9 @@ test("U9: the stop menu, the stop sheet, undo and the asked-for tags", async ({ 
   console.log(`[u9-menu-expert] entries=${expertEntries} order=${(expertOrder as string[]).map((x) => String(x).replace("r3-stop-menu-", "")).join(",")}`);
   expect(expertEntries).toBe(1);
   expect(expertOrder).toEqual(["r3-stop-menu-details"]);
+  await expect(page.getByTestId("r3-stop-menu-panel")).toBeVisible();
   await maskEmails(page);
-  await page.screenshot({ path: path.join(OUT_DIR, "u9-menu-expert-1280.png"), fullPage: true });
+  await page.screenshot({ path: path.join(OUT_DIR, "u9-menu-expert-1280.png"), fullPage: false });
   await page.keyboard.press("Escape");
 
   // expert has no keep switch
@@ -1704,11 +1715,26 @@ test("U9: the stop menu, the stop sheet, undo and the asked-for tags", async ({ 
   await expect(page.getByTestId("r3-stop-removed")).toBeVisible({ timeout: 10_000 });
   const goneCount = await page.getByTestId("r3-stop-card").count();
   const deletesBefore = deletes;
+  const barBox = await page.getByTestId("r3-stop-removed").boundingBox();
+  const barStyle = await page.getByTestId("r3-stop-removed").evaluate((el) => getComputedStyle(el).backgroundColor);
+  const fullWidth = !!barBox && Math.abs(barBox.x) < 1 && Math.abs(barBox.width - 1280) < 1;
+  const atBottom = !!barBox && Math.abs(barBox.y + barBox.height - 900) < 1;
+  const darkBar = /^rgb\((1[0-9]|[1-9])[, ]/.test(barStyle);
+  const overlap = await page.evaluate(() => {
+    const bar = document.querySelector('[data-testid="r3-stop-removed"]')?.getBoundingClientRect();
+    const opt = document.querySelector('[data-testid="r3-optimize-card"]')?.getBoundingClientRect();
+    if (!bar || !opt) return false;
+    return !(opt.bottom <= bar.top || opt.top >= bar.bottom || opt.right <= bar.left || opt.left >= bar.right);
+  });
+  expect(fullWidth && atBottom && !overlap).toBe(true);
   console.log(`[u9-remove] stop_gone=${beforeCount - goneCount} toast=1 undo=${await page.getByTestId("r3-stop-undo").count()} deletes_before_10s=${deletesBefore}`);
   expect(goneCount).toBe(beforeCount - 1);
   expect(deletesBefore).toBe(0);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.evaluate(() => window.scrollTo(0, 0));
   await maskEmails(page);
-  await page.screenshot({ path: path.join(OUT_DIR, "u9-removed-undo-390.png"), fullPage: true });
+  await page.screenshot({ path: path.join(OUT_DIR, "u9-removed-undo-390.png"), fullPage: false });
+  await page.setViewportSize({ width: 1280, height: 900 });
 
   await page.getByTestId("r3-stop-undo").click();
   await expect.poll(() => page.getByTestId("r3-stop-card").count(), { timeout: 10_000 }).toBe(beforeCount);
@@ -1736,7 +1762,7 @@ test("U9: the stop menu, the stop sheet, undo and the asked-for tags", async ({ 
   await expect(page.getByTestId("r3-stop-removed")).toBeVisible();
   await page.getByTestId("r3-stop-card").first().getByTestId("r3-stop-menu").click();
   await page.getByTestId("r3-stop-menu-remove").click();
-  await expect.poll(() => deletes, { timeout: 10_000 }).toBe(deletesBeforeSecond + 1);
+  await expect.poll(() => deletes, { timeout: 2_000 }).toBe(deletesBeforeSecond + 1);
   const banners = await page.getByTestId("r3-stop-removed").count();
   const firstSentAtOnce = deletes === deletesBeforeSecond + 1;
   console.log(`[u9-remove-second] first_sent_at_once=${firstSentAtOnce} pending=${banners}`);
@@ -1785,6 +1811,17 @@ test("U9: the stop menu, the stop sheet, undo and the asked-for tags", async ({ 
     await expect(page.getByTestId("r3-stop-sheet")).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(page.getByTestId("r3-stop-sheet")).toHaveCount(0);
+    // The boards re-render as the sheet unmounts; wait for the button to hold focus rather than sampling once.
+    await expect
+      .poll(
+        () =>
+          page.evaluate(() => {
+            const el = document.activeElement as HTMLElement | null;
+            return { id: el?.getAttribute("data-stop-id") ?? null, testid: el?.getAttribute("data-testid") ?? null };
+          }),
+        { timeout: 5_000 },
+      )
+      .toMatchObject({ id });
     const focused = await page.evaluate(() => {
       const el = document.activeElement as HTMLElement | null;
       return { id: el?.getAttribute("data-stop-id") ?? null, testid: el?.getAttribute("data-testid") ?? null };
@@ -1850,6 +1887,4 @@ test("U9: the stop menu, the stop sheet, undo and the asked-for tags", async ({ 
   const noHScroll = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1);
   console.log(`[u9-1280] page_hscroll=${noHScroll ? "false" : "true"}`);
   expect(noHScroll).toBe(true);
-  await maskEmails(page);
-  await page.screenshot({ path: path.join(OUT_DIR, "u9-menu-phone-390.png"), fullPage: false });
 });

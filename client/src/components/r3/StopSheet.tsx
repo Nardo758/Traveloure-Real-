@@ -105,11 +105,9 @@ export function StopSheet({
     } catch (err: any) {
       // The switch snaps back and says why; a silent snap-back reads as a broken control.
       setLocked(!next);
-      toast({
-        title: "Couldn't change that. Try again.",
-        description: err?.message,
-        variant: "destructive",
-      });
+      // The stamped sentence only; the raw error goes to the console, never into the toast.
+      console.error("[r3-stop-keep]", err);
+      toast({ title: "Couldn't change that. Try again.", variant: "destructive" });
     } finally {
       setBusy(false);
     }
@@ -133,9 +131,9 @@ export function StopSheet({
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
             <p className="text-[11px] text-muted-foreground" data-testid="r3-sheet-time">
-              {time}
+              {dayLabel ? `${dayLabel} \u00b7 ${time}` : time}
             </p>
-            <p className="text-[16px] font-semibold leading-snug" style={{ color: BOARD_INK }} data-testid="r3-sheet-name">
+            <p className="text-[13px] font-semibold leading-snug" style={{ color: BOARD_INK }} data-testid="r3-sheet-name">
               {String(stop?.name ?? stop?.title ?? "Stop")}
             </p>
             <div className="mt-1 flex flex-wrap items-center gap-1">
@@ -192,21 +190,32 @@ export function StopSheet({
 
         {isOwner ? (
           <div className="mt-3 border-t pt-3" style={{ borderColor: BOARD_LINE }}>
-            <label className="flex items-center justify-between gap-3">
+            <div className="flex items-center justify-between gap-3">
               <span className="text-[13px] font-medium" style={{ color: BOARD_INK }} data-testid="r3-sheet-keep-label">
                 Keep this where it is
               </span>
-              <input
-                type="checkbox"
-                role="switch"
-                aria-checked={locked}
-                checked={locked}
-                disabled={busy}
-                onChange={toggleLock}
-                className="h-5 w-9"
-                data-testid="r3-sheet-keep-switch"
-              />
-            </label>
+              <span className="flex items-center gap-2">
+                <span className="text-[12px] text-muted-foreground" data-testid="r3-sheet-keep-state">
+                  {locked ? "On" : "Off"}
+                </span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={locked}
+                  aria-label="Keep this where it is"
+                  disabled={busy}
+                  onClick={toggleLock}
+                  className="relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-60"
+                  style={{ backgroundColor: locked ? BOARD_INK : BOARD_LINE }}
+                  data-testid="r3-sheet-keep-switch"
+                >
+                  <span
+                    className="inline-block h-4 w-4 rounded-full bg-white shadow transition-transform"
+                    style={{ transform: locked ? "translateX(24px)" : "translateX(4px)" }}
+                  />
+                </button>
+              </span>
+            </div>
             <p className="mt-1 text-[11px] text-muted-foreground">Optimize and redrafts won't move or remove it</p>
           </div>
         ) : null}

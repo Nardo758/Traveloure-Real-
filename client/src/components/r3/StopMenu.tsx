@@ -6,7 +6,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { MoreHorizontal } from "lucide-react";
-import { BOARD_INK, BOARD_LINE, BOARD_TEXT } from "@/components/r3/tokens";
+import { BOARD_DANGER, BOARD_INK, BOARD_LINE, BOARD_TEXT } from "@/components/r3/tokens";
 import { ITEM_MENU_LABELS } from "@/components/plan/ItemRow";
 import { MOVE_STOP_COPY } from "@/lib/move-stop";
 
@@ -122,8 +122,12 @@ export function StopMenu({
               }}
               role="menuitem"
               type="button"
-              className="w-full rounded-lg px-2 py-1.5 text-left text-[13px] font-medium"
-              style={{ color: entry === "remove" ? BOARD_TEXT : BOARD_INK }}
+              className={
+                variant === "phone"
+                  ? "flex min-h-[44px] w-full items-center rounded-lg px-2 text-left text-[14px] font-medium"
+                  : "w-full rounded-lg px-2 py-1.5 text-left text-[13px] font-medium"
+              }
+              style={{ color: entry === "remove" ? BOARD_DANGER : BOARD_INK }}
               data-testid={
                 entry === "move" && variant === "phone"
                   ? "r3-phone-move"

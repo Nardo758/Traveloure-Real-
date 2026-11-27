@@ -24,6 +24,13 @@ function stopTime(stop: any): string {
 
 const COLUMN = { width: 180 } as const;
 
+/** V5 names the day by its weekday ("Pinned to Tue"), so both boards pass the same word. */
+export function weekdayOf(column: { shortLabel?: string; label?: string }): string {
+  const short = String(column?.shortLabel ?? "").trim();
+  if (short) return short.split(/\s+/)[0];
+  return String(column?.label ?? "").split(/\s+/)[0] ?? "";
+}
+
 export function DaysBoard({
   data,
   role,
@@ -67,7 +74,7 @@ export function DaysBoard({
               </div>
             </article>
           ))}
-          <button type="button" className="flex w-full items-center justify-center gap-1 rounded-lg border border-dashed py-1.5 text-[12px] text-muted-foreground" data-testid="r3-ideas-add">
+          <button type="button" className="flex w-full items-center justify-center gap-1 rounded-lg border border-dashed py-1.5 text-[12px] text-muted-foreground" style={{ borderColor: BOARD_LINE }} data-testid="r3-ideas-add">
             <Plus className="h-3 w-3" /> Add
           </button>
         </div>
@@ -106,7 +113,7 @@ export function DaysBoard({
                       variant="desktop"
                       stopId={String(stop?.id ?? "")}
                       onSelect={(entry: StopMenuEntry, trigger) => {
-                        if (entry === "details") onDetails?.(stop, col.label, trigger);
+                        if (entry === "details") onDetails?.(stop, weekdayOf(col), trigger);
                         else if (entry === "move") setMoveStop(stop);
                         else if (entry === "remove") onRemove?.(stop, col.label);
                       }}
@@ -116,7 +123,7 @@ export function DaysBoard({
               );
             })}
             {col.stops.length === 0 ? <p className="text-[12px] text-muted-foreground" data-testid="r3-day-empty">Nothing here yet</p> : null}
-            <button type="button" className="flex w-full items-center justify-center gap-1 rounded-lg border border-dashed py-1.5 text-[12px] text-muted-foreground" data-testid="r3-day-add">
+            <button type="button" className="flex w-full items-center justify-center gap-1 rounded-lg border border-dashed py-1.5 text-[12px] text-muted-foreground" style={{ borderColor: BOARD_LINE }} data-testid="r3-day-add">
               <Plus className="h-3 w-3" /> Add
             </button>
           </div>
