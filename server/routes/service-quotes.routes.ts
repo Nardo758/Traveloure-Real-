@@ -24,7 +24,7 @@ import { Router } from "express";
 import { z } from "zod";
 
 import { isAuthenticated } from "../replit_integrations/auth";
-import { refuseUnverifiedTravelerSender } from "../services/verified-email-action-gate";
+import { refuseUnverifiedTravelerSender, requireVerifiedEmail } from "../services/verified-email-action-gate";
 import { getUserId } from "../utils/auth";
 import { quoteIssueBodySchema, quoteRequestBodySchema } from "@shared/service-quotes";
 import {
@@ -118,7 +118,7 @@ router.get("/api/me/quotes", isAuthenticated, async (req, res) => {
   }
 });
 
-router.post("/api/quotes/:quoteId/accept", isAuthenticated, async (req, res) => {
+router.post("/api/quotes/:quoteId/accept", isAuthenticated, requireVerifiedEmail("booking"), async (req, res) => {
   try {
     const travelerId = getUserId(req)!;
     const r = await acceptQuote({ quoteId: String(req.params.quoteId), travelerId });

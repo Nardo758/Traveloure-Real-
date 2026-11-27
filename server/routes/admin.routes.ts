@@ -22,6 +22,7 @@ import { seasonWindowsSettingRefusal } from "@shared/busy-bus";
 import { enteredStatus } from "../utils/form-status-transition";
 import { zodErrorBody } from "../utils/zod-error-body";
 import { getUserId } from "../utils/auth";
+import { COMMON_PASSWORD_ERROR, isCommonPassword } from "@shared/common-passwords";
 import { requireStaff } from "../utils/staff-access";
 import { strictRateLimiter } from "../infrastructure/rate-limiter";
 import { hashPassword } from "../replit_integrations/auth/emailAuth";
@@ -378,12 +379,25 @@ const requireAdminLocal = async (req: any, res: any, next: any) => {
 
 const qaPasswordResetSchema = z.object({
   adminPassword: z.string().min(1).max(200),
-  newPassword: z.string().min(8).max(200),
+  newPassword: z.string().min(8).max(200).superRefine((value, ctx) => {
+    if (isCommonPassword(value)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: [], message: COMMON_PASSWORD_ERROR });
+    }
+  }),
 }).strict();
 
 router.post("/api/admin/users/:id/qa-password-reset", isAuthenticated, requireAdminLocal, strictRateLimiter, async (req, res) => {
   const parsed = qaPasswordResetSchema.safeParse(req.body);
   if (!parsed.success || !req.params.id || req.params.id.length > 128) {
+    const issues = parsed.success ? [] : parsed.error.errors;
+    if (
+      issues.length === 1
+      && issues[0].path.length === 1
+      && issues[0].path[0] === "newPassword"
+      && issues[0].message === COMMON_PASSWORD_ERROR
+    ) {
+      return res.status(400).json({ message: COMMON_PASSWORD_ERROR });
+    }
     return res.status(400).json({ message: "Check the password fields and try again." });
   }
   let result: Awaited<ReturnType<typeof resetQaPasswordAsAdmin>>;

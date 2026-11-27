@@ -620,6 +620,45 @@ jobs:
           path: playwright/dx2-captures/
           retention-days: 14
           if-no-files-found: warn
+      - name: "dx4-server-signup-hardening: common passwords and the per-action hold"
+        id: dx4_server_signup_hardening
+        if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
+        run: |
+          EMAIL_SENDS_ENABLED=true EMAIL_TEMPLATE_ALLOWLIST= RATE_LIMIT_LOOPBACK_SKIP= \
+          ALLOW_TEST_ACCOUNTS=1 SESSION_COOKIE_INSECURE=1 PORT=5001 NODE_ENV=development \
+          SESSION_SECRET=ci-test-secret-not-for-production STRIPE_SECRET_KEY=sk_test_ci_stub_no_real_calls \
+          DATABASE_URL=postgresql://postgres:postgres@localhost:5432/traveloure \
+          npx tsx server/index.ts &
+          SERVER_PID=$!
+          echo "$SERVER_PID" > /tmp/dx4-hold-server.pid
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          for i in $(seq 1 60); do
+            result=$(curl -s http://127.0.0.1:5001/api/ready || true)
+            if echo "$result" | grep -q '"ready":true'; then echo "DX-4 gate server ready"; break; fi
+            if [ "$i" = "60" ]; then echo "::error::DX-4 gate server did not become ready"; exit 1; fi
+            echo "attempt $i/60: waiting... ($result)"; sleep 5
+          done
+          EMAIL_SENDS_ENABLED=true EMAIL_TEMPLATE_ALLOWLIST= RATE_LIMIT_LOOPBACK_SKIP= \
+          JOURNEY_BASE_URL=http://127.0.0.1:5001 JOURNEY_DB_WRITES_OK=1 \
+          DATABASE_URL=postgresql://postgres:postgres@localhost:5432/traveloure \
+          npx tsx --test --test-force-exit server/__tests__/dx4-signup-hardening.http.test.ts
+          npx tsx --test server/__tests__/dx4-gate-inventory.test.ts
+      - name: "dx4-signup-hardening: password toggles, common-password error, unverified browsing"
+        id: dx4_signup_hardening
+        if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
+        run: npx playwright test dx4-signup-hardening --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          CI: 'true'
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      - name: Upload the DX4 screenshots
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: dx4-captures-${{ github.sha }}
+          path: playwright/dx4-captures/
+          retention-days: 14
+          if-no-files-found: warn
       - name: "u8a-payment-methods: the Settings row, the page, and the first-card default at 1280 and 390"
         id: u8a_payment_methods
         if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
