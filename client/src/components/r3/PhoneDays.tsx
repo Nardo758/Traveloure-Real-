@@ -147,7 +147,7 @@ export function PhoneDayBody({
               <GripVertical className="mt-1 h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
               <div className="min-w-0 flex-1">
                 <p className="text-[12px] text-muted-foreground" data-testid="r3-phone-stop-time">{String(stop?.startTime ?? "").slice(0, 5)}</p>
-                <div className="flex items-start gap-2">
+                <div className="flex flex-wrap items-start gap-x-2">
                   <p className="min-w-0 flex-1 text-[15px] font-medium leading-snug text-foreground" data-testid="r3-phone-stop-name">{String(stop?.name ?? stop?.title ?? "")}</p>
                   {stopStateFor(stop, quotes) ? (
                     <span className="mt-0.5 shrink-0 rounded-full px-1.5 py-0.5 text-[10px]" style={{ backgroundColor: "rgba(0,0,0,0.05)", color: BOARD_TEXT }} data-testid="r3-stop-state" data-state={stopStateFor(stop, quotes) ?? undefined}>
