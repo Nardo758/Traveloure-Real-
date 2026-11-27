@@ -1248,6 +1248,11 @@ test("U8a: Payment methods in Settings, and the first saved card becomes the def
   expect(await page.getByRole("button", { name: "Add a card" }).count()).toBe(1);
   await maskEmails(page);
   await page.screenshot({ path: path.join(OUT_DIR, "u8a-empty-1280.png"), fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OUT_DIR, "u8a-empty-390.png"), fullPage: true });
+  await page.setViewportSize({ width: 1280, height: 900 });
 
   // [u8a-list]
   listMode = "list";
@@ -1295,6 +1300,11 @@ test("U8a: Payment methods in Settings, and the first saved card becomes the def
   expect(nd.noDefault).toBe(1);
   await maskEmails(page);
   await page.screenshot({ path: path.join(OUT_DIR, "u8a-nodefault-1280.png"), fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OUT_DIR, "u8a-nodefault-390.png"), fullPage: true });
+  await page.setViewportSize({ width: 1280, height: 900 });
 
   // [u8a-make-default]
   listMode = "list";
@@ -1313,8 +1323,15 @@ test("U8a: Payment methods in Settings, and the first saved card becomes the def
   deletes = 0;
   await page.getByTestId("r3-pm-remove").first().click();
   await expect(page.getByRole("alertdialog")).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText("Default payment method updated")).toHaveCount(0, { timeout: 10_000 });
+  await expect(page.getByText("Remove this payment method?")).toBeVisible();
   await maskEmails(page);
   await page.screenshot({ path: path.join(OUT_DIR, "u8a-remove-1280.png"), fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OUT_DIR, "u8a-remove-390.png"), fullPage: true });
+  await page.setViewportSize({ width: 1280, height: 900 });
   await page.getByTestId("button-confirm-remove-card").click();
   await expect.poll(() => deletes, { timeout: 10_000 }).toBe(1);
   await expect.poll(() => page.getByTestId("r3-pm-row").count(), { timeout: 10_000 }).toBe(1);

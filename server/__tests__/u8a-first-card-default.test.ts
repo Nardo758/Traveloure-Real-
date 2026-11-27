@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { defaultFirstSavedMethod } from "../services/stripe-payment.service";
+import { defaultFirstSavedMethod, handleSavedMethodEvent } from "../services/stripe-payment.service";
 
 type Method = { id: string; type?: string; card?: any; [k: string]: any };
 
@@ -18,7 +18,10 @@ function stubClient(opts: {
   const client = {
     customers: {
       retrieve: async (_id: string) => {
-        if (opts.throwOnRetrieve) throw new Error("no such customer");
+        if (opts.throwOnRetrieve) {
+        // what Stripe answers for a customer that no longer exists: a settled answer, not a retry
+        throw Object.assign(new Error("No such customer: cus_missing"), { code: "resource_missing", statusCode: 404 });
+      }
         return opts.customer ?? { id: "cus_1", deleted: false, invoice_settings: {} };
       },
       update: async (_id: string, _params: any) => {
@@ -32,6 +35,13 @@ function stubClient(opts: {
   };
   return { client: client as any, calls };
 }
+
+const eventOf = (type: string, id: string): any => ({ id, type, data: { object: {} } });
+const attachedEvent = (id: string, paymentMethodId: string): any => ({
+  id,
+  type: "payment_method.attached",
+  data: { object: { id: paymentMethodId, customer: "cus_1" } },
+});
 
 const card = (id: string): Method => ({
   id,
@@ -92,32 +102,86 @@ test("[u8a-d2-no-customer] updated=0", async () => {
   assert.equal(calls.update, 0);
 });
 
-test("[u8a-d2-replay] deliveries=2 updated=1", async () => {
-  // A replay is skipped by the webhook claim before this runs, so the second delivery must not reach customers.update.
+/**
+ * R3 U8a fix round: these drive the webhook's saved-method branch end to end (event in, setter out), with a stubbed
+ * Stripe client and a stubbed claim that keeps the real semantics: same event id is claimed once.
+ */
+test("[u8a-d2-attached] event=payment_method.attached claimed=1 updated=1", async () => {
   const { client, calls } = stubClient({ methods: [card("pm_1")] });
-  const first = await defaultFirstSavedMethod("cus_1", "pm_1", client);
-  const second = await defaultFirstSavedMethod("cus_1", "pm_1", {
-    ...client,
-    customers: {
-      ...client.customers,
-      retrieve: async () => ({ id: "cus_1", deleted: false, invoice_settings: { default_payment_method: "pm_1" } }),
+  const claimed: string[] = [];
+  const handled = await handleSavedMethodEvent(attachedEvent("evt_1", "pm_1"), {
+    client,
+    claim: async (run) => {
+      if (claimed.includes("evt_1")) return false as any;
+      claimed.push("evt_1");
+      return run();
     },
   });
-  console.log(`[u8a-d2-replay] deliveries=2 updated=${calls.update}`);
-  assert.equal(first, true);
-  assert.equal(second, false);
+  console.log(`[u8a-d2-attached] event=payment_method.attached claimed=${claimed.length} updated=${calls.update}`);
+  assert.equal(handled, true);
   assert.equal(calls.update, 1);
 });
 
 test("[u8a-d2-setup-intent] event=setup_intent.succeeded updated=0", async () => {
-  // The disposition keeps setup_intent record only; there is no code path from it to the setter.
   const { client, calls } = stubClient({ methods: [card("pm_1")] });
+  const handled = await handleSavedMethodEvent(eventOf("setup_intent.succeeded", "evt_setup"), { client });
   console.log(`[u8a-d2-setup-intent] event=setup_intent.succeeded updated=${calls.update}`);
+  assert.equal(handled, false);
   assert.equal(calls.update, 0);
 });
 
 test("[u8a-d2-detached] event=payment_method.detached updated=0", async () => {
   const { client, calls } = stubClient({ methods: [card("pm_1")] });
+  const handled = await handleSavedMethodEvent(eventOf("payment_method.detached", "evt_det"), { client });
   console.log(`[u8a-d2-detached] event=payment_method.detached updated=${calls.update}`);
+  assert.equal(handled, false);
   assert.equal(calls.update, 0);
+});
+
+test("[u8a-d2-replay] deliveries=2 claimed=1 updated=1", async () => {
+  const { client, calls } = stubClient({ methods: [card("pm_1")] });
+  const claimed: string[] = [];
+  const claim = async <T,>(run: () => Promise<T>): Promise<T> => {
+    if (claimed.includes("evt_same")) return false as unknown as T; // the claim answers "already done"
+    claimed.push("evt_same");
+    return run();
+  };
+  await handleSavedMethodEvent(attachedEvent("evt_same", "pm_1"), { client, claim });
+  await handleSavedMethodEvent(attachedEvent("evt_same", "pm_1"), { client, claim });
+  console.log(`[u8a-d2-replay] deliveries=2 claimed=${claimed.length} updated=${calls.update}`);
+  assert.equal(claimed.length, 1);
+  assert.equal(calls.update, 1);
+});
+
+test("[u8a-d2-stripe-error] status=5xx updated=0", async () => {
+  // customers.update throws: the branch must surface it so the route answers non-2xx and Stripe retries.
+  const client = {
+    customers: {
+      retrieve: async () => ({ id: "cus_1", deleted: false, invoice_settings: {} }),
+      update: async () => {
+        throw new Error("stripe is down");
+      },
+    },
+    paymentMethods: { list: async () => ({ data: [card("pm_1")] }) },
+  } as any;
+  let status = 200;
+  let updated = 0;
+  try {
+    await handleSavedMethodEvent(attachedEvent("evt_err", "pm_1"), {
+      client,
+      claim: async (run) => {
+        try {
+          return await run();
+        } catch (err) {
+          status = 500; // what the webhook route answers when the claim fails
+          throw err;
+        }
+      },
+    });
+  } catch {
+    // expected: never swallowed
+  }
+  console.log(`[u8a-d2-stripe-error] status=${status >= 500 ? "5xx" : status} updated=${updated}`);
+  assert.equal(status, 500);
+  assert.equal(updated, 0);
 });

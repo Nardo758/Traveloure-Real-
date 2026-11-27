@@ -43,7 +43,12 @@ export function R3PaymentMethodsPage() {
   const [rechecks, setRechecks] = useState(0);
   const singleNoDefault = !isLoading && available && methods.length === 1 && !defaultPaymentMethodId;
   useEffect(() => {
-    if (!singleNoDefault || rechecks > 0) return;
+    if (!singleNoDefault) {
+      // The card changed under the recheck (removed, or a default arrived): cancel it and let the list speak.
+      if (recheckPending) setRecheckPending(false);
+      return;
+    }
+    if (rechecks > 0) return;
     setRecheckPending(true);
     const timer = window.setTimeout(() => {
       setRechecks(1);
@@ -64,15 +69,15 @@ export function R3PaymentMethodsPage() {
     <div data-testid="r3-payment-methods" data-state={state} data-rechecks={rechecks}>
       <R3TopBar tripId={null} plan={null} plans={plans ?? []} />
       <main className="mx-auto max-w-[760px] px-4 py-8">
-        <Link href="/settings?surface=r3" className="text-[13px]" style={{ color: BOARD_TEXT }} data-testid="r3-pm-back">
-          Settings
-        </Link>
-        <h1 className="mt-2 text-[16px] font-semibold" style={{ color: BOARD_INK }}>
-          Payment methods
-        </h1>
-        <div className="mt-2 border-t" style={{ borderColor: BOARD_LINE }} />
+        <div className="rounded-xl border p-4" style={{ backgroundColor: BOARD_CELL, borderColor: BOARD_LINE }}>
+          <Link href="/settings?surface=r3" className="text-[13px]" style={{ color: BOARD_TEXT }} data-testid="r3-pm-back">
+            Settings
+          </Link>
+          <h1 className="mt-2 text-[16px] font-semibold" style={{ color: BOARD_INK }}>
+            Payment methods
+          </h1>
+          <div className="mt-2 border-t" style={{ borderColor: BOARD_LINE }} />
 
-        <div className="mt-4 rounded-xl border p-4" style={{ backgroundColor: BOARD_CELL, borderColor: BOARD_LINE }}>
           {state === "loading" ? (
             <div className="space-y-2" aria-hidden="true">
               {[0, 1].map((i) => (
@@ -105,13 +110,14 @@ export function R3PaymentMethodsPage() {
                   No default card. Your next payment will ask for card details.
                 </p>
               ) : null}
-              <ul className="divide-y" style={{ borderColor: BOARD_LINE }}>
+              <ul>
                 {methods.map((card) => {
                   const isDefault = card.id === defaultPaymentMethodId;
                   return (
                     <li
                       key={card.id}
-                      className="flex items-center justify-between gap-3 py-3"
+                      className="flex items-center justify-between gap-3 border-t py-3 first:border-t-0"
+                      style={{ borderTopColor: BOARD_LINE }}
                       data-testid="r3-pm-row"
                       data-default={isDefault}
                     >
