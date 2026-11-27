@@ -7,6 +7,7 @@ import { getTravelerSignupMode, getLaunchMarketSlug } from "../services/platform
 import { expertsLiveIn } from "../services/experts-live.service";
 import { expertAvailabilityForMarket } from "../services/expert-hook.service";
 import { resolveMarketSlug } from "../services/trend-engine/operating-markets";
+import { r3SurfaceFromEnv } from "@shared/r3-surface-flag";
 
 const router = Router();
 
@@ -24,9 +25,14 @@ router.get("/api/public/signup-mode", async (_req, res) => {
  * R3 planning surface switch (Leon, Nov 22 2026), RUNTIME: the server reads its own env (`R3_SURFACE=1`, default off) and
  * tells the client, so staging can turn the surface on without rebuilding a bundle. Public and read-only - it exposes
  * one boolean and no configuration value.
+ *
+ * S5 (ledger `2026-11-27-s5-r3-surface-flag`): the rule is `r3SurfaceFromEnv` (`shared/r3-surface-flag.ts`), the ONE
+ * spelling of "only the exact string 1 is on" - an unset, blank or near-miss value is off. The query string is never read
+ * here, so `?surface=r3` alone changes nothing (Leon, Nov 23 2026; the client's own half is
+ * `client/src/lib/r3-surface.ts:16-20`).
  */
 router.get("/api/public/r3-surface", (_req, res) => {
-  res.json({ on: process.env.R3_SURFACE === "1" });
+  res.json({ on: r3SurfaceFromEnv() });
 });
 
 
