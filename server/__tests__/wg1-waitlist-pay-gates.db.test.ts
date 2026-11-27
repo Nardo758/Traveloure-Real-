@@ -155,6 +155,23 @@ test("W2-W8 source: each gate precedes its Stripe client", () => {
   order(read(files.payments), '"/api/memberships/checkout"');
 });
 
+test("W9 concierge accept without a plan: refuses 409 before any capture", () => {
+  const src = fs.readFileSync(new URL("../routes.ts", import.meta.url), "utf8");
+  const start = src.indexOf("const handleOwnerBookingStatus = async");
+  assert.ok(start > 0);
+  const end = src.indexOf("\n  app.post(", start + 10);
+  const slice = src.slice(start, end === -1 ? start + 16000 : end);
+  assert.match(slice, /code:\s*"concierge_needs_plan"/);
+  assert.match(slice, /This booking needs a plan before it can be accepted\./);
+  assert.match(slice, /console\.warn\("\[concierge-accept\] skipped: booking has no plan"/);
+  const gate = slice.indexOf('code: "concierge_needs_plan"');
+  const flip = slice.indexOf("updateServiceBookingStatus");
+  const decline = slice.indexOf("applyOwnerDecline");
+  assert.ok(gate > 0);
+  assert.ok(gate < flip, "gate before the status flip/capture");
+  assert.ok(gate < decline, "gate before the decline capture path");
+});
+
 test("[wg1] summary", () => {
-  console.log(`[wg1] doors_gated=8 stripe_calls_in_waitlist=0 tests=8`);
+  console.log(`[wg1] doors_gated=8 stripe_calls_in_waitlist=0 tests=9`);
 });

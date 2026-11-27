@@ -7966,6 +7966,20 @@ ${bannedCopyPromptLine()}`;
           currentStatus: booking.status,
         });
       }
+      // WG-1 addition (P6 path b is not built yet): a concierge accept needs a plan. A
+      // concierge booking with no trip cannot grant the expert plan access, and accepting it
+      // would move money before that missing link is repaired. Refuse BEFORE any capture or
+      // status flip. Remove this when P6 path (b) lands.
+      if (status === "confirmed" && !booking.tripId) {
+        const earlyAcceptService = booking.serviceId ? await storage.getProviderServiceById(booking.serviceId) : null;
+        if (earlyAcceptService?.serviceType === "concierge") {
+          console.warn("[concierge-accept] skipped: booking has no plan", req.params.id, userId);
+          return res.status(409).json({
+            code: "concierge_needs_plan",
+            message: "This booking needs a plan before it can be accepted.",
+          });
+        }
+      }
       // ── ACCEPT NEVER CONFIRMS AROUND THE CHECKOUT (ledger `2026-09-24-request-rail-unpaid`) ──
       // A `pending` row with NO PaymentIntent on record is a request nobody has paid for: an
       // expert-booking-request (storefront / visa-help) or a quote-born booking awaiting its
