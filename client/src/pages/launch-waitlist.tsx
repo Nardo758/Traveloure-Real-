@@ -560,7 +560,7 @@ export default function LaunchWaitlistPage() {
       </section>
       )}
 
-      <section id="join" className="mt-12 scroll-mt-20 rounded-xl border p-6" data-testid="section-waitlist-join">
+      <section id="join" className="mt-12 scroll-mt-28 rounded-xl border p-6" data-testid="section-waitlist-join">
         <h2 className="text-2xl font-semibold">Join the Kyoto list.</h2>
         <p className="mt-3 text-muted-foreground">
           Traveloure starts in Kyoto. Join the waitlist and tell us about your trip, so it's shaped around trips like yours.
@@ -568,7 +568,7 @@ export default function LaunchWaitlistPage() {
         <TravelerForm key={launchMarket} source={source} refCode={refCode} launchMarket={launchMarket} settings={settings} />
       </section>
 
-      <section id="providers" className="mt-12 scroll-mt-20 rounded-xl border p-4 sm:p-6" data-testid="section-waitlist-providers">
+      <section id="providers" className="mt-12 scroll-mt-28 rounded-xl border p-4 sm:p-6" data-testid="section-waitlist-providers">
         <h2 className="text-xl font-semibold">Know Kyoto? Help travelers plan it.</h2>
         {showKyotoExperts && (
           <p className="mt-3 text-muted-foreground" data-testid="text-waitlist-plan-with">
@@ -581,7 +581,7 @@ export default function LaunchWaitlistPage() {
         </p>
       </section>
 
-      <section id="experts" className="mt-12 scroll-mt-20 rounded-xl border p-4 sm:p-6" data-testid="section-waitlist-experts">
+      <section id="experts" className="mt-12 scroll-mt-28 rounded-xl border p-4 sm:p-6" data-testid="section-waitlist-experts">
         <h2 className="text-xl font-semibold">{WLB_SIGNUP_COPY.expertHeading}</h2>
         <ExpertWaitlistForm key={launchMarket} source={source} launchMarket={launchMarket} />
       </section>
@@ -611,15 +611,15 @@ export function OtherMarketWaitlistPage({
   return (
     <div className="mx-auto max-w-2xl px-4 py-12" data-testid="page-launch-waitlist">
       <OtherMarketWaitlistHeader market={market} cityName={cityName} settings={settings} />
-      <section id="join" className="mt-12 scroll-mt-20 rounded-xl border p-6" data-testid="section-waitlist-join">
+      <section id="join" className="mt-12 scroll-mt-28 rounded-xl border p-6" data-testid="section-waitlist-join">
         <h2 className="text-2xl font-semibold">{WAITLIST_SIGNUP_ROW_COPY.travelersHeading}</h2>
         <TravelerForm key={market} source={source} refCode={refCode} launchMarket={market} settings={settings} />
       </section>
-      <section id="providers" className="mt-12 scroll-mt-20 rounded-xl border p-4 sm:p-6" data-testid="section-waitlist-providers">
+      <section id="providers" className="mt-12 scroll-mt-28 rounded-xl border p-4 sm:p-6" data-testid="section-waitlist-providers">
         <h2 className="text-xl font-semibold">{WAITLIST_SIGNUP_ROW_COPY.providersHeading}</h2>
         <ProviderForm key={market} source={source} refCode={refCode} launchMarket={market} liveMarketKeys={liveMarketKeys} settings={settings} />
       </section>
-      <section id="experts" className="mt-12 scroll-mt-20 rounded-xl border p-4 sm:p-6" data-testid="section-waitlist-experts">
+      <section id="experts" className="mt-12 scroll-mt-28 rounded-xl border p-4 sm:p-6" data-testid="section-waitlist-experts">
         <h2 className="text-xl font-semibold">{WLB_SIGNUP_COPY.expertHeading}</h2>
         <ExpertWaitlistForm key={market} source={source} launchMarket={market} />
       </section>

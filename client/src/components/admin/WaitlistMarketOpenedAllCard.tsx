@@ -23,8 +23,14 @@ export function roleCounts(rows: readonly { role: string }[]): RoleCounts {
   return counts;
 }
 
+export function roleCountsLine(counts: RoleCounts): string {
+  const n = (value: number, one: string, many: string) => `${value} ${value === 1 ? one : many}`;
+  return `${n(counts.traveler, "traveler", "travelers")} · ${n(counts.expert, "expert", "experts")} · ${n(counts.provider, "provider", "providers")}`;
+}
+
 export function marketOpenedAllConfirmLine(city: string, counts: RoleCounts): string {
-  return `Email ${counts.traveler} travelers, ${counts.expert} experts and ${counts.provider} providers that ${city} is open?`;
+  const n = (value: number, one: string, many: string) => `${value} ${value === 1 ? one : many}`;
+  return `Email ${n(counts.traveler, "traveler", "travelers")}, ${n(counts.expert, "expert", "experts")} and ${n(counts.provider, "provider", "providers")} that ${city} is open?`;
 }
 
 export function WaitlistMarketOpenedAllCard() {
@@ -79,7 +85,7 @@ export function WaitlistMarketOpenedAllCard() {
           ))}
         </select>
         <p className="text-sm text-muted-foreground" data-testid="text-market-opened-all-counts">
-          {market ? `${counts.traveler} travelers · ${counts.expert} experts · ${counts.provider} providers` : ""}
+          {market ? roleCountsLine(counts) : ""}
         </p>
         <Button disabled={!market || busy} onClick={() => setConfirming(true)} data-testid="button-market-opened-all">
           {market ? `Email ${city} waitlist` : "Email a city waitlist"}

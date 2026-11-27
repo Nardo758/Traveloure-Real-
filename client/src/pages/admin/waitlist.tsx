@@ -203,6 +203,7 @@ function WaitlistEntries({ marketQuery }: { marketQuery: string }) {
         {groups.map((g) => (
           <div key={g.market} data-testid={`group-waitlist-entries-${g.market}`}>
             <h3 className="mb-2 text-sm font-medium">{waitlistCityName(g.market) ?? g.market}</h3>
+            <div className="overflow-x-auto">
             <table className="text-sm" data-testid={`table-waitlist-entries-${g.market}`}>
               <thead>
                 <tr>
@@ -231,6 +232,7 @@ function WaitlistEntries({ marketQuery }: { marketQuery: string }) {
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         ))}
       </CardContent>
