@@ -620,6 +620,30 @@ jobs:
           path: playwright/dx2-captures/
           retention-days: 14
           if-no-files-found: warn
+      - name: "u8a-payment-methods: the Settings row, the page, and the first-card default at 1280 and 390"
+        id: u8a_payment_methods
+        if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
+        run: npx playwright test r3-surface --project=chromium -g "U8a"
+        env:
+          BASE_URL: http://localhost:5000
+          CI: 'true'
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          R3_SURFACE: '1'
+      - name: "u8a-first-card-default: D2 against a stubbed Stripe client"
+        id: u8a_first_card_default
+        if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
+        run: npx tsx --test --test-force-exit server/__tests__/u8a-first-card-default.test.ts
+        env:
+          STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+          NODE_ENV: test
+      - name: Upload the U8a screenshots
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: u8a-captures-${{ github.sha }}
+          path: playwright/r3-captures/
+          retention-days: 14
+          if-no-files-found: warn
       - name: "r3-surface: the Revision 3 shell, at 1280 and 390, with screenshots"
         # R3 P0 (Leon, Nov 22 2026): the shell behind ?surface=r3. It asserts r3-surface is on the page, so a
         # green step is never a picture of the old page.
