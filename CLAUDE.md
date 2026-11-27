@@ -526,6 +526,7 @@ This document captures architectural decisions to maintain consistency across co
     status-blind — has been DELETED, leaving the `booking-actions.ts` copy as the one definition.
     Still open: `optimization_context.planSnapshot` is written and never read; the template page
     re-POSTs a lead on every snapshot change.
+    **EXCEPTION (P6 path b, Nov 27, 2026): the server may create an empty traveler-owned plan when a concierge/plan-work booking is accepted or paid without a plan.**
 33. **ONE PLANNING MODAL, MANY DOORS (decision-maker ratified Sep 4, 2026 — ledger
     `2026-09-04-one-modal-many-doors`; option 1).** There is exactly ONE planning modal: the five
     ratified steps **Occasion → Where → When → Who → What's happening** (`docs/design/wedding-flow/`
@@ -800,6 +801,7 @@ This document captures architectural decisions to maintain consistency across co
     never trigger a pet surcharge or a pet filter and are never counted in the pet fields (pet kind and
     count, two optional plan fields whose migration is held until the pets lane's hard stop). Not built.
 
+**SUPERSEDED by Leon's Nov 27, 2026 no-plan purchase ruling.**
 39. **EVERY ADD SURFACE IS A VIEW OF `itinerary_items`, AND THE CART IS ONE OF THEM (decision-maker
     ratified Sep 4, 2026 — ledger rows `2026-09-03-slip-convergence`, `2026-09-03-trip-pdf`,
     `2026-09-03-plan-vocabulary`, `2026-09-03-expert-templates-consumer-sunset`). NO SCHEMA CHANGE.**
