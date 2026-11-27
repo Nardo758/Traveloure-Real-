@@ -711,6 +711,22 @@ jobs:
           path: playwright/r3-captures/
           retention-days: 14
           if-no-files-found: warn
+      - name: "d1-captures: the five photo card families, with and without a photo"
+        id: d1_captures
+        if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
+        run: npx playwright test playwright/tests/d1-captures.spec.ts --reporter=line
+        env:
+          BASE_URL: http://localhost:5000
+          CI: 'true'
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      - name: Upload the D1 screenshots
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: d1-captures-${{ github.sha }}
+          path: playwright/d1-captures/
+          retention-days: 14
+          if-no-files-found: warn
       - name: "r3-surface: the Revision 3 shell, at 1280 and 390, with screenshots"
         # R3 P0 (Leon, Nov 22 2026): the shell behind ?surface=r3. It asserts r3-surface is on the page, so a
         # green step is never a picture of the old page.
