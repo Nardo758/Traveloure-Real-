@@ -118,7 +118,7 @@ import {
 import { absorbedTravelItemId, flightTimeConflictLine } from "@shared/getting-there";
 import { ToolsTray } from "@/components/plan/ToolsTray";
 import { NextQuestion } from "@/components/plan/NextQuestion";
-import { nextQuestion, stripGroupIsTrip, type NextQuestionKey } from "@/lib/next-question";
+import { nextQuestionSkipping, stripGroupIsTrip, type NextQuestionKey } from "@/lib/next-question";
 import { SlipPartyRoster } from "./SlipPartyRoster";
 import { PlanCostStrip } from "@/components/plan/PlanCostStrip";
 import { SlipEmptyGuestStart, SlipEmptyStart } from "@/components/plan/SlipEmptyStart";
@@ -2532,10 +2532,8 @@ export function SlipView({
     // the day rows name flights in more than one way (TODO: read the one flight authority when part 3 defines it).
     flightKnown: allActivities.some((a) => /flight/i.test(String(a.type ?? "")) || /flight/i.test(String(a.name ?? ""))),
   } as const;
-  let nextKey = toldStrip ? nextQuestion(nextQuestionFacts) : null;
-  while (nextKey && skippedNext.includes(nextKey)) {
-    nextKey = nextQuestion({ ...nextQuestionFacts, [nextKey]: true } as any);
-  }
+  // A10 fix 2: one bounded pass over the four questions - no loop to spin, and a skip always consumes one.
+  const nextKey = toldStrip ? nextQuestionSkipping(nextQuestionFacts, skippedNext) : null;
   const doneTools = useMemo(() => {
     const done = new Set<ToolKey>();
     if (momentAnchor) done.add("the_reservation");
