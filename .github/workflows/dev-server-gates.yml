@@ -626,6 +626,7 @@ jobs:
         run: |
           EMAIL_SENDS_ENABLED=true EMAIL_TEMPLATE_ALLOWLIST= RATE_LIMIT_LOOPBACK_SKIP= \
           ALLOW_TEST_ACCOUNTS=1 SESSION_COOKIE_INSECURE=1 PORT=5001 NODE_ENV=development \
+          DATABASE_URL=postgresql://postgres:postgres@localhost:5432/traveloure \
           npx tsx server/index.ts &
           SERVER_PID=$!
           echo "$SERVER_PID" > /tmp/dx4-hold-server.pid
@@ -638,6 +639,7 @@ jobs:
           done
           EMAIL_SENDS_ENABLED=true EMAIL_TEMPLATE_ALLOWLIST= RATE_LIMIT_LOOPBACK_SKIP= \
           JOURNEY_BASE_URL=http://127.0.0.1:5001 JOURNEY_DB_WRITES_OK=1 \
+          DATABASE_URL=postgresql://postgres:postgres@localhost:5432/traveloure \
           npx tsx --test --test-force-exit server/__tests__/dx4-signup-hardening.http.test.ts
       - name: "dx4-signup-hardening: password toggles, common-password error, unverified browsing"
         id: dx4_signup_hardening
