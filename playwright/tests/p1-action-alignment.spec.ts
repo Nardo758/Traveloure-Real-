@@ -128,6 +128,7 @@ test("P1 slip cart words and stop-menu ask", async ({ page }) => {
 
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3`, { waitUntil: "domcontentloaded" });
+  await expect(page.locator('[data-testid="r3-surface"]')).toBeVisible({ timeout: 30_000 });
   await page.waitForTimeout(800);
   await maskEmails(page);
   await page.screenshot({ path: path.join(R3, "card-1280.png"), fullPage: true });
