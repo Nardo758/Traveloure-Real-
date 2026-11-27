@@ -1179,7 +1179,7 @@ export default function TravelExpertsPage() {
                               className={cn(
                                 "cursor-pointer px-3 py-2",
                                 picked ? "bg-primary hover:bg-primary/90" : "border-border hover:border-primary",
-                                blocked && "cursor-not-allowed opacity-50 hover:border-border",
+                                blocked && "cursor-not-allowed opacity-40 hover:border-border",
                               )}
                               onClick={() => {
                                 if (blocked) return;

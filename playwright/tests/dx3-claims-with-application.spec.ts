@@ -12,6 +12,29 @@ fs.mkdirSync(CAPTURES, { recursive: true });
 
 const PASSWORD = "TestPass123!";
 
+async function maskEmails(page: import("@playwright/test").Page) {
+  await page.addStyleTag({
+    content: 'input[type="email"], [data-testid="input-email"], [data-testid="sidebar-user-email"] { color: transparent !important; caret-color: transparent !important; }',
+  });
+  await page.evaluate(() => {
+    const EMAIL = /[\w.+-]+@[\w-]+\.[\w.-]+/;
+    for (const el of Array.from(document.querySelectorAll("body *"))) {
+      const own = Array.from(el.childNodes).some((node) => node.nodeType === Node.TEXT_NODE && EMAIL.test(node.textContent || ""));
+      if (!own) continue;
+      const ctx = el as HTMLElement;
+      const bar = document.createElement("span");
+      bar.style.display = "inline-block";
+      bar.style.width = "160px";
+      bar.style.height = "12px";
+      bar.style.background = "#D8CFEE";
+      bar.style.borderRadius = "3px";
+      for (const node of Array.from(ctx.childNodes)) {
+        if (node.nodeType === Node.TEXT_NODE) ctx.replaceChild(bar, node);
+      }
+    }
+  });
+}
+
 async function signInFresh(page: import("@playwright/test").Page) {
   const email = `dx3-e2e-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.com`;
   const reg = await page.request.post(`${BASE_URL}/api/auth/register`, {
@@ -105,10 +128,14 @@ test("DX-3 application carries the claims, caps the picker, and does not call cl
   const pickedCount = () => page.locator('[data-testid^="badge-neighborhood-"].bg-primary').count();
   const capLine = page.locator('[data-testid="neighborhood-pick-cap"]');
   await badges.nth(0).click();
+  await page.waitForTimeout(150);
   await badges.nth(1).click();
+  await page.waitForTimeout(150);
   expect(await capLine.count()).toBe(0);
   const atTwoCapLine = await capLine.count();
   await badges.nth(2).click();
+  await page.waitForTimeout(500);
+  await expect(capLine).toHaveCount(1, { timeout: 10_000 });
   expect(await pickedCount()).toBe(3);
   expect(await capLine.count()).toBe(1);
   const capLineCount = await capLine.count();
@@ -118,10 +145,13 @@ test("DX-3 application carries the claims, caps the picker, and does not call cl
   await fourth.click();
   const fourthTapPicked = await pickedCount();
   expect(fourthTapPicked).toBe(3);
-
+  await expect(fourth).toHaveCSS("opacity", "0.4");
+  await page.waitForTimeout(500);
+  await maskEmails(page);
   await page.screenshot({ path: path.join(CAPTURES, "dx3-pick-cap-1280.png"), fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForTimeout(400);
+  await maskEmails(page);
   await page.screenshot({ path: path.join(CAPTURES, "dx3-pick-cap-390.png"), fullPage: true });
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.waitForTimeout(300);
@@ -148,9 +178,11 @@ test("DX-3 application carries the claims, caps the picker, and does not call cl
     `[dx3-pick-cap]   picked=3 unpicked_disabled=${unpickedDisabled} fourth_tap_picked=${fourthTapPicked} cap_line=${capLineCount} at_two_picks_cap_line=${atTwoCapLine} after_unpick_enabled=${afterUnpickEnabled}`,
   );
 
+  await maskEmails(page);
   await page.screenshot({ path: path.join(CAPTURES, "dx3-after-submit-1280.png"), fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForTimeout(500);
+  await maskEmails(page);
   await page.screenshot({ path: path.join(CAPTURES, "dx3-after-submit-390.png"), fullPage: true });
 });
 
