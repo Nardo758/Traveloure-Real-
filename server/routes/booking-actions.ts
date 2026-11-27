@@ -82,6 +82,8 @@ import {
 } from '../services/booking-actions.service';
 import { isManagingEaForTrip } from '../services/ea-plan-delegate.service';
 import { isAdminRole } from "@shared/roles";
+import { waitlistPurchaseDecisionFor } from "../services/waitlist-purchase-gate";
+import { TRAVELER_WAITLIST, TRAVELER_WAITLIST_MESSAGE } from "@shared/launch-signup";
 
 const router = Router();
 
@@ -122,6 +124,12 @@ router.post('/expert-requests/payment-intent', isAuthenticated, requireVerifiedE
     // Acting user = session, NEVER the body. (Was: userId from req.body — an identity-spoof hole.)
     const sessionUserId = getUserId(req)!;
     if (!sessionUserId) return res.status(401).json({ error: 'Not authenticated' });
+
+    // WG-1: no payment starts in traveler waitlist mode. Run before any read or Stripe call.
+    const waitlistGate = await waitlistPurchaseDecisionFor(sessionUserId);
+    if (!waitlistGate.allowed) {
+      return res.status(403).json({ code: TRAVELER_WAITLIST, message: TRAVELER_WAITLIST_MESSAGE });
+    }
 
     // `amount` and `userId` are intentionally NOT read from the body. The charge amount is derived
     // server-side from the variant's stored cost + the tier; a client-sent amount is ignored.
