@@ -711,20 +711,34 @@ jobs:
           path: playwright/r3-captures/
           retention-days: 14
           if-no-files-found: warn
-      - name: "d1-captures: the five photo card families, with and without a photo"
+      - name: "d1-captures: the photo card families, with and without a photo"
         id: d1_captures
         if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
-        run: npx playwright test playwright/tests/d1-captures.spec.ts --reporter=line
+        run: npx playwright test d1-captures --project=chromium
         env:
           BASE_URL: http://localhost:5000
           CI: 'true'
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      - name: Keep the d1-captures reports
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p reports/d1-captures
+          [ -d playwright-report ] && mv playwright-report reports/d1-captures/html || true
+          [ -d playwright-json ] && mv playwright-json reports/d1-captures/json || true
       - name: Upload the D1 screenshots
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: d1-captures-${{ github.sha }}
           path: playwright/d1-captures/
+          retention-days: 14
+          if-no-files-found: warn
+      - name: Upload the d1-captures Playwright JSON report (the spec-arming gate reads playwright-json*)
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-json-d1-captures
+          path: reports/d1-captures/json/
           retention-days: 14
           if-no-files-found: warn
       - name: "r3-surface: the Revision 3 shell, at 1280 and 390, with screenshots"
