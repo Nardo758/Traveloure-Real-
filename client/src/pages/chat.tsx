@@ -53,6 +53,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { EmailVerificationRefusal, isEmailVerificationRefusal } from "@/components/auth/EmailVerificationRefusal";
+import { EMAIL_VERIFICATION_REQUIRED_CODE } from "@shared/email-verification-gate";
 import { PlanEntryCta } from "@/components/planning/plan-entry-cta";
 
 interface RealtimeMessage {
@@ -734,8 +735,8 @@ export default function Chat() {
     }
   }, [selectedExpert]);
 
-  const handleWsError = useCallback((error: string) => {
-    if (error.includes("Verify your email to continue.")) {
+  const handleWsError = useCallback((error: string, code?: string) => {
+    if (code === EMAIL_VERIFICATION_REQUIRED_CODE) {
       setVerificationRefusal(true);
       return;
     }
@@ -783,6 +784,7 @@ export default function Chat() {
         { message: currentMessage, conversationId: publicConversationId },
         {
           onSuccess: () => {
+            setVerificationRefusal(false);
             setMessage("");
             refetch();
           },
@@ -812,6 +814,7 @@ export default function Chat() {
     // Real user id (UUID format): try the socket first. A socket that is not open right now
     // returns false, and the message then goes over HTTP instead of being dropped silently.
     if (isConnected && recipientId.length > 10 && wsSendMessage(recipientId, currentMessage)) {
+      setVerificationRefusal(false);
       setMessage("");
     } else {
       // Demo mode or WebSocket failed - use HTTP mutation
@@ -819,6 +822,7 @@ export default function Chat() {
         { message: currentMessage, receiverId: recipientId },
         { 
           onSuccess: () => {
+            setVerificationRefusal(false);
             setMessage("");
             refetch();
           },

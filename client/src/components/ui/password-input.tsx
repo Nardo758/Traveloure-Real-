@@ -27,24 +27,10 @@ export const PasswordInput = React.forwardRef<
 
   React.useEffect(() => {
     const form = localRef.current?.form;
+    if (!form) return;
     const reset = () => setVisible(false);
-    const onSubmitClick = (event: Event) => {
-      const target = event.target as HTMLElement | null;
-      if (!target || target.closest("[data-password-toggle]")) return;
-      if (
-        target.closest('[data-testid="button-create-account"]')
-        || target.closest('[data-testid="button-auth-submit"]')
-        || target.closest('button[type="submit"]')
-      ) {
-        reset();
-      }
-    };
-    form?.addEventListener("submit", reset);
-    document.addEventListener("click", onSubmitClick);
-    return () => {
-      form?.removeEventListener("submit", reset);
-      document.removeEventListener("click", onSubmitClick);
-    };
+    form.addEventListener("submit", reset);
+    return () => form.removeEventListener("submit", reset);
   }, []);
 
   return (
@@ -58,7 +44,6 @@ export const PasswordInput = React.forwardRef<
       />
       <button
         type="button"
-        data-password-toggle="true"
         aria-label={visible ? "Hide password" : "Show password"}
         aria-pressed={visible}
         data-testid={testId ? `${testId}-toggle` : undefined}

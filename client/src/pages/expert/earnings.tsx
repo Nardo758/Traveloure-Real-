@@ -109,6 +109,7 @@ export default function ExpertEarnings() {
   const payoutMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/payouts/request"),
     onSuccess: () => {
+      setVerificationRefusal(false);
       setRequested(true);
       toast({ title: "Payout requested", description: "It's pending review — you'll be paid to your connected account once approved." });
     },

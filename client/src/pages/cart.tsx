@@ -1118,6 +1118,7 @@ export default function CartPage() {
       return res.json();
     },
     onSuccess: (data: any) => {
+      setVerificationRefusal(false);
       // Merge resolution (FP-4 × Replit TripStrip fix): the snapshot below MUST read the live
       // cart items BEFORE any invalidation empties them (FP-4), so the Replit branch's
       // top-of-function invalidation is dropped; its base-key ['/api/cart'] pattern (so the
@@ -2585,6 +2586,8 @@ export default function CartPage() {
                         </Button>
                       </div>
                       {(cart?.items?.length || 0) > 0 && (
+                        <>
+                        {verificationRefusal && <EmailVerificationRefusal className="mb-3" />}
                         <div className={`w-full flex flex-col gap-3 ${cartIntent === "buy" ? "order-first" : ""}`}>
                           {cartIntent === "plan" && <Separator />}
                           <Button
@@ -2598,6 +2601,7 @@ export default function CartPage() {
                             {cartIntent === "buy" ? "Checkout" : "Proceed to Payment"}
                           </Button>
                         </div>
+                        </>
                       )}
                     </CardFooter>
                   </Card>

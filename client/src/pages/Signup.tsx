@@ -205,7 +205,13 @@ export function SignupPage() {
           </div>
         )}
 
-        <div className="space-y-4">
+        <form
+          className="space-y-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void handleSubmit();
+          }}
+        >
           {signupGate === "form" ? <SignupFields draft={draft} onChange={handleDraftChange} errors={fieldErrors} /> : (
             <p className="text-sm text-gray-500" data-testid="signup-gate-checking" aria-busy="true" />
           )}
@@ -268,13 +274,13 @@ export function SignupPage() {
 
           <button
             data-testid="button-create-account"
-            onClick={handleSubmit}
+            type="submit"
             disabled={loading || signupGate !== "form" || !signupDraftReady(draft) || (isProvider && !providerSignupReady(provider, draft.email))}
             className="w-full bg-gray-900 text-white rounded-lg py-2.5 text-sm font-semibold hover:bg-gray-700 disabled:opacity-50 transition-colors"
           >
             {loading ? t("signupPage.creating") : t("signupPage.createAccount")}
           </button>
-        </div>
+        </form>
 
         <p className="text-xs text-gray-400 text-center mt-4">
           {t("signupPage.haveAccount")}{" "}

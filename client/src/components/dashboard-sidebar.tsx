@@ -197,7 +197,7 @@ export function DashboardSidebar() {
               <p className="text-[13px] font-medium truncate" style={{ color: "var(--console-ink)" }}>
                 {user.firstName} {user.lastName}
               </p>
-              <p className="text-[11px] truncate" style={{ color: "var(--console-mid)" }}>{user.email}</p>
+              <p className="text-[11px] truncate" data-testid="sidebar-user-email" style={{ color: "var(--console-mid)" }}>{user.email}</p>
             </div>
           </div>
         )}
