@@ -100,10 +100,16 @@ test("P1 slip cart words and stop-menu ask", async ({ page }) => {
   await expect(ask).toHaveText("Ask an expert");
   await maskEmails(page);
   await page.screenshot({ path: path.join(OLD, "menu-1280.png"), fullPage: true });
+  await expect(page.locator("vite-error-overlay")).toHaveCount(0);
+  await page.keyboard.press("Escape");
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForTimeout(300);
+  await page.locator(`[data-testid="item-menu-${itemId}"]`).click();
+  await expect(page.locator(`[data-testid="item-menu-ask-local-${itemId}"]`)).toBeVisible();
   await maskEmails(page);
   await page.screenshot({ path: path.join(OLD, "menu-390.png"), fullPage: true });
+  await expect(page.locator("vite-error-overlay")).toHaveCount(0);
+  await page.keyboard.press("Escape");
   await page.setViewportSize({ width: 1280, height: 900 });
   console.log(`[p1-slip-ask]      menu_entry="Ask an expert"`);
 
