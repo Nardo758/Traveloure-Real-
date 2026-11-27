@@ -46,7 +46,7 @@ describe("tileAction (row 302a)", () => {
   // retired (ruling Nov 6). The tile table keeps only the kinds whose action is not PlanActions'.
   it("the label constants are the ruled words", () => {
     assert.deepEqual(TILE_ACTION_COPY, {
-      getThisTrip: "Get this trip",
+      getThisTrip: "Details",
       viewProfile: "View profile",
       apply: "Apply",
     });
@@ -63,7 +63,7 @@ describe("tileAction (row 302a)", () => {
       "supply-hotel": null,
       "vendor-service": null,
       "recommendation": null,
-      "package": "Get this trip",
+      "package": "Details",
       "expert": "View profile",
       "lead-expert": "View profile",
       "wanted-slot": "Apply",
@@ -78,8 +78,8 @@ describe("tileAction (row 302a)", () => {
     assert.equal(tileActionLabel("lead-expert", { canAsk: true }), "Ask an expert");
   });
 
-  it("package is Get this trip and goes to the ready-made detail page", () => {
-    assert.deepEqual(tileAction(item("package", { id: "rm-42" })), { label: "Get this trip", href: "/ready-made/rm-42" });
+  it("package is Details and goes to the ready-made detail page", () => {
+    assert.deepEqual(tileAction(item("package", { id: "rm-42" })), { label: "Details", href: "/ready-made/rm-42" });
   });
 
   it("earn-card keeps /earn; other kinds leave the href to the card; partner stubs have none", () => {

@@ -84,7 +84,7 @@ test.describe('Bento section chrome — real Mumbai data (no fixture)', () => {
     await page.screenshot({ path: 'test-results/bento-mumbai-top-feed.png', fullPage: false });
   });
 
-  test('Mumbai in 5 days keeps its teal Get this trip CTA', async ({ page }) => {
+  test('Mumbai in 5 days keeps its teal Details CTA', async ({ page }) => {
     await page.goto(`${BASE_URL}/discover/location/Mumbai`, { waitUntil: 'domcontentloaded', timeout: 30_000 });
 
     // This is the public Mumbai ready-made row, not a fixture stand-in. It
@@ -92,7 +92,7 @@ test.describe('Bento section chrome — real Mumbai data (no fixture)', () => {
     // rather than inheriting the navy Add to trip treatment.
     const cta = page.getByTestId('btn-view-package-earn-demo-mumbai-local-template');
     await expect(cta).toBeVisible({ timeout: 15_000 });
-    await expect(cta).toHaveText('Get this trip');
+    await expect(cta).toHaveText('Details');
 
     const usesToken = async (token: '--earn-teal' | '--earn-navy') =>
       cta.evaluate((element, cssToken) => {
