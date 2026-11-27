@@ -15,6 +15,7 @@ import { sql } from "drizzle-orm";
 
 import { db, pool } from "../db";
 import { registerAndSignIn, type SignedInActor } from "./fixtures/register-and-sign-in";
+import { saveApplicationClaims } from "../services/neighborhood-claims.service";
 
 const BASE_URL = process.env.JOURNEY_BASE_URL || "http://127.0.0.1:5000";
 const PASSWORD = "TestPass123!";
@@ -323,4 +324,33 @@ test("malformed claims are a 400 before any form row", async (t) => {
   assert.equal(form, null);
   assert.equal(claims.length, 0);
   console.log(`[dx3-malformed]  status=${res.status} form_rows=${form ? 1 : 0}`);
+});
+
+test("throw after one saved counts every unsaved pick as failed", async (t) => {
+  if (!ok(t)) return;
+  const actor = await applicant("throw");
+  const suffix = RUN.replace(/[^a-z0-9]/gi, "").toLowerCase();
+  const fn = `dx3_throw_${suffix}`;
+  const trigger = `dx3_throw_${suffix}_trg`;
+  const target = kyotoIds[1];
+  await db.execute(sql.raw(
+    `CREATE OR REPLACE FUNCTION ${fn}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.neighborhood_id = '${target}' THEN RAISE EXCEPTION 'dx3 injected'; END IF; RETURN NEW; END $$`,
+  ));
+  try {
+    await db.execute(sql.raw(
+      `CREATE TRIGGER ${trigger} BEFORE INSERT ON expert_neighborhood_claims FOR EACH ROW EXECUTE FUNCTION ${fn}()`,
+    ));
+    const result = await saveApplicationClaims({
+      userId: actor.id,
+      city: "Kyoto",
+      claims: kyotoIds.slice(0, 2).map((neighborhoodId) => ({ neighborhoodId })),
+    });
+    const claims = await claimsFor(actor.id);
+    assert.deepEqual(result, { saved: 1, failed: 1 });
+    assert.equal(claims.length, 1);
+    console.log(`[dx3-throw]      error=injected saved=${result.saved} failed=${result.failed} rows=${claims.length}`);
+  } finally {
+    await db.execute(sql.raw(`DROP TRIGGER IF EXISTS ${trigger} ON expert_neighborhood_claims`));
+    await db.execute(sql.raw(`DROP FUNCTION IF EXISTS ${fn}()`));
+  }
 });

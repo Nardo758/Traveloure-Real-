@@ -295,6 +295,8 @@ export async function saveApplicationClaims(opts: {
   capture?: unknown;
 }): Promise<{ saved: number; failed: number }> {
   const result = { saved: 0, failed: 0 };
+  const kept: string[] = [];
+  const decided = new Set<string>();
   try {
     const seen = new Set<string>();
     const unique: string[] = [];
@@ -304,7 +306,7 @@ export async function saveApplicationClaims(opts: {
       seen.add(claim.neighborhoodId);
       unique.push(claim.neighborhoodId);
     }
-    const kept = unique.slice(0, MAX_APPLICATION_NEIGHBORHOOD_CLAIMS);
+    kept.push(...unique.slice(0, MAX_APPLICATION_NEIGHBORHOOD_CLAIMS));
     result.failed += unique.length - kept.length;
     const city = (opts.city ?? "").trim().toLowerCase();
 
@@ -317,6 +319,7 @@ export async function saveApplicationClaims(opts: {
         .limit(1);
       if (!nb || String(nb.city ?? "").trim().toLowerCase() !== city) {
         result.failed += 1;
+        decided.add(neighborhoodId);
         continue;
       }
       const created = await createClaim({
@@ -327,9 +330,11 @@ export async function saveApplicationClaims(opts: {
       });
       if (!created.ok) {
         result.failed += 1;
+        decided.add(neighborhoodId);
         continue;
       }
       result.saved += 1;
+      decided.add(neighborhoodId);
       if (!firstSaved) {
         firstSaved = true;
         if (hasCaptureContent(opts.capture)) {
@@ -343,6 +348,9 @@ export async function saveApplicationClaims(opts: {
       }
     }
   } catch (err: any) {
+    // A throw can happen after some picks were saved. Every kept pick not yet decided is
+    // unsaved; count it as failed so an error never reports saved:0, failed:0.
+    result.failed += kept.filter((id) => !decided.has(id)).length;
     console.error("[neighborhood-claims] application claims failed:", err?.message ?? err);
   }
   return result;

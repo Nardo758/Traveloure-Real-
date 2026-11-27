@@ -32,7 +32,38 @@ async function next(page: import("@playwright/test").Page) {
   await page.waitForTimeout(700);
 }
 
+async function finishToReview(page: import("@playwright/test").Page) {
+  // Step 3 — Knowledge Proof (server minimum is 250 characters)
+  for (let i = 0; i < 3; i += 1) {
+    await page.fill(`[data-testid="textarea-knowledge-proof-${i}"]`, "D".repeat(260));
+  }
+  await next(page);
+
+  // Step 4 — Specialties
+  await page.locator('[data-testid^="button-local-specialty-"]').first().click();
+  await next(page);
+
+  // Step 5 — Services
+  await page.locator('[data-testid^="badge-service-"]').first().click();
+  await next(page);
+
+  // Step 6 — Availability
+  await page.locator('[data-testid="select-availability"]').click();
+  await page.locator('[role="option"]').first().click();
+  await page.waitForTimeout(300);
+  await page.locator('[data-testid="select-response-time"]').click();
+  await page.locator('[role="option"]').first().click();
+  await page.waitForTimeout(300);
+  await page.fill('[data-testid="input-hourly-rate"]', "120");
+  await next(page);
+
+  // Step 7 — Review → terms → Your Handle
+  await page.locator('[data-testid="checkbox-terms"]').click();
+  await next(page);
+}
+
 test("DX-3 application carries the claims, caps the picker, and does not call claims after submit", async ({ page }) => {
+  test.setTimeout(90_000);
   await page.setViewportSize({ width: 1280, height: 900 });
   const email = await signInFresh(page);
 
@@ -102,34 +133,7 @@ test("DX-3 application carries the claims, caps the picker, and does not call cl
   await page.locator('[data-testid="button-locality-born_raised"]').click();
   await page.locator('[data-testid="badge-language-english"]').click();
   await next(page);
-
-  // Step 3 — Knowledge Proof (server minimum is 250 characters)
-  for (let i = 0; i < 3; i += 1) {
-    await page.fill(`[data-testid="textarea-knowledge-proof-${i}"]`, "D".repeat(260));
-  }
-  await next(page);
-
-  // Step 4 — Specialties
-  await page.locator('[data-testid^="button-local-specialty-"]').first().click();
-  await next(page);
-
-  // Step 5 — Services
-  await page.locator('[data-testid^="badge-service-"]').first().click();
-  await next(page);
-
-  // Step 6 — Availability
-  await page.locator('[data-testid="select-availability"]').click();
-  await page.locator('[role="option"]').first().click();
-  await page.waitForTimeout(300);
-  await page.locator('[data-testid="select-response-time"]').click();
-  await page.locator('[role="option"]').first().click();
-  await page.waitForTimeout(300);
-  await page.fill('[data-testid="input-hourly-rate"]', "120");
-  await next(page);
-
-  // Step 7 — Review
-  await page.locator('[data-testid="checkbox-terms"]').click();
-  await next(page);
+  await finishToReview(page);
 
   // Step 8 — Your Handle (optional), then submit
   await page.locator('[data-testid="button-submit"]').click();
@@ -148,4 +152,51 @@ test("DX-3 application carries the claims, caps the picker, and does not call cl
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForTimeout(500);
   await page.screenshot({ path: path.join(CAPTURES, "dx3-after-submit-390.png"), fullPage: true });
+});
+
+test("DX-3 shows the claims notice and the offering notice together", async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  const email = await signInFresh(page);
+  await page.route("**/api/expert-application", async (route) => {
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: "dx3-both-stub",
+        offeringTypeKeyUnrecorded: "stub-key",
+        neighborhoodClaims: { saved: 0, failed: 1 },
+      }),
+    });
+  });
+
+  await page.goto(`${BASE_URL}/expert/apply?type=local_expert`, { waitUntil: "domcontentloaded" });
+  await page.waitForSelector('[data-testid="input-first-name"]', { timeout: 30_000 });
+  await page.fill('[data-testid="input-first-name"]', "DX3");
+  await page.fill('[data-testid="input-last-name"]', "E2E");
+  await page.fill('[data-testid="input-email"]', email);
+  await page.fill('[data-testid="input-country"]', "Japan");
+  await page.fill('[data-testid="input-city"]', "Kyoto");
+  await next(page);
+
+  await page.fill('[data-testid="input-local-city"]', "Kyoto");
+  const badge = page.locator('[data-testid^="badge-neighborhood-"]').first();
+  await expect(badge).toBeVisible({ timeout: 30_000 });
+  await badge.click();
+  await page.locator('[data-testid="button-locality-born_raised"]').click();
+  await page.locator('[data-testid="badge-language-english"]').click();
+  await next(page);
+  await finishToReview(page);
+
+  await page.locator('[data-testid="button-submit"]').click();
+  await page.waitForURL("**/expert-status", { timeout: 30_000 });
+  await page.waitForTimeout(900);
+
+  const toasts = page.locator('[data-testid^="toast-"]');
+  const claimToast = toasts.filter({ hasText: "couldn't save your neighborhood answers" }).first();
+  await expect(claimToast).toBeVisible();
+  const text = await claimToast.innerText();
+  expect(text).toContain("Application saved");
+  expect(text).toContain("couldn't record the offering");
+  console.log(`[dx3-both]       toasts=${await toasts.count()} both=true`);
 });

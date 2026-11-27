@@ -703,20 +703,24 @@ export default function TravelExpertsPage() {
       // the only person who can repair the first. Say it out loud rather than filing a silent NULL.
       const unrecorded = result?.offeringTypeKeyUnrecorded;
       const claimsFailed = result?.neighborhoodClaims?.failed ?? 0;
+      const claimFailedBody =
+        "We couldn't save your neighborhood answers. You can add them once your application is approved.";
+      const unrecordedBody =
+        "We couldn't record the offering you picked, so it isn't on your application. Tell us what you offer in your application or reply to our email and we'll add it.";
       if (claimsFailed > 0) {
         // DRAFT strings 1–2 (DX-3), pending "Wording approved — Leon"; held in draft until stamped.
+        // TOAST_LIMIT is 1, so when the offering also failed the ONE toast carries both notices
+        // rather than the claims toast replacing the offering notice.
         toast({
           title: "Application saved",
-          description:
-            "We couldn't save your neighborhood answers. You can add them once your application is approved.",
+          description: unrecorded ? `${claimFailedBody} ${unrecordedBody}` : claimFailedBody,
         });
       } else {
         toast(
           unrecorded
             ? {
                 title: "Application submitted — one thing we couldn't record",
-                description:
-                  "We couldn't record the offering you picked, so it isn't on your application. Tell us what you offer in your application or reply to our email and we'll add it.",
+                description: unrecordedBody,
               }
             : {
                 title: "Application submitted!",
