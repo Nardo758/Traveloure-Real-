@@ -104,7 +104,7 @@ export function DaysBoard({
                       <div className="flex flex-wrap items-start gap-x-1">
                         <p className="min-w-0 flex-1 text-[13px] font-medium leading-snug text-foreground" data-testid="r3-stop-name">{String(stop?.name ?? stop?.title ?? "")}</p>
                         {state ? (
-                          <span className="mt-0.5 shrink-0 rounded-full px-1.5 py-0.5 text-[10px]" style={{ backgroundColor: "rgba(0,0,0,0.05)", color: BOARD_TEXT }} data-testid="r3-stop-state" data-state={state}>
+                          <span className="mt-0.5 max-w-full shrink-0 whitespace-normal break-words rounded-full px-1.5 py-0.5 text-left text-[10px] leading-tight" style={{ backgroundColor: "rgba(0,0,0,0.05)", color: BOARD_TEXT }} data-testid="r3-stop-state" data-state={state}>
                             {stopStateTagLabel(state)}
                           </span>
                         ) : null}
