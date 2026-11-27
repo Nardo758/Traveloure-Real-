@@ -107,6 +107,9 @@ async function listen(): Promise<void> {
 }
 
 async function call(method: string, path: string, body?: unknown, userId?: string) {
+  if (path === "/api/waitlist" && body && typeof body === "object" && !("role" in body) && !("contactName" in body)) {
+    body = { ...(body as Record<string, unknown>), contactName: "Lw Tester" };
+  }
   const res = await fetch(`${baseUrl}${path}`, {
     method,
     headers: {
