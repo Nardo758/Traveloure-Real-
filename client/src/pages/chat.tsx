@@ -52,6 +52,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { EmailVerificationRefusal, isEmailVerificationRefusal } from "@/components/auth/EmailVerificationRefusal";
 import { PlanEntryCta } from "@/components/planning/plan-entry-cta";
 
 interface RealtimeMessage {
@@ -439,6 +440,7 @@ export default function Chat() {
   });
 
   const [message, setMessage] = useState("");
+  const [verificationRefusal, setVerificationRefusal] = useState(false);
   const [selectedExpert, setSelectedExpert] = useState<DisplayExpert | null>(null);
   const handledInitialSelectionRef = useRef<string | null>(null);
 
@@ -733,6 +735,10 @@ export default function Chat() {
   }, [selectedExpert]);
 
   const handleWsError = useCallback((error: string) => {
+    if (error.includes("Verify your email to continue.")) {
+      setVerificationRefusal(true);
+      return;
+    }
     // Distinguish a policy block from an infrastructure failure so the user
     // understands they are blocked rather than experiencing a network error.
     const isBlocked = error.toLowerCase().includes("cannot send messages");
@@ -780,7 +786,11 @@ export default function Chat() {
             setMessage("");
             refetch();
           },
-          onError: () => {
+          onError: (error: any) => {
+            if (isEmailVerificationRefusal(error)) {
+              setVerificationRefusal(true);
+              return;
+            }
             toast({
               title: "Message failed",
               description: "Failed to send message. Please try again.",
@@ -812,7 +822,11 @@ export default function Chat() {
             setMessage("");
             refetch();
           },
-          onError: () => {
+          onError: (error: any) => {
+            if (isEmailVerificationRefusal(error)) {
+              setVerificationRefusal(true);
+              return;
+            }
             toast({
               title: "Message failed",
               description: "Failed to send message. Please try again.",
@@ -1297,6 +1311,8 @@ export default function Chat() {
                           : "Messaging is not available for this conversation."}
                       </div>
                     ) : (
+                      <>
+                      {verificationRefusal && <EmailVerificationRefusal className="mb-3" />}
                       <form 
                         onSubmit={(e) => { e.preventDefault(); handleSend(); }}
                         className="flex gap-3"
@@ -1323,6 +1339,7 @@ export default function Chat() {
                           )}
                         </Button>
                       </form>
+                      </>
                     )}
                   </div>
                 </>

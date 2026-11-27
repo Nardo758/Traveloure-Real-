@@ -94,6 +94,49 @@ test("DX-4 unverified browsing is not held", async ({ page }) => {
   console.log(`[dx4-browse-ui]       unverified: after_signin_path=${pathname} plans_page_loads=true`);
 });
 
+test("DX-4 refusal note on a gated payout", async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.route("**/api/auth/user", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ id: "dx4-expert", email: "dx4-expert@example.com", firstName: "DX4", lastName: "Expert", role: "travel_expert", termsAcceptedAt: new Date().toISOString(), privacyAcceptedAt: new Date().toISOString() }),
+  }));
+  await page.route("**/api/expert/earnings/details", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      summary: { totalEarnings: 100, pendingEarnings: 0, availableEarnings: 100, paidOut: 0, totalTips: 0, totalAffiliateCommissions: 0 },
+      earnings: [], payouts: [], recentTips: [], recentAffiliateEarnings: [],
+    }),
+  }));
+  await page.route("**/api/stripe/connect/status", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ connected: true }) }));
+  await page.route("**/api/payouts/request", (route) => route.fulfill({
+    status: 403,
+    contentType: "application/json",
+    body: JSON.stringify({ message: "Verify your email to continue.", code: "email_verification_required" }),
+  }));
+  await page.route("**/api/auth/resend-verification", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ message: "sent" }) }));
+
+  await page.goto(`${BASE_URL}/expert/money`, { waitUntil: "domcontentloaded" });
+  await page.waitForSelector('[data-testid="button-request-payout"]', { timeout: 30_000 });
+  await page.locator('[data-testid="button-request-payout"]').click();
+  const note = page.locator('[data-testid="email-verification-refusal"]');
+  await expect(note).toBeVisible();
+  await expect(note).toContainText("Verify your email to continue.");
+  await expect(note.locator('[data-testid="button-resend-verification"]')).toHaveText("Resend verification email");
+  await page.screenshot({ path: path.join(CAPTURES, "dx4-refusal-note-1280.png"), fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: path.join(CAPTURES, "dx4-refusal-note-390.png"), fullPage: true });
+  await note.locator('[data-testid="button-resend-verification"]').click();
+  await expect(page.locator('[data-testid="text-resend-verification-status"]')).toHaveText("Verification email sent. Check your inbox.");
+  await page.unroute("**/api/auth/resend-verification");
+  await page.route("**/api/auth/resend-verification", (route) => route.fulfill({ status: 429, contentType: "application/json", body: JSON.stringify({ message: "rate limited" }) }));
+  await page.locator('[data-testid="button-resend-verification"]').click();
+  await expect(page.locator('[data-testid="text-resend-verification-status"]')).toHaveText("Please wait a minute before asking for another email.");
+});
+
 test("DX-4 password inputs are replaced everywhere", async () => {
   const files = [
     ["client/src/components/auth/SignupForm.tsx", 1],

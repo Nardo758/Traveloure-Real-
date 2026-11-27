@@ -244,6 +244,10 @@ test("DX-4 common passwords and the per-action hold", async (t) => {
 
   // [dx4-resend]
   const resendActor = await registerAndSignIn({ baseUrl: BASE_URL, email: email("resend"), password: PASSWORD, firstName: "DX4", lastName: "Resend", leaveUnverified: true });
+  const chainDenied = await api("/api/checkout", resendActor.cookie, {});
+  const chainDeniedBody = await json(chainDenied);
+  assert.equal(chainDenied.status, 403);
+  assert.equal(chainDeniedBody.code, "email_verification_required");
   const beforeRows = await count(sql`SELECT count(*)::int AS n FROM email_outbox WHERE email_type = 'email_verification' AND to_email = ${resendActor.email}`);
   const resend1 = await api("/api/auth/resend-verification", undefined, { email: resendActor.email });
   let afterRows = beforeRows;
@@ -253,6 +257,15 @@ test("DX-4 common passwords and the per-action hold", async (t) => {
   }
   assert.equal(resend1.status, 200);
   assert.equal(afterRows, beforeRows + 1);
+  const outboxRow = await db.execute(sql`SELECT text_body FROM email_outbox WHERE email_type = 'email_verification' AND to_email = ${resendActor.email} ORDER BY id DESC LIMIT 1`);
+  const token = /verify-email\?token=([a-f0-9]+)/.exec(String((outboxRow.rows[0] as any)?.text_body ?? ""))?.[1] ?? "";
+  assert.ok(token, "the resend outbox row carries the verification link");
+  const verify = await api("/api/auth/verify-email", undefined, { token });
+  assert.equal(verify.status, 200);
+  const chainRetry = await api("/api/checkout", resendActor.cookie, {});
+  const chainRetryBody = await json(chainRetry);
+  assert.notEqual(chainRetryBody.code, "email_verification_required");
+  console.log(`[dx4-resend-chain] pass`);
   let sixth = resend1;
   for (let i = 0; i < 5; i += 1) {
     sixth = await api("/api/auth/resend-verification", undefined, { email: resendActor.email });
