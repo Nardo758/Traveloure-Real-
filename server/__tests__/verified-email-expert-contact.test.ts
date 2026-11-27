@@ -241,7 +241,6 @@ test("expert accept, reply, and decline routes do not mount the contact gate", (
     ["server/routes/handoff.routes.ts", 'router.post("/api/handoffs/:id/accept"', 'router.post("/api/handoffs/:id/decline"'],
     ["server/routes/handoff.routes.ts", 'router.post("/api/handoffs/:id/decline"', 'router.post("/api/handoffs/:id/deliver"'],
     ["server/routes/booking-actions.ts", 'router.post("/expert/assignments/:assignmentId/accept"', "router.patch(\"/expert/assignments/:assignmentId/workspace-status\""],
-    ["server/routes/service-quotes.routes.ts", 'router.post("/api/quotes/:quoteId/accept"', 'router.post("/api/quotes/:quoteId/decline"'],
     ["server/routes/service-quotes.routes.ts", 'router.post("/api/quotes/:quoteId/decline"', 'router.get("/api/provider/quotes"'],
     ["server/routes/service-quotes.routes.ts", 'router.post("/api/provider/quotes/:quoteId/issue"', 'router.post("/api/provider/quotes/:quoteId/withdraw"'],
     ["server/routes/service-quotes.routes.ts", 'router.post("/api/provider/quotes/:quoteId/withdraw"', "export default router"],
@@ -253,6 +252,14 @@ test("expert accept, reply, and decline routes do not mount the contact gate", (
     assert.ok(!body.includes("refuseUnverifiedTravelerSender"), start);
     assert.ok(!body.includes("refuseUnverifiedTravelerContact"), start);
   }
+  const quoteAccept = sliceBetween(
+    read("server", "routes", "service-quotes.routes.ts"),
+    'router.post("/api/quotes/:quoteId/accept"',
+    'router.post("/api/quotes/:quoteId/decline"',
+  );
+  assert.match(quoteAccept, /requireVerifiedEmail\("booking"\)/);
+  assert.ok(!quoteAccept.includes("refuseUnverifiedTravelerSender"));
+  assert.ok(!quoteAccept.includes("refuseUnverifiedTravelerContact"));
   for (const file of ["server/routes/handoff.routes.ts", "server/routes/service-quotes.routes.ts", "server/websocket.ts"]) {
     assert.ok(!read(...file.split("/")).includes("expert_contact"), `${file} must not name expert_contact`);
   }
