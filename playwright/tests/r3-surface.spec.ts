@@ -1712,6 +1712,74 @@ test("U9: the stop menu, the stop sheet, undo and the asked-for tags", async ({ 
     await page.keyboard.press("Escape");
   }
 
+  // [u9-name-lines]: a tagged stop's name never collapses and never splits a word, at both widths
+  const nameLines = async (width: number) => {
+    const read = () =>
+      page.evaluate(() => {
+        const cards = Array.from(document.querySelectorAll('[data-testid="r3-stop-card"], [data-testid="r3-phone-stop-card"]'));
+        return cards
+          .map((card) => {
+            const tag = card.querySelector('[data-testid="r3-stop-state"]');
+            if (!tag) return null;
+            const name = card.querySelector('[data-testid="r3-stop-name"], [data-testid="r3-phone-stop-name"]') as HTMLElement | null;
+            if (!name) return null;
+            const cs = getComputedStyle(name);
+            const lh = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.35;
+            const h = name.getBoundingClientRect().height;
+            return {
+              text: (name.textContent ?? "").trim(),
+              lines: Math.max(1, Math.round(h / lh)),
+              height: Math.round(h * 10) / 10,
+              lineHeight: Math.round(lh * 10) / 10,
+              overflowWrap: cs.overflowWrap,
+              wordBreak: cs.wordBreak,
+              fits: name.scrollWidth <= name.clientWidth + 1,
+            };
+          })
+          .filter(Boolean) as Array<{ text: string; lines: number; height: number; lineHeight: number; overflowWrap: string; wordBreak: string; fits: boolean }>;
+      });
+    if (width === 1280) {
+      await page.setViewportSize({ width: 1280, height: 900 });
+      await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3&capture=1`);
+      await expect(page.getByTestId("r3-days-board")).toBeVisible({ timeout: 30_000 });
+    } else {
+      // The phone shows one day at a time, so walk the days that carry the tagged stops.
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3&capture=1`);
+      await expect(page.getByTestId("r3-phone-day-strip")).toBeVisible({ timeout: 30_000 });
+      const all: Awaited<ReturnType<typeof read>> = [];
+      for (const day of [1, 2, 3]) {
+        const chip = page.locator(`[data-testid="r3-phone-day-chip"][data-day="${day}"]`);
+        await chip.click();
+        await expect(page.getByTestId("r3-phone-day-body")).toHaveAttribute("data-day", String(day), { timeout: 10_000 });
+        all.push(...(await read()));
+      }
+      return all;
+    }
+    const rows = await read();
+    return rows;
+  };
+  const lines1280 = await nameLines(1280);
+  const lines390 = await nameLines(390);
+  const check = (width: number, rows: Awaited<ReturnType<typeof nameLines>>) => {
+    for (const row of rows) {
+      const split = row.overflowWrap !== "normal" || row.wordBreak !== "normal" || !row.fits;
+      console.log(
+        `[u9-name-lines] w=${width} name="${row.text}" lines=${row.lines} height=${row.height} line_height=${row.lineHeight} overflow_wrap=${row.overflowWrap} word_break=${row.wordBreak} fits=${row.fits}`,
+      );
+      expect(row.lines, `${width}px "${row.text}" stays within two lines`).toBeLessThanOrEqual(2);
+      expect(split, `${width}px "${row.text}" splits no word`).toBe(false);
+    }
+  };
+  check(1280, lines1280);
+  check(390, lines390);
+  expect(lines1280.length).toBe(3);
+  expect(lines390.length).toBe(3);
+  // back to the desktop board for the removal checks that follow
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3&capture=1`);
+  await expect(page.getByTestId("r3-days-board")).toBeVisible({ timeout: 30_000 });
+
   // [u9-remove] [u9-undo] [u9-remove-commit] [u9-remove-second]
   deletes = 0;
   const beforeCount = await page.getByTestId("r3-stop-card").count();

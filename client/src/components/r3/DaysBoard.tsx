@@ -101,10 +101,12 @@ export function DaysBoard({
                     <GripVertical className="mt-0.5 h-3 w-3 shrink-0 text-muted-foreground" aria-hidden="true" />
                     <div className="min-w-0 flex-1">
                       <p className="text-[11px] text-muted-foreground" data-testid="r3-stop-time">{stopTime(stop)}</p>
-                      <div className="flex flex-wrap items-start gap-x-1">
-                        <p className="min-w-0 flex-1 break-words text-[13px] font-medium leading-snug text-foreground" data-testid="r3-stop-name">{String(stop?.name ?? stop?.title ?? "")}</p>
+                      <div className="flex flex-wrap items-start gap-x-1 gap-y-1">
+                        {/* The name keeps at least 70% of the column: a tag that cannot fit beside it drops underneath,
+                            and the name never yields width to it (so it never sets one letter per line). */}
+                        <p className="min-w-[70%] flex-1 break-normal text-[13px] font-medium leading-snug text-foreground" data-testid="r3-stop-name">{String(stop?.name ?? stop?.title ?? "")}</p>
                         {state ? (
-                          <span className="mt-0.5 max-w-full shrink-0 whitespace-normal break-words rounded-full px-1.5 py-0.5 text-left text-[10px] leading-tight" style={{ backgroundColor: "rgba(0,0,0,0.05)", color: BOARD_TEXT }} data-testid="r3-stop-state" data-state={state}>
+                          <span className="mt-0.5 max-w-full shrink-0 whitespace-normal break-normal rounded-full px-1.5 py-0.5 text-left text-[10px] leading-tight" style={{ backgroundColor: "rgba(0,0,0,0.05)", color: BOARD_TEXT }} data-testid="r3-stop-state" data-state={state}>
                             {stopStateTagLabel(state)}
                           </span>
                         ) : null}
