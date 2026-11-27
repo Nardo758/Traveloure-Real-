@@ -635,7 +635,9 @@ jobs:
         run: npx tsx --test --test-force-exit server/__tests__/u8a-first-card-default.test.ts
         env:
           STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+          SESSION_SECRET: "ci-test-secret-not-for-production"
           NODE_ENV: test
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
       - name: Upload the U8a screenshots
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
