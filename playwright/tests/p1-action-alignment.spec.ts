@@ -106,6 +106,10 @@ test("P1 slip cart words and stop-menu ask", async ({ page }) => {
   await page.waitForTimeout(300);
   await page.locator(`[data-testid="item-menu-${itemId}"]`).click();
   await expect(page.locator(`[data-testid="item-menu-ask-local-${itemId}"]`)).toBeVisible();
+  const menu = page.locator('[role="menu"]').last();
+  await expect(menu).toHaveAttribute("data-state", "open");
+  await expect(menu).toHaveCSS("opacity", "1");
+  await page.waitForTimeout(250);
   await maskEmails(page);
   await page.screenshot({ path: path.join(OLD, "menu-390.png"), fullPage: true });
   await expect(page.locator("vite-error-overlay")).toHaveCount(0);
