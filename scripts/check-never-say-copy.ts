@@ -78,8 +78,16 @@ export const GEM_EXEMPTIONS: ReadonlyArray<{
 /**
  * Row P-6 (ledger `2026-11-02-p6-banned-word-sweep`): PayPal is an EARNER payout method. These earner-side payout
  * files may name it; no traveler surface may (row-p6-banned-words T6 asserts no traveler page imports them).
+ *
+ * S5b (ledger `2026-11-27-s5b-never-say-shared-sweep`): `shared/saved-payment-method.ts` is added, and ONLY it. The
+ * module is the payment-method VOCABULARY — `paypal: "PayPal"` is a method's name, not a claim, and the name cannot be
+ * reworded. Every other shared/ file that says "PayPal" still fails, which the self-test pins.
  */
-export const PAYPAL_ALLOWED: readonly RegExp[] = [/^client\/src\/lib\/payout-[^/]+\.ts$/, /^client\/src\/components\/payouts?\//];
+export const PAYPAL_ALLOWED: readonly RegExp[] = [
+  /^client\/src\/lib\/payout-[^/]+\.ts$/,
+  /^client\/src\/components\/payouts?\//,
+  /^shared\/saved-payment-method\.ts$/,
+];
 
 /** Baseline entries kept on purpose, printed on every run so they are never mistaken for debt to shrink. */
 // W22 (Nov 7, 2026): BuildAroundDialog's "ranked by" note is gone with the deleted `autoBody` line.
@@ -126,6 +134,11 @@ function skippedLiteral(node: ts.Node): boolean {
   if (ts.isImportDeclaration(p) || ts.isExportDeclaration(p) || ts.isExternalModuleReference(p) || ts.isLiteralTypeNode(p)) return true;
   if (ts.isImportTypeNode(p.parent ?? p)) return true;
   if ((ts.isPropertyAssignment(p) || ts.isPropertyDeclaration(p) || ts.isPropertySignature(p) || ts.isEnumMember(p)) && p.name === node) return true;
+  // S5b (ledger `2026-11-27-s5b-never-say-shared-sweep`): a string that is the VALUE of a property named `id` is a key,
+  // not copy — the same rule the scanner already applies to a JSX `id` attribute (`SKIP_ATTRIBUTES`). It catches
+  // `{ id: "no crowds", pattern: … }` in `shared/kyoto-gem-copy.ts`, whose ids are filter keys; the same words in a
+  // `label` or `title` are still copy, which the self-test pins both ways.
+  if (ts.isPropertyAssignment(p) && p.initializer === node && nameOf(p.name) === "id") return true;
   if (ts.isElementAccessExpression(p) && p.argumentExpression === node) return true;
   if (ts.isCaseClause(p)) return true;
   if (ts.isBinaryExpression(p)) {
@@ -226,7 +239,10 @@ export function scopeFiles(): string[] {
     ...listFiles("server/seeds", (f) => /\.(ts|json)$/.test(f)),
     ...listFiles("server", (f) => /^server\/seed-[^/]+\.ts$/.test(f)),
     ...listFiles("client/src", (f) => /\.(ts|tsx|json)$/.test(f)),
-    ...listFiles("shared", (f) => /^shared\/expert-hook\.ts$/.test(f)),
+    // S5b (ledger `2026-11-27-s5b-never-say-shared-sweep`): ALL of `shared/`, not `shared/expert-hook.ts` alone. The
+    // scope is widened; the extraction rule is not. `shared/banned-copy.ts` and the `__tests__/` files stay out through
+    // the existing NEVER_SCANNED patterns, not through a new file-wide ignore.
+    ...listFiles("shared", (f) => /\.(ts|tsx|json)$/.test(f)),
     ...listFiles("server/services", (f) => /^server\/services\/[^/]*email[^/]*\.ts$/.test(f)),
   ]);
   return Array.from(files).filter((f) => !NEVER_SCANNED.some((re) => re.test(f))).sort();
@@ -303,6 +319,24 @@ function selfTest(): number {
   expect('P-6 passes "as soon as"', p6("We'll write as soon as it's ready"), []);
   expect("P-6 PayPal on an earner payout file passes", scanCode("client/src/lib/payout-setup.ts", 'const t = "Your PayPal email";'), []);
   expect("P-6 PayPal on a traveler page fails", scanCode("client/src/pages/cart.tsx", 'const t = "Pay with PayPal";').map((h) => h.words), ["paypal"]);
+  // S5b (ledger `2026-11-27-s5b-never-say-shared-sweep`): two narrow additions, each pinned both ways.
+  // (1) `shared/saved-payment-method.ts` may name the payment method, and only that file may: the same string elsewhere
+  // in shared/ still fails. No baseline entry is needed for the method's own name.
+  expect("S5b PayPal on the shared payment-method label passes", scanCode("shared/saved-payment-method.ts", 'const t = "PayPal";'), []);
+  expect("S5b PayPal on another shared file fails", scanCode("shared/blog.ts", 'const t = "Pay with PayPal";').map((h) => h.words), ["paypal"]);
+  // (2) a string that is the VALUE of a property named `id` is a key, not copy — the JSX `id` rule, applied to an object
+  // literal. The id passes and the same words in a `label` still flag, so the rule cannot swallow a whole object.
+  expect(
+    "S5b an `id` property's value is a key, not copy",
+    scanCode("client/src/x.tsx", 'const o = { id: "no crowds", label: "No crowds day" };').map((h) => h.words),
+    ["crowd"],
+  );
+  // The real case: kyoto-gem-copy's three ids carry never-say words and are filter keys, so the file has no copy hits.
+  expect(
+    "S5b kyoto-gem-copy's ids are keys, not copy",
+    scanCode("shared/kyoto-gem-copy.ts", fs.readFileSync(path.join(ROOT, "shared/kyoto-gem-copy.ts"), "utf8")),
+    [],
+  );
   if (failures.length) {
     console.error(`check-never-say-copy --self-test FAILED:\n  ${failures.join("\n  ")}`);
     return 1;
