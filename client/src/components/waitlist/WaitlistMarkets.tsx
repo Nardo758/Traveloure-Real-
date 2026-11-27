@@ -23,7 +23,9 @@ export function WaitlistMarketChips({
   settings: MarketStatusSettings;
 }) {
   return (
-    <div className="flex flex-wrap gap-2" role="group" aria-label="Cities" data-testid={`chips-${idPrefix}-markets`}>
+    <>
+      <p className="text-sm font-medium" data-testid={`text-${idPrefix}-markets-label`}>Which cities?</p>
+      <div className="flex flex-wrap gap-2" role="group" aria-label="Cities" data-testid={`chips-${idPrefix}-markets`}>
       {OPERATING_MARKETS.map((m) => {
         const on = selected.includes(m.marketKey);
         return (
@@ -43,6 +45,7 @@ export function WaitlistMarketChips({
         );
       })}
     </div>
+    </>
   );
 }
 

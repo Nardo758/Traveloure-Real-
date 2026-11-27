@@ -3,6 +3,8 @@
 // consent boxes, honeypot and one POST helper (render-time imports only).
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "wouter";
+import { OPERATING_MARKETS } from "@shared/operating-markets";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -88,10 +90,17 @@ export function ExpertForm({
   }
 
   if (status === "done" && sent) {
+    const marketInfo = OPERATING_MARKETS.find((m) => m.marketKey === market);
+    const applyPath = marketInfo
+      ? `/expert/apply?type=local_expert&city=${encodeURIComponent(marketInfo.cityName)}&country=${encodeURIComponent(marketInfo.country)}`
+      : "/expert/apply?type=local_expert";
     return (
-      <div className="mt-6 space-y-2" role="status" data-testid="text-expert-waitlist-done">
+      <div className="mt-6 space-y-3" role="status" data-testid="text-expert-waitlist-done">
         <h3 className="text-lg font-semibold">{WLB_SIGNUP_COPY.expertDoneHeading}</h3>
         <p>{WLB_SIGNUP_COPY.expertDoneBody(sent.name, sent.email)} {WLB_SIGNUP_COPY.expertPayouts}</p>
+        <Button asChild className="h-auto w-full whitespace-normal px-4 py-3 text-center sm:w-auto">
+          <Link href={applyPath} data-testid="link-expert-apply">Apply as a local expert</Link>
+        </Button>
       </div>
     );
   }
@@ -128,14 +137,6 @@ export function ExpertForm({
             <option key={m.key} value={m.key}>{m.city}</option>
           ))}
         </select>
-      </div>
-      <div className="space-y-1.5">
-        <Label htmlFor="expert-languages">{WLB_SIGNUP_COPY.expertLanguages}</Label>
-        <Input id="expert-languages" maxLength={200} value={draft.languages} onChange={set("languages")} data-testid="input-expert-languages" />
-      </div>
-      <div className="space-y-1.5">
-        <Label htmlFor="expert-link">{WLB_SIGNUP_COPY.expertLink}</Label>
-        <Input id="expert-link" type="url" maxLength={200} value={draft.link} onChange={set("link")} data-testid="input-expert-link" />
       </div>
       <WaitlistMarketChips
         idPrefix="expert"

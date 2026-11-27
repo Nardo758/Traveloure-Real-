@@ -19,7 +19,7 @@ import { AdminLayout } from "@/components/admin-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Download } from "lucide-react";
-import { WaitlistMarketOpenedCard } from "@/components/admin/WaitlistMarketOpenedCard";
+import { WaitlistMarketOpenedAllCard } from "@/components/admin/WaitlistMarketOpenedAllCard";
 import { LIVE_MARKETS_ROUTE } from "@shared/live-markets";
 import { statusSettingsFrom } from "@/lib/waitlist-markets";
 import {
@@ -48,6 +48,7 @@ interface WaitlistEntryRow {
   contactName: string | null;
   businessName: string | null;
   serviceType: string | null;
+  applicationStatus: string | null;
   createdAt: string | null;
   isQa: boolean;
 }
@@ -210,6 +211,7 @@ function WaitlistEntries({ marketQuery }: { marketQuery: string }) {
                   <th className="pr-4 text-left font-medium">Business</th>
                   <th className="pr-4 text-left font-medium">Email</th>
                   <th className="pr-4 text-left font-medium">Category</th>
+                  <th className="pr-4 text-left font-medium">Application</th>
                   <th className="pr-4 text-left font-medium">Source</th>
                   <th className="text-left font-medium">Joined</th>
                 </tr>
@@ -222,6 +224,7 @@ function WaitlistEntries({ marketQuery }: { marketQuery: string }) {
                     <td className="pr-4">{r.businessName ?? ""}</td>
                     <td className="pr-4">{r.email}{r.isQa && <span className="ml-2 text-xs text-muted-foreground">QA</span>}</td>
                     <td className="pr-4">{r.serviceType ?? ""}</td>
+                    <td className="pr-4">{r.applicationStatus ?? "not applied"}</td>
                     <td className="pr-4">{r.source ?? ""}</td>
                     <td>{r.createdAt ?? ""}</td>
                   </tr>
@@ -338,7 +341,7 @@ export default function AdminWaitlist() {
                 />
               </CardContent>
             </Card>
-            <WaitlistMarketOpenedCard statusSettings={statusSettingsFrom(liveMarkets)} />
+            <WaitlistMarketOpenedAllCard />
             <WaitlistSearch />
           </>
         )}

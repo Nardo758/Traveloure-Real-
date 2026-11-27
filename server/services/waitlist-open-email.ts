@@ -19,12 +19,28 @@ export function buildWaitlistOpenEmail(input: {
   cityName: string;
   unsubscribeUrl: string;
   footer: MarketingEmailFooter;
+  role?: "traveler" | "expert" | "provider";
+  status?: string | null;
+  appBaseUrl?: string;
 }): { subject: string; html: string; text: string; unsubscribeUrl: string } | null {
   const city = input.cityName.trim();
   const unsubscribeUrl = input.unsubscribeUrl.trim();
   if (!city || !unsubscribeUrl) return null;
-  const subject = `We're open in ${city}`;
-  const line = `Traveloure is open in ${city}.`;
+  const role = input.role ?? "traveler";
+  const status = input.status == null ? null : String(input.status);
+  const subject = role === "traveler" ? `We're open in ${city}` : `Traveloure is open in ${city}`;
+  const base = (input.appBaseUrl ?? "").replace(/\/$/, "");
+  const target = role === "traveler" ? `${base}/` : role === "expert" ? `${base}/expert/apply?type=local_expert` : `${base}/become-provider`;
+  const line =
+    role === "traveler"
+      ? `Traveloure is open in ${city}. Start a plan: ${target}`
+      : status === "approved"
+        ? `You're live in ${city}.`
+        : status === "pending"
+          ? `We're reviewing your application for ${city}.`
+          : role === "expert"
+            ? `Traveloure is open in ${city}. Apply to join as a local expert: ${target}`
+            : `Traveloure is open in ${city}. List your service: ${target}`;
   const html =
     `<p>${escHtml(line)}</p>` +
     `<p><a href="${escHtml(unsubscribeUrl)}">Unsubscribe from waitlist emails</a></p>`;
@@ -39,6 +55,9 @@ export function buildWaitlistOpenEmail(input: {
 export async function composeWaitlistOpenEmail(input: {
   cityName: string;
   unsubscribeUrl: string;
+  role?: "traveler" | "expert" | "provider";
+  status?: string | null;
+  appBaseUrl?: string;
 }): Promise<{ ok: true; subject: string; html: string; text: string } | { ok: false; reason: string }> {
   const identity = await readMarketingEmailFooter();
   if (!identity.ok) {
@@ -57,7 +76,7 @@ export async function composeWaitlistOpenEmail(input: {
     logMarketingEmailSkip(WAITLIST_OPEN_EMAIL_TYPE, reason);
     return { ok: false, reason };
   }
-  const message = buildWaitlistOpenEmail({ cityName: city, unsubscribeUrl, footer: identity.footer });
+  const message = buildWaitlistOpenEmail({ cityName: city, unsubscribeUrl, footer: identity.footer, role: input.role, status: input.status, appBaseUrl: input.appBaseUrl });
   if (!message) {
     const reason = marketingUnsubscribeSkipReason();
     logMarketingEmailSkip(WAITLIST_OPEN_EMAIL_TYPE, reason);

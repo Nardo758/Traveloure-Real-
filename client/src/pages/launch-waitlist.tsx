@@ -3,15 +3,15 @@
 // Every visible word is Marketing's F1 copy (hand-off Part F), word for word; the blocked line is answer 7 and the
 // supply link label is answer 8. The editor notes, the field mapping and the image briefs are never rendered (no
 // licensed image exists yet, so the page carries none). Both forms post to POST /api/waitlist: the traveler form
-// (email, the OPT-IN consent tick — never required, Launch ruling 1 — trip type, rough month, worry) and the
+// (email, the OPT-IN consent tick â€” never required, Launch ruling 1 â€” trip type, rough month, worry) and the
 // provider form (name, business name, email, type of service, the same tick). The source comes from this page's
 // own URL, checked against the allowlist pattern; a hidden honeypot rides along. The answer is the same whether or
 // not the address was already on the list.
 // LC-1b: the other-city question is an optional free-text note on both forms (WAITLIST_OTHER_CITY_PROMPT).
 // The preset city list is gone. The sign-up stays the launch market. Wedding stays in the trip-type list.
-// 291b (ledger `2026-10-29-waitlist-consent-screens`): both forms draw ONE shared `ConsentBoxes` carrying the role —
-// the first box unchanged (`consent` → launch_waitlist_updates) and a second, never pre-ticked news box
-// (`marketingConsent` → launch_marketing_news). The news box is drawn while WAITLIST_MARKETING_BOX_ENABLED is on
+// 291b (ledger `2026-10-29-waitlist-consent-screens`): both forms draw ONE shared `ConsentBoxes` carrying the role â€”
+// the first box unchanged (`consent` â†’ launch_waitlist_updates) and a second, never pre-ticked news box
+// (`marketingConsent` â†’ launch_marketing_news). The news box is drawn while WAITLIST_MARKETING_BOX_ENABLED is on
 // and its words resolve for the market (row 294). It starts unticked. A market with no words posts
 // `marketingConsent: false`.
 import { trackEvent } from "@/lib/ga4";
@@ -46,7 +46,8 @@ import {
 } from "@shared/launch-waitlist";
 import { TRAVELER_WAITLIST_BUTTON, TRAVELER_WAITLIST_MESSAGE } from "@shared/launch-signup";
 import { LIVE_MARKETS_ROUTE } from "@shared/live-markets";
-import { waitlistProviderApplyInvite } from "@shared/waitlist-apply-invite";
+import { waitlistProviderApplyInvite, providerApplyPath } from "@shared/waitlist-apply-invite";
+import { OPERATING_MARKETS } from "@shared/operating-markets";
 import { waitlistSourceFromSearch, type SignupModeView } from "@/lib/launch-waitlist-view";
 import { ProviderWaitlistResult } from "@/lib/waitlist-apply-done";
 import { arrivalRef } from "@/lib/ready-made-waitlist";
@@ -110,7 +111,7 @@ function ConsentTick({
   checked: boolean;
   onChange: (v: boolean) => void;
 }) {
-  // WAIT-1: the tick covers each market it names — one per-market line each, unchanged words (consent stays per city).
+  // WAIT-1: the tick covers each market it names â€” one per-market line each, unchanged words (consent stays per city).
   return (
     <div className="flex items-start gap-2">
       <Checkbox id={id} checked={checked} onCheckedChange={(v) => onChange(v === true)} data-testid={`checkbox-${id}`} />
@@ -157,7 +158,7 @@ export function ConsentBoxes({
 }: {
   role: WaitlistRole;
   market: string;
-  /** WAIT-1: every market the sign-up names; absent ⇒ [market]. */
+  /** WAIT-1: every market the sign-up names; absent â‡’ [market]. */
   markets?: readonly string[];
   consent: boolean;
   onConsent: (v: boolean) => void;
@@ -191,7 +192,7 @@ function ElsewhereField({ id, value, onChange }: { id: string; value: string; on
   );
 }
 
-/** "You're on the Kyoto waitlist." — the traveler's done line, naming every city joined (HELD for more than one). */
+/** "You're on the Kyoto waitlist." â€” the traveler's done line, naming every city joined (HELD for more than one). */
 export function waitlistTravelerDone(markets: readonly string[]): string {
   const names = markets.map((m) => waitlistCityName(m) ?? m);
   const joined = names.length <= 1 ? names[0] ?? "Kyoto" : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
@@ -212,19 +213,14 @@ function TravelerForm({
   const [markets, setMarkets] = useState<string[]>([launchMarket]);
   const market = markets[0] ?? launchMarket;
   const [email, setEmail] = useState("");
+  const [contactName, setContactName] = useState("");
   const [consent, setConsent] = useState(false);
   const [marketingConsent, setMarketingConsent] = useState(false);
   const marketingOpen = marketingBoxOpen(market);
-  const [tripType, setTripType] = useState<WaitlistTripType | "">("");
-  const [month, setMonth] = useState("");
-  const [year, setYear] = useState("");
-  const [worry, setWorry] = useState("");
   const [otherCity, setOtherCity] = useState("");
   const [homepage, setHomepage] = useState("");
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
-  const thisYear = new Date().getFullYear();
-  const years = [thisYear, thisYear + 1, thisYear + 2];
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -232,19 +228,18 @@ function TravelerForm({
       setError(WAITLIST_EMAIL_ERROR);
       return;
     }
+    if (!contactName.trim()) return;
     setStatus("sending");
     setError(null);
     const r = await postWaitlist({
       role: "traveler",
       email: email.trim(),
+      contactName: contactName.trim(),
       markets,
       consent,
       marketingConsent: marketingOpen && marketingConsent,
       ...(source ? { source } : {}),
       ...(refCode ? { ref: refCode } : {}),
-      ...(tripType ? { tripType } : {}),
-      ...(month && year ? { roughMonth: `${year}-${month}` } : {}),
-      ...(worry.trim() ? { worry: worry.trim() } : {}),
       ...(otherCity.trim() ? { otherCity: otherCity.trim() } : {}),
       ...(homepage ? { homepage } : {}),
     });
@@ -268,6 +263,10 @@ function TravelerForm({
 
   return (
     <form className="mt-6 space-y-5" onSubmit={submit} noValidate data-testid="form-waitlist">
+      <div className="space-y-1.5">
+        <Label htmlFor="waitlist-name">Your name</Label>
+        <Input id="waitlist-name" required autoComplete="name" value={contactName} onChange={(e) => setContactName(e.target.value)} data-testid="input-waitlist-name" />
+      </div>
       <div className="space-y-1.5">
         <Label htmlFor="waitlist-email">Email</Label>
         <Input
@@ -297,57 +296,6 @@ function TravelerForm({
         onMarketingConsent={setMarketingConsent}
         marketingOpen={marketingOpen}
       />
-      <fieldset className="space-y-2">
-        <legend className="text-sm font-medium">What's the trip for?</legend>
-        <div className="flex flex-wrap gap-2">
-          {WAITLIST_TRIP_TYPES.map((t) => (
-            <label
-              key={t.key}
-              className={`cursor-pointer rounded-full border px-3 py-1.5 text-sm ${tripType === t.key ? "border-primary bg-primary/10" : ""}`}
-            >
-              <input
-                type="radio"
-                name="tripType"
-                value={t.key}
-                className="sr-only"
-                checked={tripType === t.key}
-                onChange={() => setTripType(t.key)}
-                data-testid={`radio-trip-type-${t.key}`}
-              />
-              {t.label}
-            </label>
-          ))}
-        </div>
-      </fieldset>
-      <fieldset className="space-y-1.5">
-        <legend className="text-sm font-medium">Rough dates (optional)</legend>
-        <div className="flex gap-2">
-          <select aria-label="Month" className={selectClass} value={month} onChange={(e) => setMonth(e.target.value)} data-testid="select-waitlist-month">
-            <option value="">—</option>
-            {MONTHS.map((m, i) => (
-              <option key={m} value={String(i + 1).padStart(2, "0")}>{m}</option>
-            ))}
-          </select>
-          <select aria-label="Year" className={selectClass} value={year} onChange={(e) => setYear(e.target.value)} data-testid="select-waitlist-year">
-            <option value="">—</option>
-            {years.map((y) => (
-              <option key={y} value={String(y)}>{y}</option>
-            ))}
-          </select>
-        </div>
-        <p className="text-sm text-muted-foreground">Month and year is plenty.</p>
-      </fieldset>
-      <div className="space-y-1.5">
-        <Label htmlFor="waitlist-worry">What worries you most about planning it?</Label>
-        <Textarea
-          id="waitlist-worry"
-          placeholder="Anything, big or small."
-          maxLength={WAITLIST_WORRY_MAX}
-          value={worry}
-          onChange={(e) => setWorry(e.target.value)}
-          data-testid="input-waitlist-worry"
-        />
-      </div>
       <ElsewhereField id="waitlist-city" value={otherCity} onChange={setOtherCity} />
       <Button type="submit" disabled={status === "sending"} data-testid="button-waitlist-join">
         {waitlistJoinButtonLabel(markets)}
@@ -372,7 +320,6 @@ function ProviderForm({
   const [markets, setMarkets] = useState<string[]>([launchMarket]);
   const market = markets[0] ?? launchMarket;
   const [contactName, setContactName] = useState("");
-  const [businessName, setBusinessName] = useState("");
   const [email, setEmail] = useState("");
   const [serviceType, setServiceType] = useState<WaitlistServiceType | "">("");
   const [consent, setConsent] = useState(false);
@@ -399,7 +346,6 @@ function ProviderForm({
       consent,
       marketingConsent: marketingOpen && marketingConsent,
       contactName: contactName.trim(),
-      ...(businessName.trim() ? { businessName: businessName.trim() } : {}),
       serviceType,
       ...(source ? { source } : {}),
       ...(refCode ? { ref: refCode } : {}),
@@ -420,14 +366,22 @@ function ProviderForm({
       liveMarketKeys,
       email,
       contactName,
-      businessName,
       serviceType: serviceType || null,
     });
     const cityName = waitlistCityName(market);
+    const marketInfo = OPERATING_MARKETS.find((m) => m.marketKey === market);
+    const applyPath = marketInfo
+      ? providerApplyPath({
+          city: marketInfo.cityName,
+          country: marketInfo.country,
+          email,
+          serviceType: serviceType || null,
+        })
+      : null;
     const hold = market === "kyoto"
       ? "Thanks, we've got your details. We'll be in touch about joining Traveloure in Kyoto."
       : waitlistOtherCityProviderDone(cityName ?? market);
-    return <ProviderWaitlistResult invite={invite} hold={hold} />;
+    return <ProviderWaitlistResult invite={invite} hold={hold} applyPath={applyPath} city={cityName} />;
   }
 
   return (
@@ -435,10 +389,6 @@ function ProviderForm({
       <div className="space-y-1.5">
         <Label htmlFor="provider-name">Your name</Label>
         <Input id="provider-name" required autoComplete="name" value={contactName} onChange={(e) => setContactName(e.target.value)} data-testid="input-provider-name" />
-      </div>
-      <div className="space-y-1.5">
-        <Label htmlFor="provider-business">Business name (if any)</Label>
-        <Input id="provider-business" autoComplete="organization" value={businessName} onChange={(e) => setBusinessName(e.target.value)} data-testid="input-provider-business" />
       </div>
       <div className="space-y-1.5">
         <Label htmlFor="provider-email">Email</Label>
@@ -577,9 +527,9 @@ export default function LaunchWaitlistPage() {
           </Button>
         </div>
         <p className="mt-6 text-sm">
-          <a href="#providers" className="underline" data-testid="link-waitlist-providers">I'm a Kyoto guide or provider →</a>
-          {" · "}
-          <a href="#experts" className="underline" data-testid="link-waitlist-experts">{WLB_SIGNUP_COPY.expertHeading} →</a>
+          <a href="#providers" className="underline" data-testid="link-waitlist-providers">I'm a Kyoto guide or provider â†’</a>
+          {" Â· "}
+          <a href="#experts" className="underline" data-testid="link-waitlist-experts">{WLB_SIGNUP_COPY.expertHeading} â†’</a>
         </p>
       </header>
 
