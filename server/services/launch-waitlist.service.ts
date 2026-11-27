@@ -17,6 +17,7 @@ import { db } from "../db";
 import { accessAuditLogs } from "@shared/schema";
 import { waitlistUnsubscribeUrl } from "./waitlist-unsubscribe-token";
 import { composeWaitlistOpenEmail } from "./waitlist-open-email";
+import { getAppBaseUrl } from "./email.service";
 import {
   WAITLIST_QA_EMAIL_DOMAIN,
   WAITLIST_SEARCH_LIMIT,
@@ -595,7 +596,12 @@ export async function enqueueMarketOpened(input: { market: string; role: Waitlis
   const role = input.role;
   const city = waitlistCityName(market);
   const recipients = await db.execute(sql`
-    SELECT w.id, w.email
+    SELECT w.id, w.email,
+      CASE COALESCE(w.role, 'traveler')
+        WHEN 'expert' THEN (SELECT f.status FROM local_expert_forms f WHERE lower(f.email) = lower(w.email) ORDER BY f.created_at DESC NULLS LAST LIMIT 1)
+        WHEN 'provider' THEN (SELECT f.status FROM service_provider_forms f WHERE lower(f.email) = lower(w.email) ORDER BY f.created_at DESC NULLS LAST LIMIT 1)
+        ELSE NULL
+      END AS application_status
     FROM launch_waitlist w
     WHERE w.market_slug = ${market}
       AND COALESCE(w.role, 'traveler') = ${role}
@@ -613,7 +619,7 @@ export async function enqueueMarketOpened(input: { market: string; role: Waitlis
   `);
   let enqueued = 0;
   let skipped = 0;
-  for (const raw of recipients.rows as { id: string; email: string }[]) {
+  for (const raw of recipients.rows as { id: string; email: string; application_status?: string | null }[]) {
     const email = normalizeWaitlistEmail(raw.email);
     const dedupeKey = `market-opened-${market}-${role}-${email}`;
     const existing = await db.execute(sql`
@@ -630,6 +636,9 @@ export async function enqueueMarketOpened(input: { market: string; role: Waitlis
     const composed = await composeWaitlistOpenEmail({
       cityName: city,
       unsubscribeUrl: waitlistUnsubscribeUrl(String(raw.id)),
+      role,
+      status: raw.application_status ?? null,
+      appBaseUrl: getAppBaseUrl(),
     });
     if (!composed.ok) {
       skipped += 1;
@@ -658,6 +667,7 @@ export interface WaitlistEntryRow {
   contactName: string | null;
   businessName: string | null;
   serviceType: string | null;
+  applicationStatus: string | null;
   createdAt: string | null;
   isQa: boolean;
 }
@@ -668,6 +678,11 @@ export async function listWaitlistEntries(marketSlug: string | null): Promise<Wa
   const r = await db.execute(sql`
     SELECT w.id, w.email, COALESCE(w.role, 'traveler') AS role, w.market_slug, w.source,
            w.contact_name, w.business_name, w.service_type,
+           CASE COALESCE(w.role, 'traveler')
+             WHEN 'expert' THEN (SELECT f.status FROM local_expert_forms f WHERE lower(f.email) = lower(w.email) ORDER BY f.created_at DESC NULLS LAST LIMIT 1)
+             WHEN 'provider' THEN (SELECT f.status FROM service_provider_forms f WHERE lower(f.email) = lower(w.email) ORDER BY f.created_at DESC NULLS LAST LIMIT 1)
+             ELSE NULL
+           END AS application_status,
            ${isoUtc("w.created_at")} AS created_at,
            ${QA_W} AS is_qa
     FROM launch_waitlist w
@@ -683,6 +698,7 @@ export async function listWaitlistEntries(marketSlug: string | null): Promise<Wa
     contactName: row.contact_name == null ? null : String(row.contact_name),
     businessName: row.business_name == null ? null : String(row.business_name),
     serviceType: row.service_type == null ? null : String(row.service_type),
+    applicationStatus: row.application_status == null ? null : String(row.application_status),
     createdAt: row.created_at == null ? null : String(row.created_at),
     isQa: row.is_qa === true || row.is_qa === "true" || row.is_qa === "t",
   }));

@@ -4,12 +4,17 @@ import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import type { WaitlistApplyInvite } from "@shared/waitlist-apply-invite";
 
-export function ProviderWaitlistResult({ invite, hold }: { invite: WaitlistApplyInvite | null; hold: string }) {
+export function ProviderWaitlistResult({ invite, hold, applyPath, city }: { invite: WaitlistApplyInvite | null; hold: string; applyPath?: string | null; city?: string | null }) {
   if (!invite) {
     return (
-      <p className="mt-6 max-w-full break-words rounded-lg border p-4 text-sm leading-relaxed" role="status" data-testid="text-provider-waitlist-done">
-        {hold}
-      </p>
+      <div className="mt-6 max-w-full rounded-lg border p-4" role="status" data-testid="text-provider-waitlist-done">
+        <p className="break-words text-sm leading-relaxed">{hold}</p>
+        {applyPath && city ? (
+          <Button asChild className="mt-4 h-auto w-full whitespace-normal px-4 py-3 text-center sm:w-auto">
+            <Link href={applyPath} data-testid="link-provider-apply">Apply as a {city} provider</Link>
+          </Button>
+        ) : null}
+      </div>
     );
   }
   return (

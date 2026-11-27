@@ -532,6 +532,11 @@ jobs:
       - if: ${{ !cancelled() }}
         name: Supply registration pins (S-08 S-18 S-19 S-21)
         run: npx tsx --test shared/__tests__/supply-registration.test.ts
+      # S5 (ledger `2026-11-27-s5-r3-surface-flag`, `2026-11-27-s5-qa-domain-boot-guard`): the R3 switch is the exact
+      # string "1" and every other value is off; a production boot with QA_ACCOUNT_EMAIL_DOMAIN set refuses to start.
+      - if: ${{ !cancelled() }}
+        name: S5 flag pins (R3 surface, QA-domain boot guard)
+        run: npx tsx --test shared/__tests__/r3-surface-flag.test.ts shared/__tests__/qa-domain-guard.test.ts
       # LW-1g: the /earn Ready-Made calculator — empty boxes, the rate from the resolver, nothing on bad input,
       # no average/typical wording, hidden without Ready-Made Trips in the launch market.
       - if: ${{ !cancelled() }}

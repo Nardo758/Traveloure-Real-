@@ -48,14 +48,15 @@ test("V2 — the page's source", () => {
 
 test("V3 — the body allowlist and the normalisers", () => {
   const ok = (b: unknown) => waitlistJoinBodySchema.safeParse(b).success;
-  assert.equal(ok({ email: "a@b.co" }), true);
-  assert.equal(ok({ email: "a@b.co", role: "traveler", tripType: "foliage", roughMonth: "2027-11", worry: "crowds" }), true);
-  assert.equal(ok({ email: "a@b.co", marketSlug: "lisbon" }), false, "an unknown key is refused");
-  assert.equal(ok({ email: "nope" }), false);
-  assert.equal(ok({ email: "a@b.co", roughMonth: "2027-13" }), false);
-  assert.equal(ok({ email: "a@b.co", worry: "x".repeat(WAITLIST_WORRY_MAX + 1) }), false);
-  assert.equal(ok({ email: "a@b.co", tripType: "honeymoon" }), false);
-  assert.equal(ok({ email: "a@b.co", contactName: "Aki" }), false, "a traveler may not send provider fields");
+  assert.equal(ok({ email: "a@b.co", contactName: "T" }), true);
+  assert.equal(ok({ email: "a@b.co", role: "traveler", contactName: "T", tripType: "foliage", roughMonth: "2027-11", worry: "crowds" }), true);
+  assert.equal(ok({ email: "a@b.co", marketSlug: "lisbon", contactName: "T" }), false, "an unknown key is refused");
+  assert.equal(ok({ email: "nope", contactName: "T" }), false);
+  assert.equal(ok({ email: "a@b.co", contactName: "T", roughMonth: "2027-13" }), false);
+  assert.equal(ok({ email: "a@b.co", contactName: "T", worry: "x".repeat(WAITLIST_WORRY_MAX + 1) }), false);
+  assert.equal(ok({ email: "a@b.co", contactName: "T", tripType: "honeymoon" }), false);
+  assert.equal(ok({ email: "a@b.co", contactName: "Aki" }), true, "a traveler name is required and stored");
+  assert.equal(ok({ email: "a@b.co", businessName: "Aki" }), false, "a traveler may not send provider fields");
   assert.equal(ok({ email: "a@b.co", role: "provider", contactName: "Aki", serviceType: "guide_planner" }), true);
   assert.equal(ok({ email: "a@b.co", role: "provider", serviceType: "guide_planner" }), false, "provider name is required");
   assert.equal(ok({ email: "a@b.co", role: "provider", contactName: "Aki" }), false, "provider service type is required");
