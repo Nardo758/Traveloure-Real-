@@ -127,7 +127,7 @@ export function PhoneDayBody({
   role?: string | null;
   quotes?: readonly { itineraryItemId?: string | null; lifecycle?: string | null }[];
   hiddenIds?: ReadonlySet<string>;
-  onDetails?: (stop: any, dayLabel: string) => void;
+  onDetails?: (stop: any, dayLabel: string, trigger?: HTMLElement | null) => void;
   onRemove?: (stop: any, dayLabel: string) => void;
 }) {
   const columns = r3Columns(data);
@@ -156,8 +156,9 @@ export function PhoneDayBody({
               <StopMenu
                 role={role}
                 variant="phone"
-                onSelect={(entry) => {
-                  if (entry === "details") onDetails?.(stop, `Day ${openDay}`);
+                stopId={String(stop?.id ?? "")}
+                onSelect={(entry, trigger) => {
+                  if (entry === "details") onDetails?.(stop, `Day ${openDay}`, trigger);
                   else if (entry === "move") setSheetFor(stop);
                   else if (entry === "remove") onRemove?.(stop, `Day ${openDay}`);
                 }}

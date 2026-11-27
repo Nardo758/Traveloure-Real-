@@ -5,7 +5,7 @@
  * drawn at all. No Swap, no Move up, no Move down (cut to r3-phase2-list). Idea cards keep their own inert button.
  */
 import { useEffect, useRef, useState } from "react";
-import { MoreHorizontal, MoreVertical } from "lucide-react";
+import { MoreHorizontal } from "lucide-react";
 import { BOARD_INK, BOARD_LINE, BOARD_TEXT } from "@/components/r3/tokens";
 import { ITEM_MENU_LABELS } from "@/components/plan/ItemRow";
 import { MOVE_STOP_COPY } from "@/lib/move-stop";
@@ -29,11 +29,13 @@ const LABELS: Record<StopMenuEntry, string> = {
 export function StopMenu({
   role,
   variant,
+  stopId,
   onSelect,
 }: {
   role: StopMenuRole;
   variant: "desktop" | "phone";
-  onSelect: (entry: StopMenuEntry) => void;
+  stopId?: string;
+  onSelect: (entry: StopMenuEntry, trigger?: HTMLElement | null) => void;
 }) {
   const entries = stopMenuEntries(role);
   const [open, setOpen] = useState(false);
@@ -96,9 +98,9 @@ export function StopMenu({
         onClick={() => setOpen((o) => !o)}
         className={variant === "phone" ? "w-11 rounded-lg text-muted-foreground" : "mt-0.5 text-muted-foreground"}
         data-testid={variant === "phone" ? "r3-phone-stop-menu" : "r3-stop-menu"}
+        data-stop-id={stopId ?? undefined}
       >
         {variant === "phone" ? <MoreHorizontal className="mx-auto h-4 w-4" /> : <MoreHorizontal className="h-3.5 w-3.5" />}
-        {variant === "desktop" ? null : null}
       </button>
       {open ? (
         <div
@@ -129,7 +131,7 @@ export function StopMenu({
               }
               onClick={() => {
                 setOpen(false);
-                onSelect(entry);
+                onSelect(entry, buttonRef.current);
               }}
             >
               {LABELS[entry]}

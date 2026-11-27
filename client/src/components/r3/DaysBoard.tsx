@@ -37,7 +37,7 @@ export function DaysBoard({
   role?: string | null;
   quotes?: readonly QuoteForState[];
   hiddenIds?: ReadonlySet<string>;
-  onDetails?: (stop: any, dayLabel: string) => void;
+  onDetails?: (stop: any, dayLabel: string, trigger?: HTMLElement | null) => void;
   onRemove?: (stop: any, dayLabel: string) => void;
   onMoveRequested?: (stop: any) => void;
 }) {
@@ -104,8 +104,9 @@ export function DaysBoard({
                     <StopMenu
                       role={role}
                       variant="desktop"
-                      onSelect={(entry: StopMenuEntry) => {
-                        if (entry === "details") onDetails?.(stop, col.label);
+                      stopId={String(stop?.id ?? "")}
+                      onSelect={(entry: StopMenuEntry, trigger) => {
+                        if (entry === "details") onDetails?.(stop, col.label, trigger);
                         else if (entry === "move") setMoveStop(stop);
                         else if (entry === "remove") onRemove?.(stop, col.label);
                       }}

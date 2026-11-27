@@ -5,13 +5,14 @@
  * their source and checked date, the owner-only "Keep this where it is" switch, the existing ask door, and the
  * "asked" note. Nothing priced, no backup, no Ideas, no host, no booking control, no Details or Official site link.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import { BOARD_CELL, BOARD_INK, BOARD_LINE, BOARD_TEXT } from "@/components/r3/tokens";
 import { itemOriginChip } from "@/lib/item-origin";
 import { sheetFactLines } from "@/lib/place-facts";
 import { ItemAskLocalPanel } from "@/components/plan/ItemAskLocalPanel";
-import { SLIP_ASK_EXPERT_LABEL } from "@/lib/slip-item-tools";
+import { ASK_EXPERT_COPY } from "@/lib/ask-expert-copy";
+import { useToast } from "@/hooks/use-toast";
 
 function pinnedTag(dayLabel: string | null): string | null {
   return dayLabel ? `Pinned to ${dayLabel}` : null;
@@ -27,6 +28,8 @@ export function StopSheet({
   role,
   placeFacts,
   askOpen,
+  canAsk,
+  returnFocusTo,
   onAskOpen,
   onAskClose,
   onClose,
@@ -41,12 +44,14 @@ export function StopSheet({
   role: string | null | undefined;
   placeFacts: readonly any[] | undefined;
   askOpen: boolean;
+  canAsk: boolean;
+  returnFocusTo?: HTMLElement | null;
   onAskOpen: () => void;
   onAskClose: () => void;
   onClose: () => void;
   onLockedChange?: (locked: boolean) => void;
 }) {
-  const panelRef = useRef<HTMLDivElement | null>(null);
+  const { toast } = useToast();
   const [locked, setLocked] = useState<boolean>(!!stop?.locked);
   const [busy, setBusy] = useState(false);
 
@@ -97,9 +102,14 @@ export function StopSheet({
       );
       if (!res.ok) throw new Error(String(res.status));
       onLockedChange?.(next);
-    } catch {
-      // The switch snaps back and no copy is invented.
+    } catch (err: any) {
+      // The switch snaps back and says why; a silent snap-back reads as a broken control.
       setLocked(!next);
+      toast({
+        title: "Couldn't change that. Try again.",
+        description: err?.message,
+        variant: "destructive",
+      });
     } finally {
       setBusy(false);
     }
@@ -113,7 +123,6 @@ export function StopSheet({
         onClick={onClose}
       />
       <div
-        ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-label={String(stop?.name ?? "Stop")}
@@ -202,6 +211,7 @@ export function StopSheet({
           </div>
         ) : null}
 
+        {canAsk ? (
         <div className="mt-3 border-t pt-3" style={{ borderColor: BOARD_LINE }}>
           <button
             type="button"
@@ -210,7 +220,7 @@ export function StopSheet({
             onClick={() => setAskOpen(true)}
             data-testid="r3-sheet-ask"
           >
-            {SLIP_ASK_EXPERT_LABEL}
+            {ASK_EXPERT_COPY.button}
           </button>
           {askOpen ? (
             <div className="mt-2" data-testid="r3-sheet-ask-panel">
@@ -222,6 +232,7 @@ export function StopSheet({
             </div>
           ) : null}
         </div>
+        ) : null}
       </div>
     </div>
   );

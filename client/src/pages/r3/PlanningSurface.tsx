@@ -118,8 +118,13 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
   const [hintShown, setHintShown] = useState(true);
   const queryClient = useQueryClient();
   // The approved Move: the same PATCH the old page's move sheet sends. On success the hint goes (first move only).
+  /**
+   * The move sheet already names the day it wants (`stop.dayNumber` after its own override). A stop with no day on it
+   * falls back to the next day, which is what the phone's older "Move" entry has always done.
+   */
   const handleMove = async (stop: any) => {
-    const target = Number(stop?.dayNumber ?? openDay) + 1;
+    const chosen = typeof stop?.dayNumber === "number" ? stop.dayNumber : null;
+    const target = chosen ?? Number(openDay) + 1;
     try {
       const res = await fetch(`/api/trips/${tripId}/itinerary-items/${stop.id}`, {
         method: "PATCH",
@@ -147,6 +152,14 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
   });
   const quotes = quotesData?.quotes ?? [];
   const [sheetFor, setSheetFor] = useState<{ stop: any; dayLabel: string } | null>(null);
+  const sheetTrigger = useRef<HTMLElement | null>(null);
+  // The ask row needs a plan owner AND a city with an expert the door can reach.
+  const { data: expertHelp } = useQuery<{ levels?: Array<{ expertCount?: number }> }>({
+    queryKey: [`/api/trips/${tripId}/expert-help`],
+    enabled: role === "owner" && !waitlist,
+  });
+  const expertCount = (expertHelp?.levels ?? []).reduce((n, l) => n + Number(l?.expertCount ?? 0), 0);
+  const canAsk = role === "owner" && !waitlist && expertCount > 0;
   const [askOpen, setAskOpen] = useState(false);
   const { toast } = useToast();
   const [pendingRemoval, setPendingRemoval] = useState<{ stop: any; dayLabel: string } | null>(null);
@@ -223,8 +236,9 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
     return () => window.removeEventListener("pagehide", onHide);
   }, [tripId]);
 
-  const openSheet = (stop: any, dayLabel: string) => {
+  const openSheet = (stop: any, dayLabel: string, trigger?: HTMLElement | null) => {
     setAskOpen(false);
+    sheetTrigger.current = trigger ?? (document.activeElement as HTMLElement | null);
     setSheetFor({ stop, dayLabel });
   };
   const question = order.find((k) => !answered[k] && !skipped.includes(k)) ?? null;
@@ -357,7 +371,7 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
           hiddenIds={hiddenIds}
           onDetails={openSheet}
           onRemove={requestRemoval}
-          onMoveRequested={(stop) => undefined}
+          onMoveRequested={handleMove}
         />
       ) : null}
           {desktop || phoneTab === "map" ? (
@@ -438,14 +452,17 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
           role={role}
           placeFacts={(data as any)?.placeFacts?.[String(sheetFor.stop.id)]}
           askOpen={askOpen}
+          canAsk={canAsk}
+          returnFocusTo={sheetTrigger.current}
           onAskOpen={() => setAskOpen(true)}
           onAskClose={() => setAskOpen(false)}
           onClose={() => {
             setAskOpen(false);
             setSheetFor(null);
-            // Back to the menu button that opened it (Step 2 item 5).
+            // Back to the very control that opened it (Step 2 item 5), at both widths.
+            const trigger = sheetTrigger.current;
             window.setTimeout(() => {
-              (document.querySelector('[data-testid="r3-stop-menu"]') as HTMLElement | null)?.focus();
+              trigger?.focus();
             }, 0);
           }}
           onLockedChange={() => queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] })}

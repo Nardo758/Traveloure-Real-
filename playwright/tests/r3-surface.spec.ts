@@ -1428,6 +1428,15 @@ test("U9: the stop menu, the stop sheet, undo and the asked-for tags", async ({ 
     quoteGets += 1;
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(quotesPayload) });
   });
+  let expertCountStub = 1;
+  let patchedDays: number[] = [];
+  await page.route("**/api/trips/*/expert-help", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ levels: expertCountStub > 0 ? [{ level: "local", expertCount: expertCountStub }] : [] }),
+    });
+  });
   await page.route("**/api/trips/*/itinerary-items/*/lock", async (route) => {
     puts += 1;
     const body = route.request().postDataJSON() as any;
@@ -1435,8 +1444,14 @@ test("U9: the stop menu, the stop sheet, undo and the asked-for tags", async ({ 
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) });
   });
   await page.route("**/api/trips/*/itinerary-items/*", async (route) => {
-    if (route.request().method() === "DELETE") {
+    const method = route.request().method();
+    if (method === "DELETE") {
       deletes += 1;
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) });
+    }
+    if (method === "PATCH") {
+      const body = route.request().postDataJSON() as any;
+      if (typeof body?.dayNumber === "number") patchedDays.push(body.dayNumber);
       return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) });
     }
     return route.continue();
@@ -1522,7 +1537,13 @@ test("U9: the stop menu, the stop sheet, undo and the asked-for tags", async ({ 
   console.log(`[u9-sheet-keep] owner: switch=1 put=${puts} locked_after=${checkedAfter === "true"} expert: switch=0`);
   expect(checkedAfter).toBe("true");
 
-  // [u9-sheet-ask]
+  // [u9-sheet-ask]: the plan owner AND a city with an expert
+  expertCountStub = 1;
+  await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3&capture=1`);
+  await expect(page.getByTestId("r3-days-board")).toBeVisible({ timeout: 30_000 });
+  await page.getByTestId("r3-stop-menu").first().click();
+  await page.getByTestId("r3-stop-menu-details").click();
+  await expect(page.getByTestId("r3-stop-sheet")).toBeVisible();
   const askRow = await page.getByTestId("r3-sheet-ask").count();
   await page.getByTestId("r3-sheet-ask").click();
   const panelOpens = (await page.getByTestId("r3-sheet-ask-panel").count()) === 1;
@@ -1677,6 +1698,7 @@ test("U9: the stop menu, the stop sheet, undo and the asked-for tags", async ({ 
   // [u9-remove] [u9-undo] [u9-remove-commit] [u9-remove-second]
   deletes = 0;
   const beforeCount = await page.getByTestId("r3-stop-card").count();
+  const idsBeforeRemoval = await page.getByTestId("r3-stop-card").evaluateAll((ns) => ns.map((n) => n.getAttribute("data-stop-id")));
   await page.getByTestId("r3-stop-card").first().getByTestId("r3-stop-menu").click();
   await page.getByTestId("r3-stop-menu-remove").click();
   await expect(page.getByTestId("r3-stop-removed")).toBeVisible({ timeout: 10_000 });
@@ -1690,7 +1712,12 @@ test("U9: the stop menu, the stop sheet, undo and the asked-for tags", async ({ 
 
   await page.getByTestId("r3-stop-undo").click();
   await expect.poll(() => page.getByTestId("r3-stop-card").count(), { timeout: 10_000 }).toBe(beforeCount);
-  console.log(`[u9-undo] restored=1 same_position=true deletes=${deletes}`);
+  const idsAfterUndo = await page.getByTestId("r3-stop-card").evaluateAll((ns) => ns.map((n) => n.getAttribute("data-stop-id")));
+  const restored = idsAfterUndo.length === idsBeforeRemoval.length ? 1 : 0;
+  const samePosition = JSON.stringify(idsAfterUndo) === JSON.stringify(idsBeforeRemoval);
+  console.log(`[u9-undo] restored=${restored} same_position=${samePosition} deletes=${deletes}`);
+  expect(restored).toBe(1);
+  expect(samePosition).toBe(true);
   expect(deletes).toBe(0);
 
   // [u9-remove-commit]: one held removal, sent when its 10 seconds end
@@ -1710,8 +1737,111 @@ test("U9: the stop menu, the stop sheet, undo and the asked-for tags", async ({ 
   await page.getByTestId("r3-stop-card").first().getByTestId("r3-stop-menu").click();
   await page.getByTestId("r3-stop-menu-remove").click();
   await expect.poll(() => deletes, { timeout: 10_000 }).toBe(deletesBeforeSecond + 1);
-  console.log(`[u9-remove-second] first_sent_at_once=true pending=1`);
-  expect(deletes).toBe(deletesBeforeSecond + 1);
+  const banners = await page.getByTestId("r3-stop-removed").count();
+  const firstSentAtOnce = deletes === deletesBeforeSecond + 1;
+  console.log(`[u9-remove-second] first_sent_at_once=${firstSentAtOnce} pending=${banners}`);
+  expect(firstSentAtOnce).toBe(true);
+  expect(banners).toBe(1);
+
+  // [u9-move-1280]: the owner's Move opens the existing sheet and the chosen day is saved
+  patchedDays = [];
+  role = "owner";
+  waitlist = false;
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3&capture=1`);
+  await expect(page.getByTestId("r3-days-board")).toBeVisible({ timeout: 30_000 });
+  const moveStopId = await page.getByTestId("r3-stop-menu").first().getAttribute("data-stop-id");
+  const currentDay = Number(
+    await page
+      .getByTestId("r3-stop-card")
+      .first()
+      .evaluate((el) => el.closest('[data-testid="r3-day-column"]')?.getAttribute("data-day")),
+  );
+  const targetDay = currentDay === 2 ? 3 : 2;
+  await page.getByTestId("r3-stop-menu").first().click();
+  await page.getByTestId("r3-stop-menu-move").click();
+  await expect(page.getByTestId(`move-stop-sheet-${moveStopId}`)).toBeVisible({ timeout: 10_000 });
+  await page.getByTestId(`move-stop-day-${targetDay}`).click();
+  await page.getByTestId("move-stop-confirm").click();
+  await expect.poll(() => patchedDays.length, { timeout: 10_000 }).toBe(1);
+  console.log(`[u9-move-1280] sheet=move-stop-sheet day_saved=${patchedDays[0]} patches=${patchedDays.length}`);
+  expect(patchedDays[0]).toBe(targetDay);
+
+  // [u9-focus]: the sheet returns focus to the button that opened it, at 1280 and 390
+  const focusAt = async (width: number) => {
+    await page.setViewportSize({ width, height: width === 1280 ? 900 : 844 });
+    await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3&capture=1`);
+    if (width === 1280) {
+      await expect(page.getByTestId("r3-days-board")).toBeVisible({ timeout: 30_000 });
+    } else {
+      await expect(page.getByTestId("r3-phone-day-strip")).toBeVisible({ timeout: 30_000 });
+      await page.locator('[data-testid="r3-phone-day-chip"][data-day="1"]').click();
+      await expect(page.getByTestId("r3-phone-stop-menu").nth(1)).toBeVisible({ timeout: 10_000 });
+    }
+    const menu = width === 1280 ? page.getByTestId("r3-stop-menu").nth(1) : page.getByTestId("r3-phone-stop-menu").nth(1);
+    const id = await menu.getAttribute("data-stop-id");
+    await menu.click();
+    await page.getByTestId("r3-stop-menu-details").click();
+    await expect(page.getByTestId("r3-stop-sheet")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("r3-stop-sheet")).toHaveCount(0);
+    const focused = await page.evaluate(() => {
+      const el = document.activeElement as HTMLElement | null;
+      return { id: el?.getAttribute("data-stop-id") ?? null, testid: el?.getAttribute("data-testid") ?? null };
+    });
+    return focused.id === id && focused.testid === (width === 1280 ? "r3-stop-menu" : "r3-phone-stop-menu");
+  };
+  const focus1280 = await focusAt(1280);
+  const focus390 = await focusAt(390);
+  console.log(`[u9-focus] 1280=${focus1280} 390=${focus390} same_stop=true`);
+  expect(focus1280).toBe(true);
+  expect(focus390).toBe(true);
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  // [u9-ask-gate]: no row for an expert viewing the plan, or for an owner in a city with no expert
+  await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3&capture=1`);
+  await expect(page.getByTestId("r3-days-board")).toBeVisible({ timeout: 30_000 });
+  await page.getByTestId("r3-stop-menu").first().click();
+  await page.getByTestId("r3-stop-menu-details").click();
+  await expect(page.getByTestId("r3-stop-sheet")).toBeVisible();
+  const ownerHasExpert = await page.getByTestId("r3-sheet-ask").count();
+  await page.keyboard.press("Escape");
+  expertCountStub = 0;
+  await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3&capture=1`);
+  await expect(page.getByTestId("r3-days-board")).toBeVisible({ timeout: 30_000 });
+  await page.getByTestId("r3-stop-menu").first().click();
+  await page.getByTestId("r3-stop-menu-details").click();
+  await expect(page.getByTestId("r3-stop-sheet")).toBeVisible();
+  const ownerNoExpert = await page.getByTestId("r3-sheet-ask").count();
+  await page.keyboard.press("Escape");
+  expertCountStub = 1;
+  role = "expert";
+  await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3&capture=1`);
+  await expect(page.getByTestId("r3-days-board")).toBeVisible({ timeout: 30_000 });
+  await page.getByTestId("r3-stop-menu").first().click();
+  await page.getByTestId("r3-stop-menu-details").click();
+  await expect(page.getByTestId("r3-stop-sheet")).toBeVisible();
+  const expertViewer = await page.getByTestId("r3-sheet-ask").count();
+  console.log(`[u9-ask-gate] owner_expert=${ownerHasExpert} owner_no_expert=${ownerNoExpert} expert_viewer=${expertViewer}`);
+  expect(ownerHasExpert).toBe(1);
+  expect(ownerNoExpert).toBe(0);
+  expect(expertViewer).toBe(0);
+  await page.keyboard.press("Escape");
+  role = "owner";
+
+  // [u9-state-live]: a withdrawn row first must not outrank the live one
+  quotesPayload = {
+    quotes: [
+      { itineraryItemId: state.firstId, lifecycle: "withdrawn" },
+      { itineraryItemId: state.firstId, lifecycle: "requested" },
+    ],
+  };
+  await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3&capture=1`);
+  await expect(page.getByTestId("r3-days-board")).toBeVisible({ timeout: 30_000 });
+  const liveTag = await page.getByTestId("r3-stop-card").first().getByTestId("r3-stop-state").getAttribute("data-state");
+  console.log(`[u9-state-live] tag=${liveTag} withdrawn_ignored=${liveTag !== "withdrawn"}`);
+  expect(liveTag).toBe("asked");
+  quotesPayload = { quotes: [] };
 
   // [u9-1280]
   await page.setViewportSize({ width: 1280, height: 900 });

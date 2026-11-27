@@ -15,14 +15,19 @@ export interface QuoteForState {
   lifecycle?: string | null;
 }
 
+/** Lifecycles that are over: an old row for this stop must not outrank the live one. */
+const NOT_LIVE = new Set(["withdrawn", "superseded", "declined", "expired"]);
+
 export function stopStateFor(stop: any, quotes: readonly QuoteForState[] | undefined): StopState | null {
   if (stop?.booking) return "booked";
   const id = stop?.id ? String(stop.id) : null;
   if (!id) return null;
-  const mine = (quotes ?? []).find((q) => q?.itineraryItemId && String(q.itineraryItemId) === id);
-  if (!mine) return null;
-  if (mine.lifecycle === "requested") return "asked";
-  if (mine.lifecycle === "quoted") return "quote";
+  const mine = (quotes ?? []).filter(
+    (q) => q?.itineraryItemId && String(q.itineraryItemId) === id && !NOT_LIVE.has(String(q.lifecycle ?? "")),
+  );
+  // The live one wins; `quoted` outranks `requested` when both somehow exist.
+  if (mine.some((q) => q.lifecycle === "quoted")) return "quote";
+  if (mine.some((q) => q.lifecycle === "requested")) return "asked";
   return null;
 }
 
