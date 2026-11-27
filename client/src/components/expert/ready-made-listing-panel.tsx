@@ -355,8 +355,9 @@ export default function ReadyMadeListingPanel({
         )}
       </div>
 
-      {/* Hero — picker only. No free-text URL field: the provenance rule is the UI, not a hint. */}
-      <div style={{ marginBottom: 16 }}>
+      {/* D1 (Leon, Nov 27 2026): the cover is optional - with none stored this block draws nothing at all, label
+          included. A stored hero stays with its Remove; a present hero must still be an Unsplash image. */}
+      <div style={{ display: listing.heroImageUrl ? "block" : "none", marginBottom: 16 }}>
         <span style={label}>Cover photo</span>
         {listing.heroImageUrl ? (
           <div>

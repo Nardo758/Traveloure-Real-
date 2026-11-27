@@ -23,18 +23,34 @@ const FAMILIES = ["gem", "event", "service"] as const;
 type Family = (typeof FAMILIES)[number];
 
 function imageFields() {
-  return ["imageUrl", "image", "serviceImage", "photoUrl", "heroImageUrl"];
+  return ["imageUrl", "image", "serviceImage", "vendorPhoto", "photoUrl", "heroImageUrl"];
 }
 
-function setPhoto(item: any, on: boolean) {
-  if (!item) return;
-  for (const f of imageFields()) {
-    if (on) item[f] = IMG;
-    else if (item[f] !== undefined) item[f] = null;
+/**
+ * Deep walk: whatever nested shape a family arrives in, the card's photo field is one of the image keys. Setting it
+ * everywhere is the only honest way to be sure the tile's own field is the one that changed.
+ */
+function walkSetPhoto(node: any, on: boolean, depth = 0): void {
+  if (!node || typeof node !== "object" || depth > 6) return;
+  if (Array.isArray(node)) {
+    for (const child of node) walkSetPhoto(child, on, depth + 1);
+    return;
   }
-  // the fixture is not the photo the record's credit names, so the record's credit is cleared with it
-  if (on && "imageCredit" in item) item.imageCredit = null;
-  if (on && "photoCredit" in item) item.photoCredit = null;
+  for (const key of Object.keys(node)) {
+    const value = node[key];
+    if (imageFields().includes(key)) {
+      if (on) node[key] = IMG;
+      else if (value !== undefined) node[key] = null;
+    } else if (key === "media" && on) {
+      node[key] = [{ url: IMG }];
+    } else if (key === "media" && !on && value !== undefined) {
+      node[key] = null;
+    } else if (key === "imageCredit" && on) {
+      node[key] = null;
+    } else if (value && typeof value === "object") {
+      walkSetPhoto(value, on, depth + 1);
+    }
+  }
 }
 
 async function stubFeed(page: Page, withPhoto: boolean) {
@@ -44,10 +60,7 @@ async function stubFeed(page: Page, withPhoto: boolean) {
     const sections = ["gems", "events", "services", "recommendations", "externalStubs"];
     for (const key of sections) {
       const list = json?.[key]?.data;
-      const items = Array.isArray(list) ? list : Array.isArray(list?.stubs) ? list.stubs : [];
-      // one item carries the photo (or none do), so both states are visible in the same page
-      items.forEach((it: any, i: number) => setPhoto(it, withPhoto && i === 0));
-      if (Array.isArray(list)) list.forEach((it: any, i: number) => setPhoto(it, withPhoto && i === 0));
+      if (list) walkSetPhoto(list, withPhoto && key !== "recommendations");
     }
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(json) });
   });
@@ -55,6 +68,20 @@ async function stubFeed(page: Page, withPhoto: boolean) {
     const file = path.join(FIXTURES, "d1-photo-a.png");
     await route.fulfill({ status: 200, contentType: "image/png", body: fs.readFileSync(file) });
   });
+}
+
+/** The card fades in; a capture waits until it and its images are fully settled. */
+async function settle(page: Page, card: any) {
+  await expect.poll(() => card.evaluate((el: HTMLElement) => Number(getComputedStyle(el).opacity)), { timeout: 10_000 }).toBe(1);
+  await expect
+    .poll(
+      () =>
+        card.evaluate((el: HTMLElement) =>
+          Array.from(el.querySelectorAll("img")).every((img) => (img as HTMLImageElement).complete),
+        ),
+      { timeout: 10_000 },
+    )
+    .toBe(true);
 }
 
 function cardFor(page: Page, family: Family) {
@@ -88,6 +115,7 @@ for (const width of WIDTHS) {
           continue;
         }
         await card.scrollIntoViewIfNeeded();
+        await settle(page, card);
         await card.screenshot({ path: path.join(OUT, `${family}-${withPhoto ? "photo" : "no-photo"}-${width}.png`) });
       }
       // the recommendation card is no-photo only
@@ -96,6 +124,7 @@ for (const width of WIDTHS) {
         if ((await rec.count()) === 0) missing.push(`recommendation@${width}`);
         else {
           await rec.scrollIntoViewIfNeeded();
+          await settle(page, rec);
           await rec.screenshot({ path: path.join(OUT, `recommendation-no-photo-${width}.png`) });
         }
       }

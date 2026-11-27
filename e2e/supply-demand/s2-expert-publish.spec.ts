@@ -612,7 +612,7 @@ test('S2: ready-made "3 days in Kyoto" build referencing A/B/C', async ({ page }
       await page.waitForTimeout(500);
     }
 
-    // Cover photo — REQUIRED server-side (assertReadyMadeComplete, ready-made.routes.ts) even
+    // Cover photo - OPTIONAL since D1 (Leon, Nov 27 2026); this seed still runs so the publish path is exercised with
     // though the Save/Submit buttons' client-side `dirty` gate does not itself block on it.
     // D1 (Leon, Nov 27 2026): the stock-by-name picker is gone, so this panel offers NO UI path to a cover photo.
     // The seed below is the only way to satisfy the server's hero requirement in this environment.
