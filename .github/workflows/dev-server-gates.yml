@@ -626,6 +626,7 @@ jobs:
         run: |
           EMAIL_SENDS_ENABLED=true EMAIL_TEMPLATE_ALLOWLIST= RATE_LIMIT_LOOPBACK_SKIP= \
           ALLOW_TEST_ACCOUNTS=1 SESSION_COOKIE_INSECURE=1 PORT=5001 NODE_ENV=development \
+          SESSION_SECRET=ci-test-secret-not-for-production STRIPE_SECRET_KEY=sk_test_ci_stub_no_real_calls \
           DATABASE_URL=postgresql://postgres:postgres@localhost:5432/traveloure \
           npx tsx server/index.ts &
           SERVER_PID=$!
