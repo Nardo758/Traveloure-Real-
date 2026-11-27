@@ -659,6 +659,30 @@ jobs:
           path: playwright/dx4-captures/
           retention-days: 14
           if-no-files-found: warn
+      - name: "dx3-server-claims: the expert application carries its picked neighborhoods"
+        id: dx3_server_claims
+        if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
+        run: npx tsx --test --test-force-exit server/__tests__/dx3-claims-with-application.http.test.ts
+        env:
+          JOURNEY_BASE_URL: http://localhost:5000
+          JOURNEY_DB_WRITES_OK: '1'
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      - name: "dx3-claims-with-application: the wizard carries the claims and caps at three"
+        id: dx3_claims_with_application
+        if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
+        run: npx playwright test dx3-claims-with-application --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          CI: 'true'
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      - name: Upload the DX3 screenshots
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: dx3-captures-${{ github.sha }}
+          path: playwright/dx3-captures/
+          retention-days: 14
+          if-no-files-found: warn
       - name: "u8a-payment-methods: the Settings row, the page, and the first-card default at 1280 and 390"
         id: u8a_payment_methods
         if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
