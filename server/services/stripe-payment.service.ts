@@ -58,6 +58,66 @@ export const stripe = new Stripe(getStripeSecretKey() || '', {
 });
 
 /**
+ * R3 U8a (D2, Leon Nov 26 2026): the FIRST saved card becomes the default, and only then. True only when this call set
+ * it. It never creates a customer, never charges, writes no local row and logs no payment-method detail.
+ *
+ * Amendments to ledger `2026-10-21-saved-method-required`: `payment_method.attached` may set this one default; the event
+ * stays record-only in every other respect.
+ */
+export async function defaultFirstSavedMethod(
+  customerId: string,
+  paymentMethodId: string,
+  client: Pick<Stripe, "customers" | "paymentMethods"> = stripe,
+): Promise<boolean> {
+  let customer: Stripe.Customer | Stripe.DeletedCustomer;
+  try {
+    customer = (await client.customers.retrieve(customerId)) as Stripe.Customer | Stripe.DeletedCustomer;
+  } catch (err) {
+    // A customer Stripe says does not exist is a settled answer, not a retryable failure.
+    const code = (err as { code?: string; statusCode?: number })?.code;
+    const status = (err as { statusCode?: number })?.statusCode;
+    if (code === "resource_missing" || status === 404) return false;
+    throw err;
+  }
+  if ((customer as Stripe.DeletedCustomer).deleted) return false;
+  const live = customer as Stripe.Customer;
+  if (live.invoice_settings?.default_payment_method) return false;
+  const list = await client.paymentMethods.list({ customer: customerId, limit: 2 });
+  if (list.data.length !== 1) return false;
+  const only = list.data[0];
+  if (only.id !== paymentMethodId) return false;
+  const mapped = mapStripePaymentMethod(only);
+  if (!savedMethodConfirmsOnClick(mapped)) return false; // D10: saved Apple Pay is never made the default
+  // A throw here is NOT swallowed: the caller answers non-2xx so Stripe retries the delivery.
+  await client.customers.update(customerId, { invoice_settings: { default_payment_method: paymentMethodId } });
+  return true;
+}
+
+/**
+ * The webhook's saved-method branch, as one testable unit: the record log for all three events, and the one amendment
+ * (D2) only for `payment_method.attached`. `claim` defaults to running inline - in production the branch already runs
+ * inside `runUnderWebhookClaim`, so a replay never reaches it.
+ */
+export async function handleSavedMethodEvent(
+  event: Stripe.Event,
+  deps: {
+    client?: Pick<Stripe, "customers" | "paymentMethods">;
+    claim?: <T>(run: () => Promise<T>) => Promise<T>;
+  } = {},
+): Promise<boolean> {
+  const claim = deps.claim ?? (async <T>(run: () => Promise<T>) => run());
+  return claim(async () => {
+    console.info(vaultRecordLogLine(event.type));
+    if (event.type !== "payment_method.attached") return false;
+    const pm = event.data.object as Stripe.PaymentMethod;
+    const customerId = typeof pm.customer === "string" ? pm.customer : (pm.customer?.id ?? null);
+    if (!customerId) return false;
+    return defaultFirstSavedMethod(customerId, pm.id, deps.client ?? stripe);
+  });
+}
+
+
+/**
  * D-51 (ledger `2026-09-16-bundle-partial-settlement`): the `metadata.source` a partial-settlement
  * refund carries, so the `charge.refunded` webhook can tell it from a whole-row refund
  * (`service_booking`) and promote the right record. Stated ONCE; both the issuer and the webhook
@@ -899,7 +959,10 @@ class StripePaymentService {
       // Saved-method events are a record only. They must not fall through into a
       // payment handler, and they must not grow a local card table.
       if (vaultWebhookDisposition(event.type) === "record_only") {
-        console.info(vaultRecordLogLine(event.type));
+        // R3 U8a: one amendment to the record-only ruling. `handleSavedMethodEvent` logs for all three types and, for
+        // `payment_method.attached` only, may set the traveller's first card as the default. It runs inside this claim,
+        // so a replay is skipped and a Stripe failure rethrows into the claim and answers non-2xx for a retry.
+        await handleSavedMethodEvent(event);
         return;
       }
       switch (event.type) {

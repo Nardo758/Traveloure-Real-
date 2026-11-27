@@ -5,7 +5,7 @@
  * `DELETE /api/auth/account`, never logs out and never navigates.
  */
 import { useEffect, useState } from "react";
-import { Redirect, useSearch } from "wouter";
+import { Link, Redirect, useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { BOARD_CELL, BOARD_DANGER, BOARD_INK, BOARD_LINE } from "@/components/r3/tokens";
 import { R3TopBar } from "@/components/r3/TopBar";
@@ -82,6 +82,15 @@ export function R3SettingsPage() {
 
           <div className="border-t" style={{ borderColor: BOARD_LINE }} />
 
+          <Link href="/settings/payment-methods?surface=r3" className="mt-2 block py-2" data-testid="r3-settings-payment-row">
+            <span className="block text-[14px] font-semibold" style={{ color: BOARD_INK }}>
+              Payment methods
+            </span>
+            <span className="block text-[12px] text-muted-foreground">Cards you can pay with in one tap</span>
+          </Link>
+
+          <div className="border-t" style={{ borderColor: BOARD_LINE }} />
+
           <button
             type="button"
             disabled={rowDisabled}
@@ -97,7 +106,7 @@ export function R3SettingsPage() {
         {confirm ? (
           <div
             className="mt-4 rounded-xl border-2 p-4"
-            style={{ ...cardStyle, borderColor: BOARD_DANGER }}
+            style={{ ...cardStyle, borderColor: confirm === "sent" ? BOARD_LINE : BOARD_DANGER }}
             data-testid="r3-settings-confirm"
             data-state={confirm}
           >

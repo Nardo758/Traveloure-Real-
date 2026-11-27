@@ -1056,9 +1056,13 @@ test("U7: Settings and the account-deletion request", async ({ page }) => {
   // [u7-page]
   await page.goto(`${BASE_URL}/settings?surface=r3`);
   await expect(page.getByTestId("r3-settings-page")).toHaveAttribute("data-state", "ready", { timeout: 30_000 });
-  const rows = (await page.getByTestId("r3-settings-email-prefs").count()) + (await page.getByTestId("r3-settings-delete-row").count());
+  // U8a added the Payment methods row between them, so the Settings card now has three rows.
+  const rows =
+    (await page.getByTestId("r3-settings-email-prefs").count()) +
+    (await page.getByTestId("r3-settings-payment-row").count()) +
+    (await page.getByTestId("r3-settings-delete-row").count());
   console.log(`[u7-page] state=ready rows=${rows} confirm=${await page.getByTestId("r3-settings-confirm").count()} posts=${posts} deletes=${deletes}`);
-  expect(rows).toBe(2);
+  expect(rows).toBe(3);
   expect(await page.getByTestId("r3-settings-confirm").count()).toBe(0);
   expect(posts).toBe(0);
   await maskEmails(page);
@@ -1137,4 +1141,217 @@ test("U7: Settings and the account-deletion request", async ({ page }) => {
   await page.evaluate(() => window.scrollTo(0, 0));
   await maskEmails(page);
   await page.screenshot({ path: path.join(OUT_DIR, "u7-settings-390.png"), fullPage: true });
+});
+
+test("U8a: Payment methods in Settings, and the first saved card becomes the default", async ({ page }) => {
+  test.setTimeout(180_000);
+  fs.mkdirSync(OUT_DIR, { recursive: true });
+  let flagReads = 0;
+  let posts = 0;
+  let deletes = 0;
+  let listGets = 0;
+  let listMode: "empty" | "list" | "nodefault" | "unavailable" | "firstcard" = "list";
+  let defaultOn: string | null = "pm_1";
+  let rows = [
+    { id: "pm_1", brand: "visa", last4: "4242", expMonth: 4, expYear: 2029, wallet: null },
+    { id: "pm_2", brand: "mastercard", last4: "4444", expMonth: 8, expYear: 2030, wallet: null },
+  ];
+
+  await page.route("**/api/public/r3-surface**", async (route) => {
+    flagReads += 1;
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ on: true }) });
+  });
+  await page.route("**/api/me/payment-methods**", async (route) => {
+    const method = route.request().method();
+    const url = route.request().url();
+    if (method === "GET" && !url.includes("/default")) {
+      listGets += 1;
+      const body =
+        listMode === "unavailable" ? { available: false, defaultPaymentMethodId: null, methods: [] }
+        : listMode === "empty" ? { available: true, defaultPaymentMethodId: null, methods: [] }
+        : listMode === "firstcard"
+          ? { available: true, defaultPaymentMethodId: listGets > 1 ? "pm_1" : null, methods: [rows[0]] }
+        : { available: true, defaultPaymentMethodId: listMode === "nodefault" ? null : defaultOn, methods: rows };
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+    }
+    if (method === "POST" && url.includes("/default")) {
+      posts += 1;
+      const body = route.request().postDataJSON() as { paymentMethodId?: string };
+      defaultOn = body?.paymentMethodId ?? null;
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) });
+    }
+    if (method === "DELETE") {
+      deletes += 1;
+      const id = url.split("/api/me/payment-methods/")[1] ?? "";
+      rows = rows.filter((r) => r.id !== id);
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) });
+    }
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) });
+  });
+
+  await registerAndSignIn(
+    page.request,
+    { email: `e2e-r3-u8a-${uid()}@example.com`, password: "R3Surface123!", firstName: "Pay", lastName: "Ments" },
+    BASE_URL,
+  );
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  // [u8a-noparam]
+  await page.goto(`${BASE_URL}/settings/payment-methods`);
+  await page.waitForURL("**/profile", { timeout: 30_000 });
+  console.log(`[u8a-noparam] from=/settings/payment-methods to=${new URL(page.url()).pathname} flagreads=${flagReads}`);
+  expect(new URL(page.url()).pathname).toBe("/profile");
+  expect(flagReads).toBe(0);
+
+  // [u8a-flag-off]
+  await page.unroute("**/api/public/r3-surface**");
+  await page.route("**/api/public/r3-surface**", async (route) => {
+    flagReads += 1;
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ on: false }) });
+  });
+  await page.goto(`${BASE_URL}/settings/payment-methods?surface=r3`);
+  await page.waitForURL("**/profile", { timeout: 30_000 });
+  console.log(`[u8a-flag-off] from=/settings/payment-methods?surface=r3 to=${new URL(page.url()).pathname}`);
+  expect(new URL(page.url()).pathname).toBe("/profile");
+
+  await page.unroute("**/api/public/r3-surface**");
+  await page.route("**/api/public/r3-surface**", async (route) => {
+    flagReads += 1;
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ on: true }) });
+  });
+
+  // [u8a-row]
+  await page.goto(`${BASE_URL}/settings?surface=r3`);
+  await expect(page.getByTestId("r3-settings-page")).toHaveAttribute("data-state", "ready", { timeout: 30_000 });
+  const prefs = await page.getByTestId("r3-settings-email-prefs").count();
+  const paymentRow = page.getByTestId("r3-settings-payment-row");
+  const del = await page.getByTestId("r3-settings-delete-row").count();
+  const paymentHref = await paymentRow.getAttribute("href");
+  console.log(`[u8a-row] settings_rows=${prefs + (await paymentRow.count()) + del} order=email,payment,delete href=${paymentHref}`);
+  expect(prefs + (await paymentRow.count()) + del).toBe(3);
+  expect(paymentHref).toBe("/settings/payment-methods?surface=r3");
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OUT_DIR, "u8a-settings-1280.png"), fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OUT_DIR, "u8a-settings-390.png"), fullPage: true });
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  // [u8a-empty]
+  listMode = "empty";
+  await page.goto(`${BASE_URL}/settings/payment-methods?surface=r3`);
+  await expect(page.getByTestId("r3-payment-methods")).toHaveAttribute("data-state", "empty", { timeout: 30_000 });
+  console.log(`[u8a-empty] state=empty rows=${await page.getByTestId("r3-pm-row").count()} empty_line=${await page.getByTestId("r3-pm-empty").count()} add=${await page.getByRole("button", { name: "Add a card" }).count()}`);
+  expect(await page.getByTestId("r3-pm-empty").count()).toBe(1);
+  expect(await page.getByRole("button", { name: "Add a card" }).count()).toBe(1);
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OUT_DIR, "u8a-empty-1280.png"), fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OUT_DIR, "u8a-empty-390.png"), fullPage: true });
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  // [u8a-list]
+  listMode = "list";
+  defaultOn = "pm_1";
+  await page.goto(`${BASE_URL}/settings/payment-methods?surface=r3`);
+  await expect(page.getByTestId("r3-payment-methods")).toHaveAttribute("data-state", "list", { timeout: 30_000 });
+  const listCounts = {
+    rows: await page.getByTestId("r3-pm-row").count(),
+    marks: await page.getByTestId("r3-pm-default").count(),
+    make: await page.getByTestId("r3-pm-make-default").count(),
+    remove: await page.getByTestId("r3-pm-remove").count(),
+    noDefault: await page.getByTestId("r3-pm-no-default").count(),
+  };
+  console.log(`[u8a-list] state=list rows=${listCounts.rows} default_marks=${listCounts.marks} make_default=${listCounts.make} remove=${listCounts.remove} no_default_line=${listCounts.noDefault}`);
+  expect(listCounts.rows).toBe(2);
+  expect(listCounts.marks).toBe(1);
+  expect(listCounts.make).toBe(1);
+  expect(listCounts.remove).toBe(2);
+  expect(listCounts.noDefault).toBe(0);
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OUT_DIR, "u8a-list-1280.png"), fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  const box = await page.getByTestId("r3-payment-methods").boundingBox();
+  const fits = !!box && box.x >= 0 && box.x + box.width <= 390;
+  console.log(`[u8a-390] state=list fits=${fits}`);
+  expect(fits).toBe(true);
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OUT_DIR, "u8a-list-390.png"), fullPage: true });
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  // [u8a-nodefault]
+  listMode = "nodefault";
+  await page.goto(`${BASE_URL}/settings/payment-methods?surface=r3`);
+  await expect(page.getByTestId("r3-payment-methods")).toHaveAttribute("data-state", "list", { timeout: 30_000 });
+  const nd = {
+    rows: await page.getByTestId("r3-pm-row").count(),
+    marks: await page.getByTestId("r3-pm-default").count(),
+    make: await page.getByTestId("r3-pm-make-default").count(),
+    noDefault: await page.getByTestId("r3-pm-no-default").count(),
+  };
+  console.log(`[u8a-nodefault] rows=${nd.rows} default_marks=${nd.marks} make_default=${nd.make} no_default_line=${nd.noDefault}`);
+  expect(nd.marks).toBe(0);
+  expect(nd.make).toBe(2);
+  expect(nd.noDefault).toBe(1);
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OUT_DIR, "u8a-nodefault-1280.png"), fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OUT_DIR, "u8a-nodefault-390.png"), fullPage: true });
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  // [u8a-make-default]
+  listMode = "list";
+  defaultOn = "pm_1";
+  await page.goto(`${BASE_URL}/settings/payment-methods?surface=r3`);
+  await expect(page.getByTestId("r3-payment-methods")).toHaveAttribute("data-state", "list", { timeout: 30_000 });
+  posts = 0;
+  await page.getByTestId("r3-pm-make-default").first().click();
+  await expect.poll(() => posts, { timeout: 10_000 }).toBe(1);
+  await expect(page.getByTestId("r3-pm-row").nth(1).getByTestId("r3-pm-default")).toHaveCount(1);
+  const onRow = await page.getByTestId("r3-pm-row").nth(1).getAttribute("data-default");
+  console.log(`[u8a-make-default] posted=${posts} default_marks=${await page.getByTestId("r3-pm-default").count()} on_row=${onRow === "true" ? 2 : 1}`);
+  expect(onRow).toBe("true");
+
+  // [u8a-remove]
+  deletes = 0;
+  await page.getByTestId("r3-pm-remove").first().click();
+  await expect(page.getByRole("alertdialog")).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText("Default payment method updated")).toHaveCount(0, { timeout: 10_000 });
+  await expect(page.getByText("Remove this payment method?")).toBeVisible();
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OUT_DIR, "u8a-remove-1280.png"), fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OUT_DIR, "u8a-remove-390.png"), fullPage: true });
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.getByTestId("button-confirm-remove-card").click();
+  await expect.poll(() => deletes, { timeout: 10_000 }).toBe(1);
+  await expect.poll(() => page.getByTestId("r3-pm-row").count(), { timeout: 10_000 }).toBe(1);
+  console.log(`[u8a-remove] confirm=1 deleted=${deletes} rows=${await page.getByTestId("r3-pm-row").count()}`);
+
+  // [u8a-first-card]
+  listMode = "firstcard";
+  listGets = 0;
+  rows = [{ id: "pm_1", brand: "visa", last4: "4242", expMonth: 4, expYear: 2029, wallet: null }];
+  await page.goto(`${BASE_URL}/settings/payment-methods?surface=r3`);
+  await expect(page.getByTestId("r3-payment-methods")).toHaveAttribute("data-state", "list", { timeout: 30_000 });
+  await expect.poll(() => page.getByTestId("r3-payment-methods").getAttribute("data-rechecks"), { timeout: 15_000 }).toBe("1");
+  await expect.poll(() => page.getByTestId("r3-pm-default").count(), { timeout: 10_000 }).toBe(1);
+  console.log(`[u8a-first-card] rows=${await page.getByTestId("r3-pm-row").count()} rechecks=${await page.getByTestId("r3-payment-methods").getAttribute("data-rechecks")} default_marks=${await page.getByTestId("r3-pm-default").count()} no_default_line_shown=${await page.getByTestId("r3-pm-no-default").count()}`);
+  expect(await page.getByTestId("r3-pm-no-default").count()).toBe(0);
+
+  // [u8a-unavailable]
+  listMode = "unavailable";
+  await page.goto(`${BASE_URL}/settings/payment-methods?surface=r3`);
+  await expect(page.getByTestId("r3-payment-methods")).toHaveAttribute("data-state", "unavailable", { timeout: 30_000 });
+  console.log(`[u8a-unavailable] state=unavailable add=${await page.getByRole("button", { name: "Add a card" }).count()}`);
+  expect(await page.getByRole("button", { name: "Add a card" }).count()).toBe(0);
 });
