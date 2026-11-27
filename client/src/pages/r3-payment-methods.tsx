@@ -94,7 +94,7 @@ export function R3PaymentMethodsPage() {
 
           {state === "empty" ? (
             <>
-              <p className="text-[13px] text-muted-foreground" data-testid="r3-pm-empty">
+              <p className="mt-3 text-[13px] text-muted-foreground" data-testid="r3-pm-empty">
                 No saved cards yet. Add one to pay in one tap.
               </p>
               <div className="mt-3">
@@ -106,7 +106,7 @@ export function R3PaymentMethodsPage() {
           {state === "list" ? (
             <>
               {showNoDefault ? (
-                <p className="mb-3 text-[12px] text-muted-foreground" data-testid="r3-pm-no-default">
+                <p className="mb-3 mt-3 text-[12px] text-muted-foreground" data-testid="r3-pm-no-default">
                   No default card. Your next payment will ask for card details.
                 </p>
               ) : null}

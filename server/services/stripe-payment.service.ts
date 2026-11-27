@@ -959,12 +959,12 @@ class StripePaymentService {
       // Saved-method events are a record only. They must not fall through into a
       // payment handler, and they must not grow a local card table.
       if (vaultWebhookDisposition(event.type) === "record_only") {
-          // R3 U8a: one amendment to the record-only ruling. `handleSavedMethodEvent` logs for all three types and, for
-          // `payment_method.attached` only, may set the traveller's first card as the default. It runs inside this claim,
-          // so a replay is skipped and a Stripe failure rethrows into the claim and answers non-2xx for a retry.
-          await handleSavedMethodEvent(event);
-          return;
-        }
+        // R3 U8a: one amendment to the record-only ruling. `handleSavedMethodEvent` logs for all three types and, for
+        // `payment_method.attached` only, may set the traveller's first card as the default. It runs inside this claim,
+        // so a replay is skipped and a Stripe failure rethrows into the claim and answers non-2xx for a retry.
+        await handleSavedMethodEvent(event);
+        return;
+      }
       switch (event.type) {
         case 'payment_intent.succeeded':
           await this.handlePaymentSucceeded(event.data.object as Stripe.PaymentIntent);
