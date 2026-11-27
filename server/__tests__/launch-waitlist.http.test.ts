@@ -76,6 +76,9 @@ async function register(email: string): Promise<{ cookie: string; id: string }> 
 }
 
 async function call(method: string, path: string, cookie: string | null, body?: unknown) {
+  if (path === "/api/waitlist" && body && typeof body === "object" && !("role" in body) && !("contactName" in body)) {
+    body = { ...(body as Record<string, unknown>), contactName: "Lw Tester" };
+  }
   const res = await fetch(`${BASE_URL}${path}`, {
     method,
     headers: {
@@ -185,7 +188,7 @@ test("W6 — the body is an allowlist", async () => {
   const email = W_EMAIL("w6");
   assert.equal((await call("POST", "/api/waitlist", null, { email, marketSlug: "lisbon" })).status, 400);
   assert.equal((await call("POST", "/api/waitlist", null, { email, referrerUserId: "u1" })).status, 400);
-  assert.equal((await call("POST", "/api/waitlist", null, { email, contactName: "Not a provider" })).status, 400);
+  assert.equal((await call("POST", "/api/waitlist", null, { email, businessName: "Not a provider" })).status, 400);
   const bad = await call("POST", "/api/waitlist", null, { email: "not-an-email" });
   assert.equal(bad.status, 400);
   assert.equal(bad.json?.error, "Please enter a valid email address.");

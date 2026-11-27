@@ -154,7 +154,8 @@ export const waitlistJoinBodySchema = z
         if (b[k] !== undefined) ctx.addIssue({ code: "custom", path: [k], message: "provider field" });
       }
     } else {
-      for (const k of ["contactName", ...providerFields] as const) {
+      if (!b.contactName) ctx.addIssue({ code: "custom", path: ["contactName"], message: "required" });
+      for (const k of providerFields) {
         if (b[k] !== undefined) ctx.addIssue({ code: "custom", path: [k], message: "provider field" });
       }
       for (const k of expertFields) {
@@ -175,7 +176,7 @@ export const waitlistUnsubscribeBodySchema = z
  * Admin "market opened" body. Market is an operating-market key; role is traveler or provider. WL-B: expert rows are
  * not in this list — the market-opened email has no expert wording, so none is sent to them.
  */
-export const WAITLIST_MARKET_OPENED_ROLES = ["traveler", "provider"] as const;
+export const WAITLIST_MARKET_OPENED_ROLES = ["traveler", "provider", "expert"] as const;
 export type WaitlistMarketOpenedRole = (typeof WAITLIST_MARKET_OPENED_ROLES)[number];
 export const waitlistMarketOpenedBodySchema = z
   .object({

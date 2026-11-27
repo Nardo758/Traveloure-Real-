@@ -101,7 +101,8 @@ describe("M4 — no promise for another city beyond an email when it opens", () 
     }
     assert.ok(PAGE.includes("{waitlistConsentLine(market)}"));
     assert.ok(WAITLIST_TRIP_TYPES.some((t) => t.key === "wedding" && t.label === "Wedding"));
-    assert.ok(PAGE.includes("WAITLIST_TRIP_TYPES.map"));
+    assert.equal(PAGE.includes("WAITLIST_TRIP_TYPES.map"), false, "WL-1 hides the traveler trip-type field");
+    assert.equal(PAGE.includes('data-testid="input-waitlist-worry"'), false, "WL-1 hides the worry box");
   });
 });
 
@@ -121,9 +122,9 @@ describe("M5 — the other city is an optional note, and the sign-up stays one m
     assert.ok(PAGE.includes("checked={marketingConsent} onChange={onMarketingConsent}"), "box 2 is bound to marketingConsent");
     assert.equal((PAGE.match(/const \[marketingConsent, setMarketingConsent\] = useState\(false\);/g) ?? []).length, 2, "box 2 unticked by default");
     assert.equal((PAGE.match(/\n      consent,\n      marketingConsent: marketingOpen && marketingConsent,\n/g) ?? []).length, 2, "each key posted on its own");
-    const parsed = waitlistJoinBodySchema.safeParse({ email: "a@b.co", otherCity: "Lisbon" });
+    const parsed = waitlistJoinBodySchema.safeParse({ email: "a@b.co", contactName: "T", otherCity: "Lisbon" });
     assert.equal(parsed.success, true);
-    const tooLong = waitlistJoinBodySchema.safeParse({ email: "a@b.co", otherCity: "x".repeat(121) });
+    const tooLong = waitlistJoinBodySchema.safeParse({ email: "a@b.co", contactName: "T", otherCity: "x".repeat(121) });
     assert.equal(tooLong.success, false);
   });
 });

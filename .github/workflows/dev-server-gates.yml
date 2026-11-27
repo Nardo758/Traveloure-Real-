@@ -685,6 +685,22 @@ jobs:
           path: playwright/dx3-captures/
           retention-days: 14
           if-no-files-found: warn
+      - name: "wl1-waitlist-simple: three simplified forms and one admin city action"
+        id: wl1_waitlist_simple
+        if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
+        run: npx playwright test wl1-waitlist-simple --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          CI: 'true'
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      - name: Upload the WL-1 screenshots
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: wl1-captures-${{ github.sha }}
+          path: playwright/wl1-captures/
+          retention-days: 14
+          if-no-files-found: warn
       - name: "u8a-payment-methods: the Settings row, the page, and the first-card default at 1280 and 390"
         id: u8a_payment_methods
         if: ${{ !cancelled() && steps.ready.outcome == 'success' }}

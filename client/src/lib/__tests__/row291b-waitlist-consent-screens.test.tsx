@@ -183,7 +183,7 @@ describe("W4 — the posted bodies pass the strict schema", () => {
   it("traveler and provider, box 2 ticked and not", () => {
     for (const marketingConsent of [true, false]) {
       const traveler = {
-        role: "traveler", email: "a@b.co", market: "kyoto", consent: true, marketingConsent,
+        role: "traveler", email: "a@b.co", contactName: "T", market: "kyoto", consent: true, marketingConsent,
         source: "kyoto", ref: "abc", tripType: "wedding", roughMonth: "2027-04", worry: "x", otherCity: "Lisbon",
       };
       const provider = {
@@ -356,7 +356,7 @@ describe("A1 — the market-opened route lives on the admin card only", () => {
         if (!/\.(ts|tsx)$/.test(name)) continue;
         const src = fs.readFileSync(p, "utf8");
         if (src.includes("/api/admin/waitlist/market-opened")) hits.push(path.relative(ROOT, p));
-        if (src.includes("<WaitlistMarketOpenedCard")) cardUsers.push(path.relative(ROOT, p));
+        if (src.includes("<WaitlistMarketOpenedAllCard")) cardUsers.push(path.relative(ROOT, p));
       }
     };
     walk(path.join(ROOT, "client/src"));
