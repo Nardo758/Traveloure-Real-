@@ -613,117 +613,45 @@ test('S2: ready-made "3 days in Kyoto" build referencing A/B/C', async ({ page }
     }
 
     // Cover photo — REQUIRED server-side (assertReadyMadeComplete, ready-made.routes.ts) even
-    // though the Save/Submit buttons' client-side `dirty` gate does not itself block on it, so
-    // this must be driven for real or Submit's 400 is not "the listing wasn't ready", it's "this
-    // harness never tried". Only attempted once (title/plan-type/price alone were never enough
-    // to reach `approved` for a fresh build with no hero).
+    // though the Save/Submit buttons' client-side `dirty` gate does not itself block on it.
+    // D1 (Leon, Nov 27 2026): the stock-by-name picker is gone, so this panel offers NO UI path to a cover photo.
+    // The seed below is the only way to satisfy the server's hero requirement in this environment.
     if (!(await testid(page, 'img-listing-hero').isVisible().catch(() => false))) {
-      const chooseHero = testid(page, 'button-choose-hero');
-      if (await appears(chooseHero, 4000)) {
-        await chooseHero.click().catch(() => {});
-        const modal = testid(page, 'modal-hero-picker');
-        if (await appears(modal, 4000)) {
-          await shot(page, 'S2-readymade', '03b', 'hero-picker-open');
-          const unavailable = testid(page, 'text-hero-unavailable');
-          const option = testid(page, 'button-hero-option');
-          let pickedHero = false;
-          for (let i = 0; i < 10; i++) {
-            if (await unavailable.isVisible().catch(() => false)) break;
-            if (await option.first().isVisible().catch(() => false)) {
-              await option.first().click({ timeout: 3000 }).catch(() => {});
-              await page.waitForTimeout(700);
-              pickedHero = await testid(page, 'img-listing-hero').isVisible().catch(() => false);
-              break;
-            }
-            await page.waitForTimeout(500);
-          }
-          if (!pickedHero) {
-            fileFinding({
-              journey: 'S2',
-              step: 'readymade:hero-unavailable',
-              class: 'SPEC_DIVERGENCE',
-              severity: 'P3',
-              known: null,
-              title: 'Ready-made cover photo could not be set through the real picker — Unsplash is not configured in this environment (HELD:unsplash)',
-              expected:
-                'n/a — this is an environment limit, not a product defect: /api/expert/ready-made/hero-search ' +
-                'correctly answers {ready:false, reason:"unsplash_not_configured"} with no UNSPLASH_ACCESS_KEY set, ' +
-                'and the picker correctly shows text-hero-unavailable rather than faking results (§13)',
-              actual:
-                'button-choose-hero opened modal-hero-picker; no button-hero-option ever became available within 5s ' +
-                'of polling (unavailable banner or empty). assertReadyMadeComplete (ready-made.routes.ts) requires ' +
-                'heroImageUrl + heroImageMeta.photographer, so submit would 400 on "hero" without an unblock — this ' +
-                'attempt is recorded BEFORE the coordinator-authorized R-1 seed below runs, so this finding records ' +
-                'what the real UI actually said.',
-              where: 'server/services/unsplash.service.ts isReady(); client/src/components/expert/ready-made-listing-panel.tsx',
-              evidence: { shot: 'shots/S2-readymade-03b-hero-picker-open.png' },
-              behavioural: true,
-            });
-          }
-          await testid(page, 'button-close-hero-picker').click({ timeout: 2000 }).catch(() => {});
-
-          if (!pickedHero) {
-            // Coordinator decision (Pass 2, R-1 exception — the same class as S1's
-            // identity/business-verification seed and S3's meeting-pin seed): with no
-            // UNSPLASH_ACCESS_KEY AND the object-storage upload path also 503ing in this
-            // environment, there is no UI-reachable way to satisfy assertReadyMadeComplete's
-            // hero requirement here. Seed the exact two columns the gate reads
-            // (hero_image_url, hero_image_meta.photographer — ready-made.routes.ts:540/687) with
-            // a stable test image, logged as its own finding, never silently.
-            await seedReadyMadeHero(rm.id);
-            fileFinding({
-              journey: 'S2',
-              step: 'readymade:seeded-hero',
-              class: 'SPEC_DIVERGENCE',
-              severity: 'P3',
-              known: null,
-              title: 'seeded ready-made hero (HELD:unsplash)',
-              expected: 'n/a — documented R-1 exception, not a UI path; coordinator-authorized for this ready-made only',
-              actual:
-                `UPDATE ready_made_trips SET hero_image_url = <stable test image>, hero_image_meta = ` +
-                `{photographer: '...'} WHERE id = ${rm.id}. Applied only after the real Unsplash picker was driven ` +
-                'and confirmed unavailable (see readymade:hero-unavailable above).',
-              where: 'e2e/supply-demand/lib/db.ts seedReadyMadeHero',
-              evidence: {},
-              behavioural: true,
-            });
-            // The client's `listing` query does not know about a direct DB write — reload so the
-            // panel refetches and `dirty`/Submit recompute against the seeded row.
-            await page.reload();
-            await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
-            // A hard reload resets `rightTab` to its mount default ("add"), NOT the "distribute"
-            // tab this whole listing panel lives under (workspace.tsx: `{rightTab === "distribute"
-            // && (…<ReadyMadeListingPanel/>…)}`, ~5141/5458) — the tab had only been "distribute"
-            // because an EARLIER step in this test clicked it (to reach "Ship to store") and React
-            // state doesn't survive a reload. Without re-selecting it, `button-submit-listing` is
-            // simply not in the DOM post-reload, `isEnabled()` on it resolves to `false`, and — the
-            // actual bug this fixes (found live, run 5sdiqy) — because `submittable` had ALREADY
-            // read `true` from an EARLIER poll (the client button is never gated on the hero, only
-            // on `dirty`), the old `for (…&& !submittable…)` guard below short-circuited and never
-            // re-polled at all, so a stale `submittable=true` drove a `.click()` against a button
-            // that no longer existed — 3 silent timeouts, no `POST …/submit` ever sent, and the row
-            // stayed `draft` with no finding explaining why (`readymade:submit-verify` blamed
-            // "a missing requirement" when the real cause was the hidden tab).
-            const distributeTabAfterReload = testid(page, 'tab-right-distribute');
-            if (await appears(distributeTabAfterReload, 8000)) {
-              await distributeTabAfterReload.click().catch(() => {});
-              await page.waitForTimeout(700);
-            }
-            await shot(page, 'S2-readymade', '03c', 'after-seeded-hero-reload');
-          }
-        }
+      await seedReadyMadeHero(rm.id);
+      fileFinding({
+        journey: 'S2',
+        step: 'readymade:seeded-hero',
+        class: 'SPEC_DIVERGENCE',
+        severity: 'P3',
+        known: null,
+        title: 'seeded ready-made hero (HELD:unsplash)',
+        expected: 'n/a — documented R-1 exception, not a UI path; coordinator-authorized for this ready-made only',
+        actual:
+          `UPDATE ready_made_trips SET hero_image_url = <stable test image>, hero_image_meta = ` +
+          `{photographer: '...'} WHERE id = ${rm.id}. Written directly because D1 removed the stock picker, ` +
+          'so the panel has no way to choose a cover photo at all.',
+        where: 'e2e/supply-demand/lib/db.ts seedReadyMadeHero',
+        evidence: {},
+        behavioural: true,
+      });
+      // The client's `listing` query does not know about a direct DB write — reload so the panel refetches.
+      await page.reload();
+      await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
+      const distributeTabAfterReload = testid(page, 'tab-right-distribute');
+      if (await appears(distributeTabAfterReload, 8000)) {
+        await distributeTabAfterReload.click().catch(() => {});
+        await page.waitForTimeout(700);
       }
-      // Re-check submit-enabled now that a hero may have just been set — UNCONDITIONALLY, not
-      // only `while (!submittable)`: a reload can turn a previously-true reading stale (see the
-      // comment above), so a value from before this block must never be trusted without a fresh
-      // read here.
-      submittable = false;
-      for (let i = 0; i < 10 && !submittable; i++) {
-        submittable = await submitBtn.isEnabled().catch(() => false);
-        if (submittable) break;
-        await page.waitForTimeout(400);
-      }
+      await shot(page, 'S2-readymade', '03c', 'after-seeded-hero-reload');
     }
+    // Re-check submit-enabled UNCONDITIONALLY: a reload can turn a previously-true reading stale.
+    submittable = false;
+    for (let i = 0; i < 10 && !submittable; i++) {
+      submittable = await submitBtn.isEnabled().catch(() => false);
+      if (submittable) break;
+      await page.waitForTimeout(400);
+    }
+
 
     // R-ax (ledger `2026-10-04-ready-made-leg-gate`): the publish gate now needs a confirmed leg with a
     // mode between every pair of consecutive LOCATED stops. Drive the real path first — the engine's

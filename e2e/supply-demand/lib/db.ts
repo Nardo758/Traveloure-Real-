@@ -163,7 +163,7 @@ export async function seedMeetingPin(
  * seedReadyMadeHero — TEST-FIXTURE-ONLY write, R-1 fallback (lead-authorized, coordinator
  * review). `assertReadyMadeComplete` (server/routes/ready-made.routes.ts:687 submit path) requires
  * BOTH `heroImageUrl` and `heroImageMeta.photographer` before a ready-made can be submitted, and
- * the only UI path to either is the Unsplash picker (`GET /api/expert/ready-made/hero-search`),
+ * D1 (Leon, Nov 27 2026) removed the Unsplash picker, so there is no UI path to either any more; this seed is
  * which answers `{ready:false, reason:"unsplash_not_configured"}` with no UNSPLASH_ACCESS_KEY —
  * absent in this environment, and the object-storage upload path also 503s here. This seeds a
  * stable, publicly-resolvable test image URL directly onto the two columns the gate reads, AFTER
