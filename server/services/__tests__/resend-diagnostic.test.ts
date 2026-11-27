@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { diagnoseResendKey } from "../resend-diagnostic";
+import { diagnoseLoadedResendKey, diagnoseResendKey } from "../resend-diagnostic";
 
 const key = "re_fixture_not_a_real_credential";
 const response = (status: number, body: unknown) =>
@@ -86,4 +86,39 @@ test("timeout bounds an uncooperative fetch and response parser", async () => {
     const r = await diagnoseResendKey(key, null, fetcher as typeof fetch, 10);
     assert.equal(r.authentication.state, "timeout");
   }
+});
+
+test("the loaded-key probe fingerprints the key actually used and names its variable, never its value", async () => {
+  const newKey = "re_fixture_new_name_not_a_real_credential";
+  const fp = (v: string) => createHash("sha256").update(v).digest("hex").slice(0, 16);
+  const seen: string[] = [];
+  const ok = (async (_url: unknown, init?: RequestInit) => {
+    seen.push((init?.headers as Record<string, string>).Authorization);
+    return new Response(JSON.stringify({ data: [] }), { status: 200 });
+  }) as typeof fetch;
+
+  const both = await diagnoseLoadedResendKey(null, { TRAVELOURE_RESEND_API_KEY: newKey, RESEND_API_KEY: key }, ok);
+  assert.equal(both.key.source, "TRAVELOURE_RESEND_API_KEY");
+  assert.equal(both.key.fingerprint, fp(newKey));
+  assert.equal(both.authentication.state, "accepted");
+
+  const fallback = await diagnoseLoadedResendKey(null, { RESEND_API_KEY: key }, ok);
+  assert.equal(fallback.key.source, "RESEND_API_KEY");
+  assert.equal(fallback.key.fingerprint, fp(key));
+
+  const neither = await diagnoseLoadedResendKey(null, {}, async () => { throw new Error("unexpected call"); });
+  assert.equal(neither.key.present, false);
+  assert.equal(neither.key.source, null);
+  assert.equal(neither.authentication.state, "missing");
+
+  assert.deepEqual(seen, [`Bearer ${newKey}`, `Bearer ${key}`]);
+  for (const r of [both, fallback, neither]) {
+    assert.ok(!JSON.stringify(r).includes(newKey));
+    assert.ok(!JSON.stringify(r).includes(key));
+  }
+});
+
+test("a directly probed key reports no source unless one is given", async () => {
+  const r = await diagnoseResendKey(key, null, response(200, { data: [] }));
+  assert.equal(r.key.source, null);
 });

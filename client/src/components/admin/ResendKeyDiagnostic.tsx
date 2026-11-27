@@ -37,6 +37,7 @@ export function ResendKeyDiagnostic() {
             <p className="font-medium">{RESEND_AUTH_LABELS[result.authentication.state]}</p>
             <dl className="space-y-1">
               <div><dt className="inline font-medium">Key loaded: </dt><dd className="inline">{result.key.present ? "Yes" : "No"}</dd></div>
+              <div><dt className="inline font-medium">Loaded from: </dt><dd className="inline font-mono" data-testid="resend-key-diagnostic-source">{result.key.source ?? "Not loaded"}</dd></div>
               <div><dt className="inline font-medium">SHA-256 fingerprint: </dt><dd className="inline font-mono">{result.key.fingerprint ?? "Unavailable"}</dd></div>
               <div><dt className="inline font-medium">Surrounding whitespace: </dt><dd className="inline">{result.key.surroundingWhitespace ? "Detected" : "Not detected"}</dd></div>
               <div><dt className="inline font-medium">Surrounding quotes: </dt><dd className="inline">{result.key.surroundingQuotes ? "Detected" : "Not detected"}</dd></div>

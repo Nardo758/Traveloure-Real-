@@ -281,6 +281,7 @@ import {
 } from "../services/platform-concierge-price.service";
 import { sanitizeInput } from "../utils/sanitize";
 import { escHtml } from "../utils/email-escape";
+import { resolveResendKey } from "../services/resend-key";
 import { logger } from "../infrastructure/logger";
 import { hasPaymentOnRecord, NO_PAYMENT_ON_RECORD } from "@shared/payment-on-record";
 import { listAuditLogs, parseAuditLogQuery } from "../services/audit-log-query";
@@ -2846,7 +2847,7 @@ router.get("/api/admin/integration-status", isAuthenticated, async (req, res) =>
       // server/services/fever.service.ts: `!!(accountSid && authToken)`
       fever: { configured: !!(env.IMPACT_ACCOUNT_SID && env.IMPACT_AUTH_TOKEN) },
       // server/services/email.service.ts: requires the Resend key plus a from-address
-      resend: { configured: !!(env.RESEND_API_KEY && (env.EMAIL_FROM_NOREPLY || env.EMAIL_FROM)) },
+      resend: { configured: !!(resolveResendKey(env).key && (env.EMAIL_FROM_NOREPLY || env.EMAIL_FROM)) },
       // Decommissioned (DECISIONS.md ruling 34, 2026-08-05) — never configured regardless of env.
       amadeus: { configured: false },
     };
@@ -7618,7 +7619,7 @@ router.get("/api/admin/system/health", isAuthenticated, async (req, res) => {
       const { getAppBaseUrl, sendEmail } = await import("../services/email.service");
       const appUrl = getAppBaseUrl();
 
-      const apiKey = process.env.RESEND_API_KEY;
+      const apiKey = resolveResendKey().key;
       const from = process.env.EMAIL_FROM_NOREPLY ?? process.env.EMAIL_FROM;
       const replyTo = process.env.EMAIL_REPLY_TO ?? toEmail;
       if (!apiKey) return res.status(502).json({ ok: false, error: "RESEND_API_KEY is not configured" });
@@ -7749,7 +7750,7 @@ router.get("/api/admin/system/health", isAuthenticated, async (req, res) => {
     try {
       let getter = _adminTestEmailHooks.resendGet;
       if (!getter) {
-        const apiKey = process.env.RESEND_API_KEY;
+        const apiKey = resolveResendKey().key;
         if (!apiKey) return res.status(502).json({ ok: false, error: "RESEND_API_KEY is not configured" });
         const { Resend } = await import("resend");
         const client = new Resend(apiKey);

@@ -2,11 +2,16 @@ export type ResendAuthState =
   | "missing" | "malformed" | "accepted" | "sending_only"
   | "invalid" | "rate_limited" | "network_error" | "timeout" | "inconclusive";
 
+/** The environment variable NAMES the server may load its Resend credential from, in order. */
+export type ResendKeySource = "TRAVELOURE_RESEND_API_KEY" | "RESEND_API_KEY";
+
 export interface ResendDiagnostic {
   checkedAt: string;
   buildCommit: string | null;
   key: {
     present: boolean;
+    /** Which variable the loaded credential came from. A name only, never the value. */
+    source: ResendKeySource | null;
     fingerprint: string | null;
     surroundingWhitespace: boolean;
     surroundingQuotes: boolean;

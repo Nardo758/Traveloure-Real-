@@ -106,6 +106,7 @@ import { createCorsMiddleware } from "./middleware/cors-origins";
 import { apexToWwwRedirect } from "./middleware/apex-to-www-redirect";
 import { runBackgroundJob } from "./services/background-job-runner";
 import { jitteredStartupDelay } from "./services/startup-delay";
+import { resolveResendKey } from "./services/resend-key";
 import { getBuildInfo, formatBuildBootLine } from "./services/build-info";
 import { isAdminRole } from "@shared/roles";
 
@@ -246,7 +247,7 @@ app.get("/api/ready", async (_req: Request, res: Response) => {
         : "Stripe key missing (STRIPE_SECRET_KEY_TEST and STRIPE_SECRET_KEY both unset) — payments will fail",
     };
 
-    const resendPresent = Boolean(process.env.RESEND_API_KEY);
+    const resendPresent = Boolean(resolveResendKey().key);
     checks.email = {
       status: resendPresent ? "ok" : "warn",
       message: resendPresent

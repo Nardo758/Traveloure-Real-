@@ -4,7 +4,8 @@
  * Nodemailer/SMTP to Resend per launch-owner decision).
  *
  * Required env:
- *   RESEND_API_KEY       Resend project API key
+ *   TRAVELOURE_RESEND_API_KEY  Resend project API key. RESEND_API_KEY is read only
+ *                        when this is unset (server/services/resend-key.ts).
  *   EMAIL_FROM_NOREPLY   e.g. "Traveloure <no-reply@traveloure.com>"
  *                        (sending domain MUST be verified in Resend dashboard
  *                         for real-user delivery — staging tests "succeed"
@@ -29,6 +30,7 @@
 
 import crypto from "node:crypto";
 import { Resend } from "resend";
+import { resolveResendKey } from "./resend-key";
 import { dispatchMessagingEvent } from "../automations/messaging/runtime";
 import { dispatchMessagingProducer, wrapEmailProviderTransport } from "../automations/messaging/producer-index";
 import { authPasswordResetEmailAutomation } from "../automations/messaging/auth-password-reset-email";
@@ -283,7 +285,7 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
     }
   }
 
-  const apiKey = process.env.RESEND_API_KEY;
+  const apiKey = resolveResendKey().key;
   const explicitReplyTo = typeof params.replyTo === "string" ? params.replyTo.trim() : "";
   const replyTo = explicitReplyTo || process.env.EMAIL_REPLY_TO || "";
 
@@ -1657,7 +1659,7 @@ export type AdminDigestSendResult =
   | { outcome: "not_sent"; reason: string; emailType: "admin_digest_24h" };
 
 export async function sendAdminDigestEmail(params: AdminDigestParams): Promise<AdminDigestSendResult> {
-  if (!process.env.RESEND_API_KEY) {
+  if (!resolveResendKey().key) {
     console.log("[email] RESEND_API_KEY not set — skipping admin digest email");
     return { outcome: "not_sent", reason: "RESEND_API_KEY", emailType: "admin_digest_24h" };
   }
