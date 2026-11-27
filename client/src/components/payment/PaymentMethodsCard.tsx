@@ -9,27 +9,16 @@
  * as plain text, never a fabricated card.
  */
 import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
-import { useToast } from "@/hooks/use-toast";
 import { useSavedPayment, type SavedCard } from "@/hooks/use-saved-payment";
 import { savedPaymentMethodLabel } from "@shared/saved-payment-method";
 import { AddCardDialog } from "@/components/payment/AddCardDialog";
+import { RemovePaymentMethodDialog } from "@/components/payment/RemovePaymentMethodDialog";
+import { usePaymentMethodActions } from "@/hooks/use-payment-method-actions";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { CreditCard, Trash2, Loader2, Check } from "lucide-react";
+import { CreditCard, Trash2, Check } from "lucide-react";
 
 function CardRow({
   card,
@@ -96,45 +85,9 @@ function CardRow({
 }
 
 export function PaymentMethodsCard() {
-  const { toast } = useToast();
-  const { available, methods, defaultPaymentMethodId, isLoading, refresh } = useSavedPayment(true);
+  const { available, methods, defaultPaymentMethodId, isLoading } = useSavedPayment(true);
   const [removeTarget, setRemoveTarget] = useState<SavedCard | null>(null);
-  const [pendingId, setPendingId] = useState<string | null>(null);
-
-  const setDefaultMutation = useMutation({
-    mutationFn: async (paymentMethodId: string) => {
-      setPendingId(paymentMethodId);
-      const res = await apiRequest("POST", "/api/me/payment-methods/default", { paymentMethodId });
-      return res.json();
-    },
-    onSuccess: () => {
-      toast({ title: "Default payment method updated" });
-      refresh();
-    },
-    onError: (err: any) => {
-      toast({ title: "Couldn't update the default payment method", description: err?.message, variant: "destructive" });
-    },
-    onSettled: () => setPendingId(null),
-  });
-
-  const removeMutation = useMutation({
-    mutationFn: async (paymentMethodId: string) => {
-      setPendingId(paymentMethodId);
-      const res = await apiRequest("DELETE", `/api/me/payment-methods/${paymentMethodId}`);
-      return res.json();
-    },
-    onSuccess: () => {
-      toast({ title: "Payment method removed" });
-      refresh();
-    },
-    onError: (err: any) => {
-      toast({ title: "Couldn't remove this payment method", description: err?.message, variant: "destructive" });
-    },
-    onSettled: () => {
-      setPendingId(null);
-      setRemoveTarget(null);
-    },
-  });
+  const { setDefault, remove, pendingId, removing } = usePaymentMethodActions();
 
   return (
     <Card id="payment-methods" className="border border-border scroll-mt-20">
@@ -168,7 +121,7 @@ export function PaymentMethodsCard() {
                 key={card.id}
                 card={card}
                 isDefault={card.id === defaultPaymentMethodId}
-                onSetDefault={() => setDefaultMutation.mutate(card.id)}
+                onSetDefault={() => setDefault(card.id)}
                 onRemove={() => setRemoveTarget(card)}
                 busy={pendingId === card.id}
               />
@@ -177,29 +130,17 @@ export function PaymentMethodsCard() {
         )}
       </CardContent>
 
-      <AlertDialog open={!!removeTarget} onOpenChange={(open) => !open && setRemoveTarget(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Remove this payment method?</AlertDialogTitle>
-            <AlertDialogDescription>
-              {removeTarget
-                ? `${savedPaymentMethodLabel(removeTarget)} will be removed from your account. You can add it again later.`
-                : null}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel data-testid="button-cancel-remove-card">Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => removeTarget && removeMutation.mutate(removeTarget.id)}
-              disabled={removeMutation.isPending}
-              data-testid="button-confirm-remove-card"
-            >
-              {removeMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-              Remove
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <RemovePaymentMethodDialog
+        target={removeTarget}
+        pending={removing}
+        onOpenChange={(open) => !open && setRemoveTarget(null)}
+        onConfirm={() => {
+          if (!removeTarget) return;
+          const id = removeTarget.id;
+          setRemoveTarget(null);
+          remove(id);
+        }}
+      />
     </Card>
   );
 }
