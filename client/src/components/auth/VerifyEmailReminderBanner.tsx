@@ -3,12 +3,15 @@
  * PaymentMethodSetupGate. Shown only to a signed-in account whose `emailVerified` is null.
  */
 import { useState } from "react";
+import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
 import { VERIFY_REMINDER_COPY as T, resendVerification, showVerifyReminder, type ResendOutcome } from "@/lib/verify-reminder";
 
 export function VerifyEmailReminderBanner({ initialOutcome = null }: { initialOutcome?: ResendOutcome | null }) {
   const { user } = useAuth();
+  const [location] = useLocation();
+  const admin = location.startsWith("/admin");
   const [sending, setSending] = useState(false);
   const [outcome, setOutcome] = useState<ResendOutcome | null>(initialOutcome);
   if (!showVerifyReminder(user)) return null;
@@ -20,7 +23,7 @@ export function VerifyEmailReminderBanner({ initialOutcome = null }: { initialOu
   };
 
   return (
-    <div role="status" className="w-full border-b border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-900" data-testid="banner-verify-email">
+    <div role="status" className={`w-full border-b border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-900${admin ? " lg:pl-[220px]" : ""}`} data-testid="banner-verify-email">
       <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-2">
         <span>{T.text}</span>
         <div className="flex flex-wrap items-center gap-3">
