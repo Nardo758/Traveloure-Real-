@@ -3,15 +3,15 @@
 // Every visible word is Marketing's F1 copy (hand-off Part F), word for word; the blocked line is answer 7 and the
 // supply link label is answer 8. The editor notes, the field mapping and the image briefs are never rendered (no
 // licensed image exists yet, so the page carries none). Both forms post to POST /api/waitlist: the traveler form
-// (email, the OPT-IN consent tick â€” never required, Launch ruling 1 â€” trip type, rough month, worry) and the
+// (email, the OPT-IN consent tick — never required, Launch ruling 1 — trip type, rough month, worry) and the
 // provider form (name, business name, email, type of service, the same tick). The source comes from this page's
 // own URL, checked against the allowlist pattern; a hidden honeypot rides along. The answer is the same whether or
 // not the address was already on the list.
 // LC-1b: the other-city question is an optional free-text note on both forms (WAITLIST_OTHER_CITY_PROMPT).
 // The preset city list is gone. The sign-up stays the launch market. Wedding stays in the trip-type list.
-// 291b (ledger `2026-10-29-waitlist-consent-screens`): both forms draw ONE shared `ConsentBoxes` carrying the role â€”
-// the first box unchanged (`consent` â†’ launch_waitlist_updates) and a second, never pre-ticked news box
-// (`marketingConsent` â†’ launch_marketing_news). The news box is drawn while WAITLIST_MARKETING_BOX_ENABLED is on
+// 291b (ledger `2026-10-29-waitlist-consent-screens`): both forms draw ONE shared `ConsentBoxes` carrying the role —
+// the first box unchanged (`consent` → launch_waitlist_updates) and a second, never pre-ticked news box
+// (`marketingConsent` → launch_marketing_news). The news box is drawn while WAITLIST_MARKETING_BOX_ENABLED is on
 // and its words resolve for the market (row 294). It starts unticked. A market with no words posts
 // `marketingConsent: false`.
 import { trackEvent } from "@/lib/ga4";
@@ -111,12 +111,12 @@ function ConsentTick({
   checked: boolean;
   onChange: (v: boolean) => void;
 }) {
-  // WAIT-1: the tick covers each market it names â€” one per-market line each, unchanged words (consent stays per city).
+  // WAIT-1: the tick covers each market it names — one per-market line each, unchanged words (consent stays per city).
   return (
     <div className="flex items-start gap-2">
       <Checkbox id={id} checked={checked} onCheckedChange={(v) => onChange(v === true)} data-testid={`checkbox-${id}`} />
       <div className="text-sm leading-snug">
-        <Label htmlFor={id} className="font-normal" data-testid={`label-${id}`}>{waitlistConsentLine(market)}{alsoMarkets.map((m) => ` ${waitlistConsentLine(m)}`).join("")}</Label>{" "}
+        <Label htmlFor={id} className="font-normal" data-testid={`label-${id}`}>{waitlistConsentLine(market)}{market === "kyoto" ? "." : ""}{alsoMarkets.map((m) => ` ${waitlistConsentLine(m)}`).join("")}</Label>{" "}
         {WAITLIST_CONSENT_PRIVACY_LINK.before}
         <Link href={WAITLIST_CONSENT_PRIVACY_LINK.href} className="underline">{WAITLIST_CONSENT_PRIVACY_LINK.label}</Link>
         {WAITLIST_CONSENT_PRIVACY_LINK.after}
@@ -158,7 +158,7 @@ export function ConsentBoxes({
 }: {
   role: WaitlistRole;
   market: string;
-  /** WAIT-1: every market the sign-up names; absent â‡’ [market]. */
+  /** WAIT-1: every market the sign-up names; absent ⇒ [market]. */
   markets?: readonly string[];
   consent: boolean;
   onConsent: (v: boolean) => void;
@@ -192,7 +192,7 @@ function ElsewhereField({ id, value, onChange }: { id: string; value: string; on
   );
 }
 
-/** "You're on the Kyoto waitlist." â€” the traveler's done line, naming every city joined (HELD for more than one). */
+/** "You're on the Kyoto waitlist." — the traveler's done line, naming every city joined (HELD for more than one). */
 export function waitlistTravelerDone(markets: readonly string[]): string {
   const names = markets.map((m) => waitlistCityName(m) ?? m);
   const joined = names.length <= 1 ? names[0] ?? "Kyoto" : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
@@ -527,9 +527,9 @@ export default function LaunchWaitlistPage() {
           </Button>
         </div>
         <p className="mt-6 text-sm">
-          <a href="#providers" className="underline" data-testid="link-waitlist-providers">I'm a Kyoto guide or provider â†’</a>
-          {" Â· "}
-          <a href="#experts" className="underline" data-testid="link-waitlist-experts">{WLB_SIGNUP_COPY.expertHeading} â†’</a>
+          <a href="#providers" className="underline" data-testid="link-waitlist-providers">I'm a Kyoto guide or provider →</a>
+          {" · "}
+          <a href="#experts" className="underline" data-testid="link-waitlist-experts">{WLB_SIGNUP_COPY.expertHeading} →</a>
         </p>
       </header>
 
@@ -563,7 +563,7 @@ export default function LaunchWaitlistPage() {
       <section id="join" className="mt-12 scroll-mt-28 rounded-xl border p-6" data-testid="section-waitlist-join">
         <h2 className="text-2xl font-semibold">Join the Kyoto list.</h2>
         <p className="mt-3 text-muted-foreground">
-          Traveloure starts in Kyoto. Join the waitlist and tell us about your trip, so it's shaped around trips like yours.
+          Join the waitlist.
         </p>
         <TravelerForm key={launchMarket} source={source} refCode={refCode} launchMarket={launchMarket} settings={settings} />
       </section>

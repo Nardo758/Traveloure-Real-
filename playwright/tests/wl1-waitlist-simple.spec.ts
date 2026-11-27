@@ -10,12 +10,27 @@ const CAPTURES = path.resolve("playwright/wl1-captures");
 fs.mkdirSync(CAPTURES, { recursive: true });
 
 async function mask(page: Page) {
-  await page.addStyleTag({ content: 'input[type="email"], [data-testid="input-waitlist-email"], [data-testid="input-provider-email"], [data-testid="input-expert-email"], [data-testid="sidebar-user-email"] { color: transparent !important; caret-color: transparent !important; }' });
+  await page.addStyleTag({ content: 'input[type="email"], [data-testid="input-waitlist-email"], [data-testid="input-provider-email"], [data-testid="input-expert-email"], [data-testid="sidebar-user-email"] { color: transparent !important; caret-color: transparent !important; } input::placeholder { color: transparent !important; }' });
 }
 
 async function full(page: Page, name: string) {
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.addStyleTag({ content: 'nav[aria-label="Main navigation"] { position: static !important; }' });
+  await page.waitForTimeout(150);
   await mask(page);
   await page.screenshot({ path: path.join(CAPTURES, name), fullPage: true });
+}
+
+async function blankEmails(page: Page) {
+  await page.evaluate(() => {
+    const email = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    const nodes: Text[] = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode as Text);
+    for (const node of nodes) {
+      if (email.test(node.nodeValue ?? "")) node.nodeValue = (node.nodeValue ?? "").replace(email, "");
+    }
+  });
 }
 
 test("WL-1 three forms as full pages at 1280 and 390", async ({ page }) => {
@@ -39,15 +54,11 @@ test("WL-1 three forms as full pages at 1280 and 390", async ({ page }) => {
   const chip = page.locator('[data-testid="chip-waitlist-market-kyoto"]');
   await page.waitForTimeout(800);
   const chip1280 = (await chip.innerText()).trim();
-  await full(page, "form-traveler-1280.png");
-  await full(page, "form-provider-1280.png");
-  await full(page, "form-expert-1280.png");
+  await full(page, "form-page-1280.png");
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForTimeout(300);
-  await full(page, "form-traveler-390.png");
-  await full(page, "form-provider-390.png");
-  await full(page, "form-expert-390.png");
+  await full(page, "form-page-390.png");
   const chip390 = (await chip.innerText()).trim();
   expect(chip390).toBe(chip1280);
 
@@ -77,6 +88,7 @@ test("WL-1 done screens: expert apply and provider apply", async ({ page }) => {
   const expertDone = page.locator('[data-testid="text-expert-waitlist-done"]');
   await expect(expertDone).toBeVisible({ timeout: 30_000 });
   await expect(page.locator('[data-testid="link-expert-apply"]')).toBeVisible();
+  await blankEmails(page);
   await full(page, "done-expert-1280.png");
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForTimeout(300);
@@ -91,6 +103,7 @@ test("WL-1 done screens: expert apply and provider apply", async ({ page }) => {
   const providerDone = page.locator('[data-testid="text-provider-waitlist-done"]');
   await expect(providerDone).toBeVisible({ timeout: 30_000 });
   await expect(page.locator('[data-testid="link-provider-apply"]')).toBeVisible();
+  await blankEmails(page);
   await full(page, "done-provider-1280.png");
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForTimeout(300);
@@ -122,6 +135,7 @@ test("WL-1 admin one city action, table and confirm at 1280 and 390", async ({ p
   await expect(card).toBeVisible({ timeout: 30_000 });
   await card.locator('[data-testid="select-market-opened-all-market"]').selectOption("kyoto");
   await expect(card.locator('[data-testid="text-market-opened-all-counts"]')).toHaveText("1 traveler · 1 expert · 1 provider");
+  await blankEmails(page);
   await full(page, "admin-card-1280.png");
   const table = page.locator('[data-testid="table-waitlist-entries-kyoto"]');
   await expect(table).toBeVisible();
@@ -147,4 +161,32 @@ test("WL-1 admin one city action, table and confirm at 1280 and 390", async ({ p
   });
   await table.locator("..").screenshot({ path: path.join(CAPTURES, "admin-table-390.png") });
   console.log(`[wl1-admin] one_city_action=1 counts_per_role=1 singular=1 table_scroll=1`);
+});
+
+test("WL-1 admin plural counts at 1280 and 390", async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.route("**/api/auth/user", (route) => route.fulfill({
+    status: 200, contentType: "application/json",
+    body: JSON.stringify({ id: "wl1-admin", email: "wl1-admin@example.com", firstName: "WL1", lastName: "Admin", role: "admin", termsAcceptedAt: new Date().toISOString(), privacyAcceptedAt: new Date().toISOString() }),
+  }));
+  await page.route("**/api/public/live-markets", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ markets: [] }) }));
+  const rows = ["traveler", "traveler", "expert", "expert", "provider", "provider"].map((role, i) => ({
+    id: `p${i}`, email: `p${i}@example.com`, role, marketSlug: "kyoto", source: null,
+    contactName: `P${i}`, businessName: null, serviceType: role === "provider" ? "guide_planner" : null,
+    applicationStatus: null, createdAt: null, isQa: false,
+  }));
+  await page.route("**/api/admin/waitlist/entries**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ rows }) }));
+  await page.route(/\/api\/admin\/waitlist(\?.*)?$/, (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ travelers: { total: 2, consented: 2, byTripType: [], bySource: [] }, providers: { total: 2, consented: 2, byServiceType: [] }, qaExcluded: 0, byMarket: [], referrers: [] }) }));
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`${BASE_URL}/admin/waitlist`, { waitUntil: "domcontentloaded" });
+  const card = page.locator('[data-testid="card-waitlist-market-opened-all"]');
+  await expect(card).toBeVisible({ timeout: 30_000 });
+  await card.locator('[data-testid="select-market-opened-all-market"]').selectOption("kyoto");
+  await expect(card.locator('[data-testid="text-market-opened-all-counts"]')).toHaveText("2 travelers · 2 experts · 2 providers");
+  await blankEmails(page);
+  await full(page, "admin-card-plural-1280.png");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(300);
+  await full(page, "admin-card-plural-390.png");
+  console.log(`[wl1-admin-plural] counts_per_role=2 plural=1`);
 });
