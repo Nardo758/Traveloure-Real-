@@ -174,18 +174,10 @@ export default function ReadyMadeListingPanel({
     window.setTimeout(() => { el.style.outline = outline; el.style.outlineOffset = outlineOffset; }, 1600);
   };
 
-  const { data: heroResults, isFetching: heroFetching } = useQuery<{ ready: boolean; reason?: string; results: HeroResult[] }>({
-    queryKey: ["/api/expert/ready-made/hero-search", heroSubmitted],
-    queryFn: async () => {
-      const res = await fetch(`/api/expert/ready-made/hero-search?q=${encodeURIComponent(heroSubmitted)}`, {
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error("Hero search failed");
-      return res.json();
-    },
-    enabled: heroOpen && heroSubmitted.trim().length > 0,
-    staleTime: 5 * 60 * 1000,
-  });
+  // D1 (Leon, Nov 27 2026): the stock-by-name search is GONE. The picker opens on its existing unavailability line and
+  // makes no request, so the only cover this panel can show or clear is the one the listing already stores.
+  const heroResults = { ready: false as const, results: [] as HeroResult[] };
+  const heroFetching = false;
 
   const save = useMutation({
     mutationFn: async (patch: Record<string, unknown>) => {
