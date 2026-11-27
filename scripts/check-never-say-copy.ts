@@ -226,6 +226,7 @@ export function scopeFiles(): string[] {
     ...listFiles("server/seeds", (f) => /\.(ts|json)$/.test(f)),
     ...listFiles("server", (f) => /^server\/seed-[^/]+\.ts$/.test(f)),
     ...listFiles("client/src", (f) => /\.(ts|tsx|json)$/.test(f)),
+    ...listFiles("shared", (f) => /^shared\/expert-hook\.ts$/.test(f)),
     ...listFiles("server/services", (f) => /^server\/services\/[^/]*email[^/]*\.ts$/.test(f)),
   ]);
   return Array.from(files).filter((f) => !NEVER_SCANNED.some((re) => re.test(f))).sort();

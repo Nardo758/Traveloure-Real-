@@ -55,6 +55,7 @@ import { useAskExpert } from "@/lib/use-ask-expert";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { apiRefusalMessage } from "@/lib/api-refusal";
 import { BOOKING_CHECKOUT_HEADING } from "@/lib/checkout-headings";
+import { useBookingActionsShown } from "@/lib/signup-mode";
 import StripeCheckout from "@/components/booking/StripeCheckout";
 import { bookingDisplayStatus } from "@/lib/booking-display-status";
 import { refundedBadgeLabel, refundSummaryLine, type RefundSummary } from "@shared/booking-refund-record";
@@ -805,6 +806,7 @@ function ConfirmationCodeBadge({ code, bookingId }: { code: string; bookingId: s
 
 function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booking: Booking) => void }) {
   const { toast } = useToast();
+  const waitlist = !useBookingActionsShown();
   // CLAUDE.md Locked Decision 40 (lane 3): a BOOKING is one of the three addresses. `/api/my-bookings`
   // reads `service_bookings`, so `booking.id` is exactly the id the start rail resolves — it looks
   // the booking up, confirms the caller is on it, and answers with the OTHER party. No provider
@@ -1254,7 +1256,7 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
               </p>
             )}
             <div className="flex gap-2 mt-2 flex-wrap justify-end">
-              {actionStatus === "payment_pending" && (
+              {actionStatus === "payment_pending" && !waitlist && (
                 <Button
                   size="sm"
                   onClick={async () => {

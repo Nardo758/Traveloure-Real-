@@ -32,6 +32,7 @@ import {
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { usePlanning } from "@/contexts/PlanningContext";
 import { useAuth } from "@/hooks/use-auth";
+import { useBookingActionsShown } from "@/lib/signup-mode";
 import { useToast } from "@/hooks/use-toast";
 import { SEOHead } from "@/components/seo-head";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -166,6 +167,7 @@ export default function PricingPage() {
     "idle" | "checking" | "confirmed" | "pending"
   >(membershipReturn === "success" ? "checking" : "idle");
   const [plusCheckoutPending, setPlusCheckoutPending] = useState(false);
+  const waitlist = !useBookingActionsShown();
 
   const { data: pricing, isLoading, isError } = useQuery<PricingBundle>({
     queryKey: ["/api/pricing"],
@@ -518,7 +520,7 @@ export default function PricingPage() {
                 </li>
               ))}
             </ul>
-            {pricing.plusSalesEnabled ? (
+            {pricing.plusSalesEnabled && !waitlist ? (
               <button
                 onClick={() => void beginPlusCheckout()}
                 disabled={plusCheckoutPending}

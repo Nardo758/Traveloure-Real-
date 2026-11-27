@@ -25,8 +25,8 @@ const ON = { switchOn: true, cityName: "Kyoto", canAsk: true };
 
 test("H1 the strings, word for word", () => {
   assert.equal(EXPERT_HOOK_TITLE, "With local picks");
-  assert.equal(EXPERT_HOOK_OFF_LINE, "With local picks, this day gets notes on timing, crowds and food near its stops.");
-  assert.equal(expertHookOnLine("Kyoto"), "A Kyoto local can add notes on timing, crowds and food near this day’s stops.");
+  assert.equal(EXPERT_HOOK_OFF_LINE, "With local picks, this day gets notes on timing, quieter hours and food near its stops.");
+  assert.equal(expertHookOnLine("Kyoto"), "A Kyoto local can add notes on timing, quieter hours and food near this day's stops.");
   assert.equal(EXPERT_HOOK_BUTTON, "Want a local to tune this day?");
   assert.equal(inSeasonAdditionsLine(3, 2), "3 in-season additions for Day 2");
   assert.equal(inSeasonAdditionsLine(1, 2), "1 in-season addition for Day 2", "singular at one, as the FD-5 teaser line");

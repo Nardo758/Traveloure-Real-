@@ -2422,6 +2422,11 @@ router.post("/api/checkout", isAuthenticated, requireVerifiedEmail("checkout"), 
     try {
       const userId = getUserId(req);
       if (!userId) return res.status(401).json({ success: false, error: "unauthenticated" });
+      // WG-1: no payment starts in traveler waitlist mode. Run before any read or Stripe call.
+      const waitlistGate = await waitlistPurchaseDecisionFor(userId);
+      if (!waitlistGate.allowed) {
+        return res.status(403).json({ code: TRAVELER_WAITLIST, message: TRAVELER_WAITLIST_MESSAGE });
+      }
       const bookingId = String(req.params.id || "");
       const found = await db.execute(sql`
         SELECT id, status, stripe_payment_intent_id, traveler_id
@@ -2487,6 +2492,11 @@ router.post("/api/checkout", isAuthenticated, requireVerifiedEmail("checkout"), 
     try {
       const userId = getUserId(req)!;
       const bookingId = req.params.id;
+      // WG-1: no payment starts in traveler waitlist mode. Run before any read or Stripe call.
+      const waitlistGate = await waitlistPurchaseDecisionFor(userId);
+      if (!waitlistGate.allowed) {
+        return res.status(403).json({ code: TRAVELER_WAITLIST, message: TRAVELER_WAITLIST_MESSAGE });
+      }
       const booking = await storage.getServiceBooking(bookingId);
       if (!booking) {
         return res.status(404).json({ message: "Booking not found or not yours" });
@@ -3557,6 +3567,12 @@ const MEMBERSHIP_CHECKOUT_STATUS: Record<string, number> = {
 router.post("/api/memberships/checkout", isAuthenticated, requireVerifiedEmail("checkout"), async (req, res) => {
   const userId = getUserId(req);
   if (!userId) return res.status(401).json({ message: "Authentication required" });
+
+  // WG-1: Plus is not sold in traveler waitlist mode. Run before parsing the body or calling Stripe.
+  const waitlistGate = await waitlistPurchaseDecisionFor(userId);
+  if (!waitlistGate.allowed) {
+    return res.status(403).json({ code: TRAVELER_WAITLIST, message: TRAVELER_WAITLIST_MESSAGE });
+  }
 
   const parsed = membershipCheckoutBody.safeParse(req.body);
   if (!parsed.success) {

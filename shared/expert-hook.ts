@@ -20,9 +20,9 @@ export const EXPERT_HOOK_CITIES_SETTING = "expert_hook_cities";
 export const EXPERT_HOOK_CITIES_HELP = "Switch a city on by hand, once its expert chooser has someone in it.";
 
 export const EXPERT_HOOK_TITLE = "With local picks";
-export const EXPERT_HOOK_OFF_LINE = "With local picks, this day gets notes on timing, crowds and food near its stops.";
+export const EXPERT_HOOK_OFF_LINE = "With local picks, this day gets notes on timing, quieter hours and food near its stops.";
 export const expertHookOnLine = (cityName: string) =>
-  `A ${cityName} local can add notes on timing, crowds and food near this day’s stops.`;
+  `A ${cityName} local can add notes on timing, quieter hours and food near this day's stops.`;
 export const EXPERT_HOOK_BUTTON = "Want a local to tune this day?";
 /** Singular at one, plural otherwise — the FD-5 teaser line's rule (`localTeaserLine`). */
 export const inSeasonAdditionsLine = (count: number, day: number) =>

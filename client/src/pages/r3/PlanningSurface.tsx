@@ -10,7 +10,7 @@
  * Reuses the plancard DTO the old page already fetches and the app's own theme tokens; it does NOT reuse SlipView's
  * layout. Every string is board text and stays DRAFT until Leon approves it.
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMinWidth } from "@/hooks/use-min-width";
 import { ArrowLeft, MoreHorizontal } from "lucide-react";
 import type { SlipData } from "@/components/plancard/SlipView";
@@ -20,7 +20,12 @@ import { planEyebrowLabel } from "@shared/plan-dates";
 import { DaysBoard } from "@/components/r3/DaysBoard";
 import { OptimizeCard } from "@/components/r3/OptimizeCard";
 import { PhoneDayBody, PhoneDayStrip, PhoneHint, PhoneTabs, type PhoneTab } from "@/components/r3/PhoneDays";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
+import { StopSheet } from "@/components/r3/StopSheet";
+import { BOARD_CELL, BOARD_INK, BOARD_LINE } from "@/components/r3/tokens";
+import { stopStateFor } from "@/lib/r3-stop-state";
+import { apiRequest } from "@/lib/queryClient";
 import { DaysMapPanel } from "@/components/plan/DaysMapPanel";
 import { r3Columns, r3IdeaCount, r3MapCounts, r3Stops } from "@/lib/r3-surface";
 import { daysMapCountLine } from "@/lib/days-map";
@@ -113,8 +118,13 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
   const [hintShown, setHintShown] = useState(true);
   const queryClient = useQueryClient();
   // The approved Move: the same PATCH the old page's move sheet sends. On success the hint goes (first move only).
+  /**
+   * The move sheet already names the day it wants (`stop.dayNumber` after its own override). A stop with no day on it
+   * falls back to the next day, which is what the phone's older "Move" entry has always done.
+   */
   const handleMove = async (stop: any) => {
-    const target = Number(stop?.dayNumber ?? openDay) + 1;
+    const chosen = typeof stop?.dayNumber === "number" ? stop.dayNumber : null;
+    const target = chosen ?? Number(openDay) + 1;
     try {
       const res = await fetch(`/api/trips/${tripId}/itinerary-items/${stop.id}`, {
         method: "PATCH",
@@ -131,6 +141,113 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
     }
   };
   const [skipped, setSkipped] = useState<NextQuestionKey[]>([]);
+
+  // R3 U9: role and the one "asked for" source. Quotes are read once per page, owners only, never in waitlist mode.
+  const role = (data as any)?.tripRole as string | null | undefined;
+  const waitlist = (data as any)?.optimizerWaitlist === true;
+  const quotesEnabled = role === "owner" && !waitlist;
+  const { data: quotesData } = useQuery<{ quotes?: Array<{ itineraryItemId?: string | null; lifecycle?: string | null }> }>({
+    queryKey: ["/api/me/quotes"],
+    enabled: quotesEnabled,
+  });
+  const quotes = quotesData?.quotes ?? [];
+  const [sheetFor, setSheetFor] = useState<{ stop: any; dayLabel: string } | null>(null);
+  const sheetTrigger = useRef<{ id: string; phone: boolean; el: HTMLElement | null } | null>(null);
+  // The ask row needs a plan owner AND a city with an expert the door can reach.
+  const { data: expertHelp } = useQuery<{ levels?: Array<{ expertCount?: number }> }>({
+    queryKey: [`/api/trips/${tripId}/expert-help`],
+    enabled: role === "owner" && !waitlist,
+  });
+  const expertCount = (expertHelp?.levels ?? []).reduce((n, l) => n + Number(l?.expertCount ?? 0), 0);
+  const canAsk = role === "owner" && !waitlist && expertCount > 0;
+  const [askOpen, setAskOpen] = useState(false);
+  const { toast } = useToast();
+  const [pendingRemoval, setPendingRemoval] = useState<{ stop: any; dayLabel: string } | null>(null);
+  const [hiddenIds, setHiddenIds] = useState<ReadonlySet<string>>(new Set());
+  const removalTimer = useRef<number | null>(null);
+  const removalRef = useRef<{ stop: any; dayLabel: string } | null>(null);
+
+  const commitRemoval = (target?: { stop: any; dayLabel: string } | null) => {
+    const item = target ?? removalRef.current;
+    if (!item) return;
+    if (removalTimer.current) window.clearTimeout(removalTimer.current);
+    removalTimer.current = null;
+    removalRef.current = null;
+    setPendingRemoval(null);
+    void (async () => {
+      try {
+        await apiRequest("DELETE", `/api/trips/${tripId}/itinerary-items/${String(item.stop.id)}`);
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+        setHiddenIds((prev) => {
+          const next = new Set(prev);
+          next.delete(String(item.stop.id));
+          return next;
+        });
+      } catch (err: any) {
+        // The stop comes back and the old slip's sentence shows.
+        setHiddenIds((prev) => {
+          const next = new Set(prev);
+          next.delete(String(item.stop.id));
+          return next;
+        });
+        // The stamped sentence only; the raw error goes to the console.
+        console.error("[r3-stop-remove]", err);
+        toast({ title: "Couldn't remove that", variant: "destructive" });
+      }
+    })();
+  };
+
+  const requestRemoval = (stop: any, dayLabel: string) => {
+    if (removalRef.current) commitRemoval(removalRef.current);
+    const item = { stop, dayLabel };
+    removalRef.current = item;
+    setPendingRemoval(item);
+    setHiddenIds((prev) => new Set(prev).add(String(stop.id)));
+    removalTimer.current = window.setTimeout(() => commitRemoval(item), 10_000);
+  };
+
+  const undoRemoval = () => {
+    if (!removalRef.current) return;
+    if (removalTimer.current) window.clearTimeout(removalTimer.current);
+    removalTimer.current = null;
+    const item = removalRef.current;
+    removalRef.current = null;
+    setPendingRemoval(null);
+    setHiddenIds((prev) => {
+      const next = new Set(prev);
+      next.delete(String(item.stop.id));
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    const onHide = () => {
+      const item = removalRef.current;
+      if (!item) return;
+      try {
+        void fetch(`/api/trips/${tripId}/itinerary-items/${String(item.stop.id)}`, {
+          method: "DELETE",
+          credentials: "same-origin",
+          keepalive: true,
+        });
+      } catch {
+        // Leaving the page is best-effort.
+      }
+    };
+    window.addEventListener("pagehide", onHide);
+    return () => window.removeEventListener("pagehide", onHide);
+  }, [tripId]);
+
+  const openSheet = (stop: any, dayLabel: string, trigger?: HTMLElement | null) => {
+    setAskOpen(false);
+    const el = trigger ?? (document.activeElement as HTMLElement | null);
+    sheetTrigger.current = {
+      id: String(stop?.id ?? ""),
+      phone: el?.getAttribute("data-testid") === "r3-phone-stop-menu",
+      el,
+    };
+    setSheetFor({ stop, dayLabel });
+  };
   const question = order.find((k) => !answered[k] && !skipped.includes(k)) ?? null;
   const copy = question ? NEXT_QUESTION_COPY[question] : null;
 
@@ -167,7 +284,7 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
   );
 
   return (
-    <div className="mx-auto max-w-[1152px] px-4 py-6" data-testid="r3-surface" data-r3-part="p0">
+    <div className="mx-auto max-w-[1152px] px-4 py-6 pb-24" data-testid="r3-surface" data-removing={pendingRemoval ? "true" : undefined} data-r3-part="p0">
       <header className={desktop ? "flex items-start justify-between gap-4" : "space-y-2"}>
         {desktop ? (
           <>
@@ -239,11 +356,31 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
           <>
             <PhoneDayStrip data={data} openDay={openDay} onOpen={setOpenDay} ideas={ideas} />
             <PhoneHint show={hintShown && openDay >= 1 && (columns.find((c) => c.day === openDay)?.stops.length ?? 0) > 0} />
-            <PhoneDayBody data={data} openDay={openDay} onMoveRequested={handleMove} hasDates={!!trip?.startDate && !!trip?.endDate} />
+            <PhoneDayBody
+          data={data}
+          openDay={openDay}
+          onMoveRequested={handleMove}
+          hasDates={!!trip?.startDate && !!trip?.endDate}
+          role={role}
+          quotes={quotes}
+          hiddenIds={hiddenIds}
+          onDetails={openSheet}
+          onRemove={requestRemoval}
+        />
           </>
         ) : null}
         <div className={desktop ? "flex items-start gap-3" : "mt-3 flex flex-col gap-3"}>
-          {desktop ? <DaysBoard data={data} /> : null}
+          {desktop ? (
+        <DaysBoard
+          data={data}
+          role={role}
+          quotes={quotes}
+          hiddenIds={hiddenIds}
+          onDetails={openSheet}
+          onRemove={requestRemoval}
+          onMoveRequested={handleMove}
+        />
+      ) : null}
           {desktop || phoneTab === "map" ? (
           <div className="min-w-0 flex-1" data-testid="r3-map">
             {/* ONE chrome row (board V1): All days, the weekdays, then Browse nearby. */}
@@ -291,6 +428,24 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
         </div>
       </section>
 
+
+      {pendingRemoval ? (
+        <div
+          className="fixed inset-x-0 bottom-0 z-50 flex items-center justify-between gap-3 px-4 py-3 text-[13px]"
+          style={{ backgroundColor: BOARD_INK }}
+          data-testid="r3-stop-removed"
+        >
+          <span className="text-white">{`Removed ${String(pendingRemoval.stop?.name ?? pendingRemoval.stop?.title ?? "stop")}`}</span>
+          <button
+            type="button"
+            className="min-h-[44px] rounded-lg px-3 text-[13px] font-semibold text-white underline underline-offset-2"
+            onClick={undoRemoval}
+            data-testid="r3-stop-undo"
+          >
+            Undo
+          </button>
+        </div>
+      ) : null}
       {(desktop || (phoneTab === "days" && openDay >= 1)) ? (
         <OptimizeCard tripId={tripId} enabled isOwner={(data as any)?.tripRole === "owner"} />
       ) : null}
@@ -311,6 +466,48 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
           Finalize plan
         </button>
       </footer>
+      {sheetFor ? (
+        <StopSheet
+          open
+          tripId={tripId}
+          stop={{ ...sheetFor.stop, tripId }}
+          state={stopStateFor(sheetFor.stop, quotes)}
+          dayLabel={sheetFor.dayLabel}
+          timeZone={(data as any)?.timeZone ?? null}
+          role={role}
+          placeFacts={(data as any)?.placeFacts?.[String(sheetFor.stop.id)]}
+          askOpen={askOpen}
+          canAsk={canAsk}
+          returnFocusTo={sheetTrigger.current?.el ?? null}
+          onAskOpen={() => setAskOpen(true)}
+          onAskClose={() => setAskOpen(false)}
+          onClose={() => {
+            setAskOpen(false);
+            setSheetFor(null);
+            // Back to the very control that opened it (Step 2 item 5), at both widths. The boards re-render while the
+            // sheet is open, so the button is found again by its test id and stop id rather than by the stale node.
+            const trigger = sheetTrigger.current;
+            if (!trigger) return;
+            // The boards re-render as the sheet unmounts, so keep trying for a few frames until the button holds focus.
+            let tries = 0;
+            const refocus = () => {
+              const sel = trigger.phone ? "r3-phone-stop-menu" : "r3-stop-menu";
+              const live = document.querySelector(
+                `[data-testid="${sel}"][data-stop-id="${trigger.id}"]`,
+              ) as HTMLElement | null;
+              (live ?? trigger.el)?.focus();
+              tries += 1;
+              if (document.activeElement !== (live ?? trigger.el) && tries < 30) {
+                requestAnimationFrame(refocus);
+              }
+            };
+            requestAnimationFrame(refocus);
+          }}
+          onLockedChange={() => queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] })}
+        />
+      ) : null}
+
+
     </div>
   );
 }
