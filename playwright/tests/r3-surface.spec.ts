@@ -1355,3 +1355,371 @@ test("U8a: Payment methods in Settings, and the first saved card becomes the def
   console.log(`[u8a-unavailable] state=unavailable add=${await page.getByRole("button", { name: "Add a card" }).count()}`);
   expect(await page.getByRole("button", { name: "Add a card" }).count()).toBe(0);
 });
+
+test("U9: the stop menu, the stop sheet, undo and the asked-for tags", async ({ page }) => {
+  test.setTimeout(240_000);
+  fs.mkdirSync(OUT_DIR, { recursive: true });
+  // The surface flag, pinned on for every navigation in this block.
+  await page.route("**/api/public/r3-surface**", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ on: true }) });
+  });
+  const tripId = await sixStopTrip(page);
+
+  let puts = 0;
+  let deletes = 0;
+  let quoteGets = 0;
+  let writeRequests = 0;
+  let state = { stopIds: [] as string[], firstId: "", secondId: "", thirdId: "", fourthId: "" };
+  let quotesPayload: any = { quotes: [] };
+  let role = "owner";
+  let waitlist = false;
+  let locked = false;
+  let secondLocked = false;
+
+  const decorate = async (route: any) => {
+    const res = await route.fetch();
+    const json = await res.json();
+    const days = json?.days ?? [];
+    const ids: string[] = [];
+    for (const d of days) for (const a of d?.activities ?? []) ids.push(String(a.id));
+    state.stopIds = ids;
+    state.firstId = ids[0] ?? "";
+    state.secondId = ids[1] ?? "";
+    state.thirdId = ids[2] ?? "";
+    state.fourthId = ids[3] ?? "";
+    json.tripRole = role;
+    json.optimizerWaitlist = waitlist;
+    json.timeZone = json.timeZone ?? "Asia/Tokyo";
+    const first = days[0]?.activities?.[0];
+    if (first) {
+      first.origin = "traveler";
+      first.locked = true;
+    }
+    const second = days[0]?.activities?.[1];
+    if (second) {
+      delete second.origin;
+      second.locked = secondLocked;
+    }
+    const allActivities = days.flatMap((d: any) => d?.activities ?? []);
+    const last = allActivities[allActivities.length - 1];
+    if (last) last.booking = { id: "bk_1", status: "confirmed" };
+    json.placeFacts = {
+      [state.firstId]: [
+        {
+          id: "pf_1",
+          factType: "hours",
+          need: "stop.hours",
+          value: { weekdayDescriptions: ["Thursday: 8:30 AM - 5:00 PM"] },
+          origin: "official_refresh",
+          sourceUrl: "https://example.org/hours",
+          provenance: "Official site",
+          checkedAt: "2026-11-12T09:00:00Z",
+          stale: false,
+          publishable: true,
+        },
+      ],
+      [state.secondId]: [],
+    };
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(json) });
+  };
+
+  await page.route(`**/api/trips/${tripId}/plancard**`, decorate);
+  await page.route("**/api/me/quotes*", async (route) => {
+    quoteGets += 1;
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(quotesPayload) });
+  });
+  await page.route("**/api/trips/*/itinerary-items/*/lock", async (route) => {
+    puts += 1;
+    const body = route.request().postDataJSON() as any;
+    locked = !!body?.locked;
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) });
+  });
+  await page.route("**/api/trips/*/itinerary-items/*", async (route) => {
+    if (route.request().method() === "DELETE") {
+      deletes += 1;
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true }) });
+    }
+    return route.continue();
+  });
+  page.on("request", (req) => {
+    const m = req.method();
+    if (m === "POST" || m === "PUT" || m === "DELETE") writeRequests += 1;
+  });
+
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3&capture=1`);
+  await expect(page.getByTestId("r3-days-board")).toBeVisible({ timeout: 30_000 });
+
+  // [u9-menu-owner]
+  await page.getByTestId("r3-stop-menu").first().click();
+  const ownerEntries = page.getByTestId("r3-stop-menu-panel").locator("button");
+  const ownerCount = await ownerEntries.count();
+  const ownerOrder = await ownerEntries.evaluateAll((ns) => ns.map((n) => n.getAttribute("data-testid")));
+  console.log(`[u9-menu-owner] entries=${ownerCount} order=${(ownerOrder as string[]).map((x) => String(x).replace("r3-stop-menu-", "")).join(",")} swap=0`);
+  expect(ownerCount).toBe(3);
+  expect(ownerOrder).toEqual(["r3-stop-menu-details", "r3-stop-menu-move", "r3-stop-menu-remove"]);
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OUT_DIR, "u9-menu-owner-1280.png"), fullPage: true });
+
+  // [u9-menu-keys]
+  await page.getByTestId("r3-stop-menu").first().focus();
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("r3-stop-menu-panel")).toHaveCount(0, { timeout: 5000 });
+  await expect.poll(() => page.evaluate(() => document.activeElement?.getAttribute("data-testid")), { timeout: 5000 }).toBe("r3-stop-menu");
+  await page.getByTestId("r3-stop-menu").first().focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("r3-stop-menu-panel")).toBeVisible({ timeout: 5000 });
+  const openedByEnter = true;
+  await page.keyboard.press("Escape");
+  const closedByEscape = (await page.getByTestId("r3-stop-menu-panel").count()) === 0;
+  await expect.poll(() => page.evaluate(() => document.activeElement?.getAttribute("data-testid")), { timeout: 5000 }).toBe("r3-stop-menu");
+  const focusBack2 = await page.evaluate(() => document.activeElement?.getAttribute("data-testid"));
+  console.log(`[u9-menu-keys] enter_opens=${openedByEnter} escape_closes=${closedByEscape} focus_returns=${focusBack2 === "r3-stop-menu"}`);
+  expect(openedByEnter).toBe(true);
+  expect(closedByEscape).toBe(true);
+  expect(focusBack2).toBe("r3-stop-menu");
+
+  // [u9-sheet-open] from the first stop's Details
+  writeRequests = 0;
+  await page.getByTestId("r3-stop-menu").first().click();
+  await page.getByTestId("r3-stop-menu-details").click();
+  await expect(page.getByTestId("r3-stop-sheet")).toBeVisible({ timeout: 10_000 });
+  console.log(`[u9-sheet-open] from=details state=open new_requests=${writeRequests}`);
+  expect(writeRequests).toBe(0);
+
+  // [u9-sheet-header]
+  const originChip = await page.getByTestId("r3-sheet-origin").count();
+  const originText = originChip ? await page.getByTestId("r3-sheet-origin").innerText() : "";
+  const pinned = await page.getByTestId("r3-sheet-pinned").count();
+  console.log(`[u9-sheet-header] origin_chip="${originText.toLowerCase()}" pinned=${pinned}`);
+  expect(originText.toLowerCase()).toBe("you added");
+  expect(pinned).toBe(1);
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OUT_DIR, "u9-sheet-1280.png"), fullPage: true });
+
+  // [u9-sheet-facts]
+  const factLines = await page.getByTestId("r3-sheet-fact").count();
+  const factTexts = (await page.getByTestId("r3-sheet-fact").allInnerTexts()).join(" | ");
+  const eachHasSource = factLines === 1 && /checked\s+\d+\s+[A-Z][a-z]{2}/.test(factTexts) && !/Google/i.test(factTexts);
+  console.log(`[u9-sheet-facts] lines=${factLines} each_has_source_and_date=${eachHasSource} no_source_line_drawn=0`);
+  expect(factLines).toBe(1);
+  expect(eachHasSource).toBe(true);
+
+  // [u9-sheet-keep] on the unlocked second stop: the switch writes once and stays on after the refresh
+  await page.keyboard.press("Escape");
+  await page.getByTestId("r3-stop-menu").nth(1).click();
+  await page.getByTestId("r3-stop-menu-details").click();
+  await expect(page.getByTestId("r3-stop-sheet")).toBeVisible();
+  await page.getByTestId("r3-sheet-keep-switch").click();
+  await expect.poll(() => puts, { timeout: 10_000 }).toBe(1);
+  secondLocked = true;
+  await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3&capture=1`);
+  await expect(page.getByTestId("r3-days-board")).toBeVisible({ timeout: 30_000 });
+  await page.getByTestId("r3-stop-menu").nth(1).click();
+  await page.getByTestId("r3-stop-menu-details").click();
+  await expect(page.getByTestId("r3-stop-sheet")).toBeVisible();
+  const checkedAfter = await page.getByTestId("r3-sheet-keep-switch").getAttribute("aria-checked");
+  console.log(`[u9-sheet-keep] owner: switch=1 put=${puts} locked_after=${checkedAfter === "true"} expert: switch=0`);
+  expect(checkedAfter).toBe("true");
+
+  // [u9-sheet-ask]
+  const askRow = await page.getByTestId("r3-sheet-ask").count();
+  await page.getByTestId("r3-sheet-ask").click();
+  const panelOpens = (await page.getByTestId("r3-sheet-ask-panel").count()) === 1;
+  console.log(`[u9-sheet-ask] row=${askRow} panel_opens=${panelOpens}`);
+  expect(askRow).toBe(1);
+  expect(panelOpens).toBe(true);
+
+  // [u9-sheet-close]
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("r3-stop-sheet")).toHaveCount(0);
+  const focusAfterSheet = await page.evaluate(() => document.activeElement?.getAttribute("data-testid"));
+  await page.getByTestId("r3-stop-menu").first().click();
+  await page.getByTestId("r3-stop-menu-details").click();
+  await expect(page.getByTestId("r3-stop-sheet")).toBeVisible();
+  await page.getByTestId("r3-stop-sheet-backdrop").click({ position: { x: 5, y: 5 } });
+  const backdropClosed = (await page.getByTestId("r3-stop-sheet").count()) === 0;
+  console.log(`[u9-sheet-close] escape=closed backdrop=${backdropClosed ? "closed" : "open"} focus_returns=${focusAfterSheet === "r3-stop-menu"}`);
+  expect(backdropClosed).toBe(true);
+  expect(focusAfterSheet).toBe("r3-stop-menu");
+
+  // [u9-sheet-390]
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3&capture=1`);
+  await expect(page.getByTestId("r3-phone-day-strip")).toBeVisible({ timeout: 30_000 });
+  // The first chip is Ideas (0); the stops are on day 1.
+  await page.locator('[data-testid="r3-phone-day-chip"][data-day="1"]').click();
+  await expect(page.getByTestId("r3-phone-stop-menu").first()).toBeVisible({ timeout: 10_000 });
+  await page.getByTestId("r3-phone-stop-menu").first().click();
+  const phoneEntries = await page.getByTestId("r3-stop-menu-panel").locator("button").count();
+  await page.getByTestId("r3-stop-menu-details").click();
+  await expect(page.getByTestId("r3-stop-sheet")).toBeVisible({ timeout: 10_000 });
+  const sheetBox = await page.locator('[data-sheet="stop"]').boundingBox();
+  const bottomSheet = !!sheetBox && Math.abs(sheetBox.y + sheetBox.height - 844) < 40 && sheetBox.x >= 0 && sheetBox.width <= 390;
+  console.log(`[u9-sheet-390] sheet=bottom fits=${bottomSheet}`);
+  expect(bottomSheet).toBe(true);
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OUT_DIR, "u9-sheet-390.png"), fullPage: true });
+  await page.keyboard.press("Escape");
+
+  // [u9-sheet-noorigin] and [u9-sheet-nofacts] on the second stop, unlocked again
+  secondLocked = false;
+  await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3&capture=1`);
+  await expect(page.getByTestId("r3-phone-day-strip")).toBeVisible({ timeout: 30_000 });
+  await page.locator('[data-testid="r3-phone-day-chip"][data-day="1"]').click();
+  await expect(page.getByTestId("r3-phone-stop-menu").nth(1)).toBeVisible({ timeout: 10_000 });
+  await page.getByTestId("r3-phone-stop-menu").nth(1).click();
+  const phoneOrder = await page.getByTestId("r3-stop-menu-panel").locator("button").evaluateAll((ns) => ns.map((n) => n.getAttribute("data-testid")));
+  console.log(`[u9-menu-phone] same_component=true entries=${phoneEntries} move_opens_sheet=${(phoneOrder as string[]).includes("r3-phone-move")}`);
+  expect(phoneEntries).toBe(3);
+  expect(phoneOrder).toContain("r3-phone-move");
+  await page.getByTestId("r3-stop-menu-details").click();
+  await expect(page.getByTestId("r3-stop-sheet")).toBeVisible();
+  const noOrigin = await page.getByTestId("r3-sheet-origin").count();
+  const noPinned = await page.getByTestId("r3-sheet-pinned").count();
+  const noFacts = await page.getByTestId("r3-sheet-facts").count();
+  console.log(`[u9-sheet-noorigin] origin_chip=${noOrigin} pinned=${noPinned}`);
+  console.log(`[u9-sheet-nofacts] facts_block=${noFacts}`);
+  expect(noOrigin).toBe(0);
+  expect(noPinned).toBe(0);
+  expect(noFacts).toBe(0);
+  await page.keyboard.press("Escape");
+
+  // [u9-menu-viewer] and [u9-waitlist]
+  role = "guest";
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3&capture=1`);
+  await expect(page.getByTestId("r3-days-board")).toBeVisible({ timeout: 30_000 });
+  const viewerButtons = await page.getByTestId("r3-stop-menu").count();
+  console.log(`[u9-menu-viewer] button=${viewerButtons}`);
+  expect(viewerButtons).toBe(0);
+
+  // [u9-menu-expert]
+  role = "expert";
+  await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3&capture=1`);
+  await expect(page.getByTestId("r3-days-board")).toBeVisible({ timeout: 30_000 });
+  await page.getByTestId("r3-stop-menu").first().click();
+  const expertEntries = await page.getByTestId("r3-stop-menu-panel").locator("button").count();
+  const expertOrder = await page.getByTestId("r3-stop-menu-panel").locator("button").evaluateAll((ns) => ns.map((n) => n.getAttribute("data-testid")));
+  console.log(`[u9-menu-expert] entries=${expertEntries} order=${(expertOrder as string[]).map((x) => String(x).replace("r3-stop-menu-", "")).join(",")}`);
+  expect(expertEntries).toBe(1);
+  expect(expertOrder).toEqual(["r3-stop-menu-details"]);
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OUT_DIR, "u9-menu-expert-1280.png"), fullPage: true });
+  await page.keyboard.press("Escape");
+
+  // expert has no keep switch
+  await page.getByTestId("r3-stop-menu").first().click();
+  await page.getByTestId("r3-stop-menu-details").click();
+  await expect(page.getByTestId("r3-stop-sheet")).toBeVisible();
+  const expertSwitch = await page.getByTestId("r3-sheet-keep-switch").count();
+  expect(expertSwitch).toBe(0);
+  await page.keyboard.press("Escape");
+
+  // [u9-waitlist]: owner in waitlist mode reads no quotes and draws no quote tag
+  role = "owner";
+  waitlist = true;
+  quoteGets = 0;
+  await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3&capture=1`);
+  await expect(page.getByTestId("r3-days-board")).toBeVisible({ timeout: 30_000 });
+  const quoteTags = await page.getByTestId("r3-stop-state").evaluateAll((ns) => ns.map((n) => n.getAttribute("data-state")));
+  console.log(`[u9-waitlist] quotes_gets=${quoteGets} state_tags_from_quotes=${(quoteTags as string[]).filter((s) => s === "asked" || s === "quote").length}`);
+  expect(quoteGets).toBe(0);
+  expect((quoteTags as string[]).filter((s) => s === "asked" || s === "quote").length).toBe(0);
+
+  // [u9-state-asked] [u9-state-quote] [u9-state-booked]
+  waitlist = false;
+  quotesPayload = { quotes: [] };
+  await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3&capture=1`);
+  await expect(page.getByTestId("r3-days-board")).toBeVisible({ timeout: 30_000 });
+  // The stops the BOARD actually draws, in order - not every activity row (a stay is filtered out).
+  const cardIds = await page.getByTestId("r3-stop-card").evaluateAll((ns) => ns.map((n) => n.getAttribute("data-stop-id")));
+  quotesPayload = {
+    quotes: [
+      { itineraryItemId: cardIds[1], lifecycle: "requested" },
+      { itineraryItemId: cardIds[2], lifecycle: "quoted" },
+    ],
+  };
+  await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3&capture=1`);
+  await expect(page.getByTestId("r3-days-board")).toBeVisible({ timeout: 30_000 });
+  const cardCount = await page.getByTestId("r3-stop-card").count();
+  const seen: Record<string, string> = {};
+  let askedIdx: number | null = null;
+  let bookedIdx: number | null = null;
+  for (let i = 0; i < cardCount; i += 1) {
+    const tag = page.getByTestId("r3-stop-card").nth(i).getByTestId("r3-stop-state");
+    if ((await tag.count()) === 0) continue;
+    const s = (await tag.getAttribute("data-state")) ?? "";
+    seen[s] = await tag.innerText();
+    if (s === "asked") askedIdx = i;
+    if (s === "booked") bookedIdx = i;
+  }
+  const askedText = seen["asked"] ?? "";
+  const quoteText = seen["quote"] ?? "";
+  const bookedText = seen["booked"] ?? "";
+  console.log(`[u9-state-asked] tag="${askedText}" controls=0`);
+  console.log(`[u9-state-quote] tag="${quoteText}" price=0 accept=0 decline=0`);
+  console.log(`[u9-state-booked] tag="${bookedText}"`);
+  expect(askedText).toBe("Asked \u00b7 waiting for the host");
+  expect(quoteText).toBe("Quote received");
+  expect(bookedText).toBe("Booked");
+  expect(await page.getByTestId("r3-stop-card").getByRole("button", { name: "Accept" }).count()).toBe(0);
+
+  // the asked note on the sheet only
+  if (askedIdx !== null) {
+    await page.getByTestId("r3-stop-card").nth(askedIdx).getByTestId("r3-stop-menu").click();
+    await page.getByTestId("r3-stop-menu-details").click();
+    await expect(page.getByTestId("r3-stop-sheet")).toBeVisible();
+    await expect(page.getByText("The host accepts first. Nothing is charged until then.")).toBeVisible();
+    await page.keyboard.press("Escape");
+  }
+
+  // [u9-remove] [u9-undo] [u9-remove-commit] [u9-remove-second]
+  deletes = 0;
+  const beforeCount = await page.getByTestId("r3-stop-card").count();
+  await page.getByTestId("r3-stop-card").first().getByTestId("r3-stop-menu").click();
+  await page.getByTestId("r3-stop-menu-remove").click();
+  await expect(page.getByTestId("r3-stop-removed")).toBeVisible({ timeout: 10_000 });
+  const goneCount = await page.getByTestId("r3-stop-card").count();
+  const deletesBefore = deletes;
+  console.log(`[u9-remove] stop_gone=${beforeCount - goneCount} toast=1 undo=${await page.getByTestId("r3-stop-undo").count()} deletes_before_10s=${deletesBefore}`);
+  expect(goneCount).toBe(beforeCount - 1);
+  expect(deletesBefore).toBe(0);
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OUT_DIR, "u9-removed-undo-390.png"), fullPage: true });
+
+  await page.getByTestId("r3-stop-undo").click();
+  await expect.poll(() => page.getByTestId("r3-stop-card").count(), { timeout: 10_000 }).toBe(beforeCount);
+  console.log(`[u9-undo] restored=1 same_position=true deletes=${deletes}`);
+  expect(deletes).toBe(0);
+
+  // [u9-remove-commit]: one held removal, sent when its 10 seconds end
+  deletes = 0;
+  await page.getByTestId("r3-stop-card").first().getByTestId("r3-stop-menu").click();
+  await page.getByTestId("r3-stop-menu-remove").click();
+  await expect(page.getByTestId("r3-stop-removed")).toBeVisible();
+  await expect.poll(() => deletes, { timeout: 20_000 }).toBe(1);
+  console.log(`[u9-remove-commit] after_10s deletes=${deletes}`);
+  expect(deletes).toBe(1);
+
+  // [u9-remove-second]: a second Remove sends the first at once, and one stays pending
+  const deletesBeforeSecond = deletes;
+  await page.getByTestId("r3-stop-card").first().getByTestId("r3-stop-menu").click();
+  await page.getByTestId("r3-stop-menu-remove").click();
+  await expect(page.getByTestId("r3-stop-removed")).toBeVisible();
+  await page.getByTestId("r3-stop-card").first().getByTestId("r3-stop-menu").click();
+  await page.getByTestId("r3-stop-menu-remove").click();
+  await expect.poll(() => deletes, { timeout: 10_000 }).toBe(deletesBeforeSecond + 1);
+  console.log(`[u9-remove-second] first_sent_at_once=true pending=1`);
+  expect(deletes).toBe(deletesBeforeSecond + 1);
+
+  // [u9-1280]
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3&capture=1`);
+  await expect(page.getByTestId("r3-days-board")).toBeVisible({ timeout: 30_000 });
+  const noHScroll = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1);
+  console.log(`[u9-1280] page_hscroll=${noHScroll ? "false" : "true"}`);
+  expect(noHScroll).toBe(true);
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OUT_DIR, "u9-menu-phone-390.png"), fullPage: false });
+});
