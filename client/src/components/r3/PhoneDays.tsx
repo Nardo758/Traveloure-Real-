@@ -13,6 +13,8 @@ import { BOARD_CELL, BOARD_FILL, BOARD_INK, BOARD_LINE, BOARD_TEXT } from "@/com
 import type { SlipData } from "@/components/plancard/SlipView";
 import { r3Columns } from "@/lib/r3-surface";
 import { MoveStopSheet } from "@/components/plan/MoveStopSheet";
+import { StopMenu } from "@/components/r3/StopMenu";
+import { stopStateFor, stopStateTagLabel } from "@/lib/r3-stop-state";
 
 export const PHONE_HINT = "Tap a day to see it. Hold a stop to drag it onto a day above.";
 export const PHONE_ADD = "+ Add to this day";
@@ -110,6 +112,11 @@ export function PhoneDayStrip({
 export function PhoneDayBody({
   data,
   openDay,
+  role,
+  quotes,
+  hiddenIds,
+  onDetails,
+  onRemove,
   onMoveRequested,
   hasDates = true,
 }: {
@@ -117,11 +124,15 @@ export function PhoneDayBody({
   openDay: number;
   onMoveRequested: (stop: any) => void;
   hasDates?: boolean;
+  role?: string | null;
+  quotes?: readonly { itineraryItemId?: string | null; lifecycle?: string | null }[];
+  hiddenIds?: ReadonlySet<string>;
+  onDetails?: (stop: any, dayLabel: string) => void;
+  onRemove?: (stop: any, dayLabel: string) => void;
 }) {
   const columns = r3Columns(data);
   const ideas = ((data as any)?.ideas ?? []) as any[];
-  const stops = openDay === 0 ? ideas : columns.find((c) => c.day === openDay)?.stops ?? [];
-  const [menuFor, setMenuFor] = useState<string | null>(null);
+  const stops = (openDay === 0 ? ideas : columns.find((c) => c.day === openDay)?.stops ?? []).filter((s: any) => !hiddenIds?.has(String(s?.id ?? "")));
   const [sheetFor, setSheetFor] = useState<any | null>(null);
   const days = columns.map((c) => ({ dayNumber: c.day, label: c.label, count: c.stops.length }));
 
@@ -135,35 +146,23 @@ export function PhoneDayBody({
               <GripVertical className="mt-1 h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
               <div className="min-w-0 flex-1">
                 <p className="text-[12px] text-muted-foreground" data-testid="r3-phone-stop-time">{String(stop?.startTime ?? "").slice(0, 5)}</p>
-                <p className="text-[15px] font-medium leading-snug text-foreground" data-testid="r3-phone-stop-name">{String(stop?.name ?? stop?.title ?? "")}</p>
+                {stopStateFor(stop, quotes) ? (
+                <span className="mt-1 inline-block rounded-full px-1.5 py-0.5 text-[10px]" style={{ backgroundColor: "rgba(0,0,0,0.05)", color: BOARD_TEXT }} data-testid="r3-stop-state" data-state={stopStateFor(stop, quotes) ?? undefined}>
+                  {stopStateTagLabel(stopStateFor(stop, quotes)!)}
+                </span>
+              ) : null}
+              <p className="text-[15px] font-medium leading-snug text-foreground" data-testid="r3-phone-stop-name">{String(stop?.name ?? stop?.title ?? "")}</p>
               </div>
-              <button
-                type="button"
-                aria-label="More"
-                aria-expanded={menuFor === id}
-                onClick={() => setMenuFor((m) => (m === id ? null : id))}
-                className={`${HIT} w-11 shrink-0 rounded-lg text-muted-foreground`}
-                data-testid="r3-phone-stop-menu"
-              >
-                <MoreHorizontal className="mx-auto h-4 w-4" />
-              </button>
+              <StopMenu
+                role={role}
+                variant="phone"
+                onSelect={(entry) => {
+                  if (entry === "details") onDetails?.(stop, `Day ${openDay}`);
+                  else if (entry === "move") setSheetFor(stop);
+                  else if (entry === "remove") onRemove?.(stop, `Day ${openDay}`);
+                }}
+              />
             </div>
-            {menuFor === id ? (
-              <div className="absolute right-2 top-12 z-20 w-44 rounded-lg border bg-card p-1 shadow-lg" style={{ borderColor: BOARD_LINE }} data-testid="r3-phone-stop-menu-panel">
-                <button
-                  type="button"
-                  className={`${HIT} w-full rounded-lg px-2 text-left text-[14px] font-medium`}
-                  style={{ color: BOARD_TEXT }}
-                  onClick={() => {
-                    setMenuFor(null);
-                    setSheetFor(stop);
-                  }}
-                  data-testid="r3-phone-move"
-                >
-                  Move
-                </button>
-              </div>
-            ) : null}
           </article>
         );
       })}

@@ -10,7 +10,7 @@
  * Reuses the plancard DTO the old page already fetches and the app's own theme tokens; it does NOT reuse SlipView's
  * layout. Every string is board text and stays DRAFT until Leon approves it.
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMinWidth } from "@/hooks/use-min-width";
 import { ArrowLeft, MoreHorizontal } from "lucide-react";
 import type { SlipData } from "@/components/plancard/SlipView";
@@ -20,7 +20,11 @@ import { planEyebrowLabel } from "@shared/plan-dates";
 import { DaysBoard } from "@/components/r3/DaysBoard";
 import { OptimizeCard } from "@/components/r3/OptimizeCard";
 import { PhoneDayBody, PhoneDayStrip, PhoneHint, PhoneTabs, type PhoneTab } from "@/components/r3/PhoneDays";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useToast } from "@/hooks/use-toast";
+import { StopSheet } from "@/components/r3/StopSheet";
+import { stopStateFor } from "@/lib/r3-stop-state";
+import { apiRequest } from "@/lib/queryClient";
 import { DaysMapPanel } from "@/components/plan/DaysMapPanel";
 import { r3Columns, r3IdeaCount, r3MapCounts, r3Stops } from "@/lib/r3-surface";
 import { daysMapCountLine } from "@/lib/days-map";
@@ -131,6 +135,97 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
     }
   };
   const [skipped, setSkipped] = useState<NextQuestionKey[]>([]);
+
+  // R3 U9: role and the one "asked for" source. Quotes are read once per page, owners only, never in waitlist mode.
+  const role = (data as any)?.tripRole as string | null | undefined;
+  const waitlist = (data as any)?.optimizerWaitlist === true;
+  const quotesEnabled = role === "owner" && !waitlist;
+  const { data: quotesData } = useQuery<{ quotes?: Array<{ itineraryItemId?: string | null; lifecycle?: string | null }> }>({
+    queryKey: ["/api/me/quotes"],
+    enabled: quotesEnabled,
+  });
+  const quotes = quotesData?.quotes ?? [];
+  const [sheetFor, setSheetFor] = useState<{ stop: any; dayLabel: string } | null>(null);
+  const [askOpen, setAskOpen] = useState(false);
+  const { toast } = useToast();
+  const [pendingRemoval, setPendingRemoval] = useState<{ stop: any; dayLabel: string } | null>(null);
+  const [hiddenIds, setHiddenIds] = useState<ReadonlySet<string>>(new Set());
+  const removalTimer = useRef<number | null>(null);
+  const removalRef = useRef<{ stop: any; dayLabel: string } | null>(null);
+
+  const commitRemoval = (target?: { stop: any; dayLabel: string } | null) => {
+    const item = target ?? removalRef.current;
+    if (!item) return;
+    if (removalTimer.current) window.clearTimeout(removalTimer.current);
+    removalTimer.current = null;
+    removalRef.current = null;
+    setPendingRemoval(null);
+    void (async () => {
+      try {
+        await apiRequest("DELETE", `/api/trips/${tripId}/itinerary-items/${String(item.stop.id)}`);
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+        setHiddenIds((prev) => {
+          const next = new Set(prev);
+          next.delete(String(item.stop.id));
+          return next;
+        });
+      } catch (err: any) {
+        // The stop comes back and the old slip's sentence shows.
+        setHiddenIds((prev) => {
+          const next = new Set(prev);
+          next.delete(String(item.stop.id));
+          return next;
+        });
+        toast({ title: "Couldn't remove that stop", description: err?.message || "Please try again.", variant: "destructive" });
+      }
+    })();
+  };
+
+  const requestRemoval = (stop: any, dayLabel: string) => {
+    if (removalRef.current) commitRemoval(removalRef.current);
+    const item = { stop, dayLabel };
+    removalRef.current = item;
+    setPendingRemoval(item);
+    setHiddenIds((prev) => new Set(prev).add(String(stop.id)));
+    removalTimer.current = window.setTimeout(() => commitRemoval(item), 10_000);
+  };
+
+  const undoRemoval = () => {
+    if (!removalRef.current) return;
+    if (removalTimer.current) window.clearTimeout(removalTimer.current);
+    removalTimer.current = null;
+    const item = removalRef.current;
+    removalRef.current = null;
+    setPendingRemoval(null);
+    setHiddenIds((prev) => {
+      const next = new Set(prev);
+      next.delete(String(item.stop.id));
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    const onHide = () => {
+      const item = removalRef.current;
+      if (!item) return;
+      try {
+        void fetch(`/api/trips/${tripId}/itinerary-items/${String(item.stop.id)}`, {
+          method: "DELETE",
+          credentials: "same-origin",
+          keepalive: true,
+        });
+      } catch {
+        // Leaving the page is best-effort.
+      }
+    };
+    window.addEventListener("pagehide", onHide);
+    return () => window.removeEventListener("pagehide", onHide);
+  }, [tripId]);
+
+  const openSheet = (stop: any, dayLabel: string) => {
+    setAskOpen(false);
+    setSheetFor({ stop, dayLabel });
+  };
   const question = order.find((k) => !answered[k] && !skipped.includes(k)) ?? null;
   const copy = question ? NEXT_QUESTION_COPY[question] : null;
 
@@ -239,11 +334,31 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
           <>
             <PhoneDayStrip data={data} openDay={openDay} onOpen={setOpenDay} ideas={ideas} />
             <PhoneHint show={hintShown && openDay >= 1 && (columns.find((c) => c.day === openDay)?.stops.length ?? 0) > 0} />
-            <PhoneDayBody data={data} openDay={openDay} onMoveRequested={handleMove} hasDates={!!trip?.startDate && !!trip?.endDate} />
+            <PhoneDayBody
+          data={data}
+          openDay={openDay}
+          onMoveRequested={handleMove}
+          hasDates={!!trip?.startDate && !!trip?.endDate}
+          role={role}
+          quotes={quotes}
+          hiddenIds={hiddenIds}
+          onDetails={openSheet}
+          onRemove={requestRemoval}
+        />
           </>
         ) : null}
         <div className={desktop ? "flex items-start gap-3" : "mt-3 flex flex-col gap-3"}>
-          {desktop ? <DaysBoard data={data} /> : null}
+          {desktop ? (
+        <DaysBoard
+          data={data}
+          role={role}
+          quotes={quotes}
+          hiddenIds={hiddenIds}
+          onDetails={openSheet}
+          onRemove={requestRemoval}
+          onMoveRequested={(stop) => undefined}
+        />
+      ) : null}
           {desktop || phoneTab === "map" ? (
           <div className="min-w-0 flex-1" data-testid="r3-map">
             {/* ONE chrome row (board V1): All days, the weekdays, then Browse nearby. */}
@@ -311,6 +426,44 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
           Finalize plan
         </button>
       </footer>
+      {sheetFor ? (
+        <StopSheet
+          open
+          tripId={tripId}
+          stop={{ ...sheetFor.stop, tripId }}
+          state={stopStateFor(sheetFor.stop, quotes)}
+          dayLabel={sheetFor.dayLabel}
+          timeZone={(data as any)?.timeZone ?? null}
+          role={role}
+          placeFacts={(data as any)?.placeFacts?.[String(sheetFor.stop.id)]}
+          askOpen={askOpen}
+          onAskOpen={() => setAskOpen(true)}
+          onAskClose={() => setAskOpen(false)}
+          onClose={() => {
+            setAskOpen(false);
+            setSheetFor(null);
+            // Back to the menu button that opened it (Step 2 item 5).
+            window.setTimeout(() => {
+              (document.querySelector('[data-testid="r3-stop-menu"]') as HTMLElement | null)?.focus();
+            }, 0);
+          }}
+          onLockedChange={() => queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] })}
+        />
+      ) : null}
+
+      {pendingRemoval ? (
+        <div
+          className="fixed bottom-4 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-xl border px-3 py-2 text-[13px] shadow-lg"
+          style={{ backgroundColor: "#ffffff", borderColor: "var(--r3-line, #dad9d1)" }}
+          data-testid="r3-stop-removed"
+        >
+          <span>{`Removed ${String(pendingRemoval.stop?.name ?? pendingRemoval.stop?.title ?? "stop")}`}</span>
+          <button type="button" className="font-semibold underline underline-offset-2" onClick={undoRemoval} data-testid="r3-stop-undo">
+            Undo
+          </button>
+        </div>
+      ) : null}
+
     </div>
   );
 }
