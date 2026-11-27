@@ -119,6 +119,10 @@ test("P1 slip cart words and stop-menu ask", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto(`${BASE_URL}/cart`, { waitUntil: "domcontentloaded" });
   await page.waitForTimeout(1500);
+  await expect(page.locator('a[href="/cart"]').filter({ hasText: /^Cart$/ }).first()).toHaveText("Cart");
+  await expect(page.locator('[data-testid="text-page-title"]')).toHaveText("Your cart");
+  console.log(`[p1-nav-cart]      label="Cart" href=/cart`);
+  console.log(`[p1-cart-heading]   heading="Your cart"`);
   await maskEmails(page);
   await page.screenshot({ path: path.join(OLD, "cart-1280.png"), fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });

@@ -48,7 +48,7 @@ import {
 // folding it (§13). The legacy concierge that linked there is retired (CN-1g-UI).
 //
 // Traveler sidebar (9 entries): Home, My plans, Start a plan, Discover, Experts, Bookings,
-// Trip Cart, Inbox, Profile.
+// Cart, Inbox, Profile.
 const menuGroups = [
   {
     label: "Plan",
@@ -68,7 +68,7 @@ const menuGroups = [
       { title: "Discover", href: "/discover", icon: Users },
       { title: "Experts", href: "/experts", icon: Compass },
       { title: "Bookings", href: "/bookings", icon: Package },
-      { title: "Trip Cart", href: "/cart", icon: ShoppingCart },
+      { title: "Cart", href: "/cart", icon: ShoppingCart },
     ],
   },
   {

@@ -1954,7 +1954,7 @@ export default function CartPage() {
           </Button>
           <div className="flex flex-col">
             <h1 className="text-2xl font-bold" data-testid="text-page-title">
-              {flowStep === "cart" && "Your Cart"}
+              {flowStep === "cart" && "Your cart"}
               {flowStep === "optimize" && "Unlock Full Optimization"}
               {flowStep === "itinerary" && "Your Optimized Itinerary"}
               {flowStep === "payment" && "Complete Payment"}

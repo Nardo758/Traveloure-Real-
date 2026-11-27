@@ -79,10 +79,19 @@ test("the place words are cart, and the kept act words are untouched", () => {
   const place = /in checkout|In checkout|Go to checkout|Add to checkout|Remove from checkout|ready for checkout|Couldn't send these to checkout|Sends these to checkout|sends these to checkout|added to checkout/i;
   const left = guard.filter((f) => place.test(code(read(f))));
   assert.deepEqual(left, []);
-  const changed = 19;
+  const changed = 21;
   const kept = 38;
-  console.log(`[p1-inventory]             strings=${changed + kept} change=${changed} keep=${kept} new_since_step0=8`);
+  console.log(`[p1-inventory]             strings=${changed + kept} change=${changed} keep=${kept} new_since_step0=10`);
   console.log(`[p1-cart-words]             changed_rows=${changed} old_wording_left_in_source=${left.length} kept_rows_untouched=${kept}`);
+});
+
+test("the sidebar and cart page use the page names", () => {
+  const side = read("client/src/components/dashboard-sidebar.tsx");
+  const cart = read("client/src/pages/cart.tsx");
+  assert.match(side, /\{ title: "Cart", href: "\/cart", icon: ShoppingCart \}/);
+  assert.match(cart, /\{flowStep === "cart" && "Your cart"\}/);
+  console.log(`[p1-nav-cart]             label="Cart" href=/cart`);
+  console.log(`[p1-cart-heading]          heading="Your cart"`);
 });
 
 test("no test id, status value or route was renamed", () => {
