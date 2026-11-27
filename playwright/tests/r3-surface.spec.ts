@@ -1721,8 +1721,9 @@ test("U9: the stop menu, the stop sheet, undo and the asked-for tags", async ({ 
   await expect(page.getByTestId("r3-stop-removed")).toBeVisible({ timeout: 10_000 });
   const goneCount = await page.getByTestId("r3-stop-card").count();
   const deletesBefore = deletes;
-  // The bar is pinned to the viewport bottom and the page always reserves its height, so nothing is covered and
-  // nothing moves when it appears.
+  // The bar is pinned to the viewport bottom. The page reserves its height permanently (so nothing moves when it
+  // appears), and at the end of the page only that reserved space sits behind it.
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
   const barBox = await page.getByTestId("r3-stop-removed").boundingBox();
   const undoBox1280 = await page.getByTestId("r3-stop-undo").boundingBox();
   const fullWidth = !!barBox && Math.abs(barBox.x) < 1 && Math.abs(barBox.width - 1280) < 1;
