@@ -444,7 +444,7 @@ function gemTypeMeta(placeType: string | null | undefined): TypeMeta {
 // navy fills come from the earn tokens; every handler stops propagation so the
 // card-as-link container never double-fires.
 const BOOK_BTN_STYLE = { background: "var(--earn-teal)", color: "#fff", border: "none" } as const;
-const ADD_BTN_STYLE = { background: "var(--earn-navy)", color: "#fff", border: "none" } as const;
+const ADD_BTN_STYLE = { background: "transparent", color: "var(--earn-navy)", border: "1px solid var(--earn-navy)" } as const;
 
 // ─── Booking badge ─────────────────────────────────────────────────────────────
 

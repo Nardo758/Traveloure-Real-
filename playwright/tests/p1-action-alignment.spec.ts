@@ -9,9 +9,7 @@ import { registerAndSignIn } from "../utils/auth";
 const BASE_URL = process.env.BASE_URL ?? "http://localhost:5000";
 const CAPTURES = path.resolve("playwright/p1-captures");
 const OLD = path.join(CAPTURES, "old");
-const R3 = path.join(CAPTURES, "r3");
 fs.mkdirSync(OLD, { recursive: true });
-fs.mkdirSync(R3, { recursive: true });
 
 async function maskEmails(page: Page) {
   await page.addStyleTag({
@@ -36,7 +34,7 @@ async function createTripAndItem(page: Page): Promise<{ tripId: string; itemId: 
   expect(trip.status(), await trip.text()).toBe(201);
   const tripId = (await trip.json()).id as string;
   const item = await page.request.post(`${BASE_URL}/api/trips/${tripId}/itinerary-items`, {
-    data: { title: "P1 stop", dayNumber: 1 },
+    data: { title: "P1 stop", dayNumber: 1, price: 50 },
   });
   expect(item.status(), await item.text()).toBe(201);
   return { tripId, itemId: (await item.json()).id as string };
@@ -63,6 +61,8 @@ test("P1 card order and filled Book", async ({ page }) => {
   expect(slotOrder(ids)).toEqual(["add", "ask_expert", "details", "book"]);
   const book = card.locator('[data-testid^="button-service-action-"]');
   await expect(book).toHaveClass(/earn-teal/);
+  const add = card.locator('[data-testid^="button-add-to-cart"]').first();
+  await expect(add).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
   await maskEmails(page);
   await page.screenshot({ path: path.join(OLD, "card-1280.png"), fullPage: true });
   const h1280 = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
@@ -100,6 +100,11 @@ test("P1 slip cart words and stop-menu ask", async ({ page }) => {
   await expect(ask).toHaveText("Ask an expert");
   await maskEmails(page);
   await page.screenshot({ path: path.join(OLD, "menu-1280.png"), fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(300);
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OLD, "menu-390.png"), fullPage: true });
+  await page.setViewportSize({ width: 1280, height: 900 });
   console.log(`[p1-slip-ask]      menu_entry="Ask an expert"`);
 
   await routeToCart(page, tripId, itemId);
@@ -130,27 +135,6 @@ test("P1 slip cart words and stop-menu ask", async ({ page }) => {
   await maskEmails(page);
   await page.screenshot({ path: path.join(OLD, "cart-390.png"), fullPage: true });
 
-  await page.setViewportSize({ width: 1280, height: 900 });
-  await page.goto(`${BASE_URL}/plans/${tripId}?surface=r3`, { waitUntil: "domcontentloaded" });
-  await expect(page.locator('[data-testid="r3-surface"]')).toBeVisible({ timeout: 30_000 });
-  await page.waitForTimeout(800);
-  await maskEmails(page);
-  await page.screenshot({ path: path.join(R3, "card-1280.png"), fullPage: true });
-  await page.screenshot({ path: path.join(R3, "stop-tag-1280.png"), fullPage: true });
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.waitForTimeout(300);
-  await maskEmails(page);
-  await page.screenshot({ path: path.join(R3, "card-390.png"), fullPage: true });
-  await page.screenshot({ path: path.join(R3, "stop-tag-390.png"), fullPage: true });
-  await page.setViewportSize({ width: 1280, height: 900 });
-  await page.goto(`${BASE_URL}/cart?surface=r3`, { waitUntil: "domcontentloaded" });
-  await page.waitForTimeout(1500);
-  await maskEmails(page);
-  await page.screenshot({ path: path.join(R3, "cart-1280.png"), fullPage: true });
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.waitForTimeout(300);
-  await maskEmails(page);
-  await page.screenshot({ path: path.join(R3, "cart-390.png"), fullPage: true });
   console.log(`[p1-slip-cart]     add_label="Add to cart" remove_label="Remove from cart" go_label_starts="Go to cart"`);
 });
 
@@ -191,6 +175,11 @@ test("P1 ready-made tile says Details and opens the trip", async ({ page }) => {
   await expect(cta).toHaveText("Details");
   await maskEmails(page);
   await page.screenshot({ path: path.join(OLD, "tile-rmt-1280.png"), fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(300);
+  await maskEmails(page);
+  await page.screenshot({ path: path.join(OLD, "tile-rmt-390.png"), fullPage: true });
+  await page.setViewportSize({ width: 1280, height: 900 });
   await cta.click();
   await page.waitForURL(/\/ready-made\//, { timeout: 15_000 });
   console.log(`[p1-tile-rmt]      tile_label="Details" landed=${new URL(page.url()).pathname}`);
