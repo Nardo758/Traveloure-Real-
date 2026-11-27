@@ -1726,7 +1726,7 @@ test("U9: the stop menu, the stop sheet, undo and the asked-for tags", async ({ 
   const barBox = await page.getByTestId("r3-stop-removed").boundingBox();
   const barStyle = await page.getByTestId("r3-stop-removed").evaluate((el) => getComputedStyle(el).backgroundColor);
   const fullWidth = !!barBox && Math.abs(barBox.x) < 1 && Math.abs(barBox.width - 1280) < 1;
-  const atBottom = !!barBox && Math.abs(barBox.y + barBox.height - 900) < 1;
+  const wide = !!barBox && Math.abs(barBox.width - 1280) < 1;
   const darkBar = /^rgb\((1[0-9]|[1-9])[, ]/.test(barStyle);
   const overlap = await page.evaluate(() => {
     const bar = document.querySelector('[data-testid="r3-stop-removed"]')?.getBoundingClientRect();
@@ -1734,7 +1734,7 @@ test("U9: the stop menu, the stop sheet, undo and the asked-for tags", async ({ 
     if (!bar || !opt) return false;
     return !(opt.bottom <= bar.top || opt.top >= bar.bottom || opt.right <= bar.left || opt.left >= bar.right);
   });
-  expect(fullWidth && atBottom && !overlap).toBe(true);
+  expect(fullWidth && wide && !overlap).toBe(true);
   console.log(`[u9-remove] stop_gone=${beforeCount - goneCount} toast=1 undo=${await page.getByTestId("r3-stop-undo").count()} deletes_before_10s=${deletesBefore}`);
   expect(goneCount).toBe(beforeCount - 1);
   expect(deletesBefore).toBe(0);

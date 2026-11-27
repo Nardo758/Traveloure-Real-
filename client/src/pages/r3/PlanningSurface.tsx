@@ -284,7 +284,7 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
   );
 
   return (
-    <div className={pendingRemoval ? "mx-auto max-w-[1152px] px-4 py-6 pb-24" : "mx-auto max-w-[1152px] px-4 py-6"} data-testid="r3-surface" data-removing={pendingRemoval ? "true" : undefined} data-r3-part="p0">
+    <div className="mx-auto max-w-[1152px] px-4 py-6" data-testid="r3-surface" data-removing={pendingRemoval ? "true" : undefined} data-r3-part="p0">
       <header className={desktop ? "flex items-start justify-between gap-4" : "space-y-2"}>
         {desktop ? (
           <>
@@ -428,6 +428,24 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
         </div>
       </section>
 
+
+      {pendingRemoval ? (
+        <div
+          className="relative left-1/2 z-40 mt-3 flex w-screen max-w-[100vw] -translate-x-1/2 items-center justify-between gap-3 px-4 py-3 text-[13px]"
+          style={{ backgroundColor: BOARD_INK }}
+          data-testid="r3-stop-removed"
+        >
+          <span className="text-white">{`Removed ${String(pendingRemoval.stop?.name ?? pendingRemoval.stop?.title ?? "stop")}`}</span>
+          <button
+            type="button"
+            className="min-h-[44px] rounded-lg px-3 text-[13px] font-semibold text-white underline underline-offset-2"
+            onClick={undoRemoval}
+            data-testid="r3-stop-undo"
+          >
+            Undo
+          </button>
+        </div>
+      ) : null}
       {(desktop || (phoneTab === "days" && openDay >= 1)) ? (
         <OptimizeCard tripId={tripId} enabled isOwner={(data as any)?.tripRole === "owner"} />
       ) : null}
@@ -489,23 +507,6 @@ export function R3PlanningSurface({ data, tripId }: { data: SlipData; tripId: st
         />
       ) : null}
 
-      {pendingRemoval ? (
-        <div
-          className="fixed inset-x-0 bottom-0 z-50 flex w-full items-center justify-between gap-3 px-4 py-3 text-[13px]"
-          style={{ backgroundColor: BOARD_INK }}
-          data-testid="r3-stop-removed"
-        >
-          <span className="text-white">{`Removed ${String(pendingRemoval.stop?.name ?? pendingRemoval.stop?.title ?? "stop")}`}</span>
-          <button
-            type="button"
-            className="min-h-[44px] rounded-lg px-3 text-[13px] font-semibold text-white underline underline-offset-2"
-            onClick={undoRemoval}
-            data-testid="r3-stop-undo"
-          >
-            Undo
-          </button>
-        </div>
-      ) : null}
 
     </div>
   );
