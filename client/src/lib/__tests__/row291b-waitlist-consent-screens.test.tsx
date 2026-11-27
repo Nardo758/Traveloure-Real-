@@ -356,7 +356,7 @@ describe("A1 — the market-opened route lives on the admin card only", () => {
         if (!/\.(ts|tsx)$/.test(name)) continue;
         const src = fs.readFileSync(p, "utf8");
         if (src.includes("/api/admin/waitlist/market-opened")) hits.push(path.relative(ROOT, p));
-        if (src.includes("<WaitlistMarketOpenedCard")) cardUsers.push(path.relative(ROOT, p));
+        if (src.includes("<WaitlistMarketOpenedAllCard")) cardUsers.push(path.relative(ROOT, p));
       }
     };
     walk(path.join(ROOT, "client/src"));
