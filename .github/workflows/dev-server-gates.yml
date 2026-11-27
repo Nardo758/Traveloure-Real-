@@ -642,6 +642,8 @@ jobs:
           JOURNEY_BASE_URL=http://127.0.0.1:5001 JOURNEY_DB_WRITES_OK=1 \
           DATABASE_URL=postgresql://postgres:postgres@localhost:5432/traveloure \
           npx tsx --test --test-force-exit server/__tests__/dx4-signup-hardening.http.test.ts
+          JOURNEY_DB_WRITES_OK=1 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/traveloure \
+          npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/wg1-waitlist-pay-gates.db.test.ts
           npx tsx --test server/__tests__/dx4-gate-inventory.test.ts
       - name: "dx4-signup-hardening: password toggles, common-password error, unverified browsing"
         id: dx4_signup_hardening

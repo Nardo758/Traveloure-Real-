@@ -261,5 +261,8 @@
   },
   "server/services/itinerary-followup-email.ts": {
     "top pick/rated": 1
+  },
+  "shared/expert-hook.ts": {
+    "quiet time": 2
   }
 }
