@@ -12985,6 +12985,11 @@ export const placePhotos = pgTable("place_photos", {
   attribution: text("attribution"),
   checkedAt: timestamp("checked_at"),
   createdAt: timestamp("created_at"),
+  /**
+   * V31 (Leon, Nov 27 2026): the photo's place in its item's gallery - 0 is the cover, NULL is "unordered" and sorts
+   * last. Read `ORDER BY position NULLS LAST, created_at DESC`, at most 8 per item. Migration 347; no item-type column.
+   */
+  position: integer("position"),
 });
 export type PlacePhoto = typeof placePhotos.$inferSelect;
 // Migration 344 (step 5, R-ac): one row per FREE day re-time on the versions board. created_at is set
