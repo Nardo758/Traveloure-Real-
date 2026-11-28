@@ -200,22 +200,24 @@ describe("Ready-Made completeness gate", () => {
     assert.equal(captured.body?.listing?.status, "approved");
     assert.equal(updateCalls, 1);
   });
+
+  /**
+   * D1 (Leon, Nov 27 2026): the cover photo is OPTIONAL. Submit passes with no hero; an existing hero still passes.
+   */
+  it("D1: submit with no hero passes", async () => {
+    (db as any).select = queueSelects([{ dayNumber: 1 }, { dayNumber: 2 }]);
+    const lines = await assertReadyMadeComplete({ ...completeListing(), heroImageUrl: null, heroImageMeta: null } as any);
+    const hero = lines.filter((l) => l.requirement === "hero");
+    console.log(`[d1-hero] no_hero hero_lines=${hero.length}`);
+    assert.deepEqual(hero, []);
+  });
+
+  it("D1: an existing hero still passes", async () => {
+    (db as any).select = queueSelects([{ dayNumber: 1 }, { dayNumber: 2 }]);
+    const lines = await assertReadyMadeComplete({ ...completeListing() } as any);
+    const hero = lines.filter((l) => l.requirement === "hero");
+    console.log(`[d1-hero] with_hero hero_lines=${hero.length}`);
+    assert.deepEqual(hero, []);
+  });
 });
 
-/**
- * D1 (Leon, Nov 27 2026): the cover photo is OPTIONAL. A listing with no hero passes the checklist; a hero that is
- * present must still be an Unsplash image with its credit, which the save route checks separately.
- */
-test("D1: submit with no hero passes", async () => {
-  const lines = await assertReadyMadeComplete({ ...completeListing(), heroImageUrl: null, heroImageMeta: null } as any);
-  const hero = lines.filter((l) => l.requirement === "hero");
-  console.log(`[d1-hero] no_hero hero_lines=${hero.length}`);
-  assert.deepEqual(hero, []);
-});
-
-test("D1: an existing hero still passes", async () => {
-  const lines = await assertReadyMadeComplete({ ...completeListing() } as any);
-  const hero = lines.filter((l) => l.requirement === "hero");
-  console.log(`[d1-hero] with_hero hero_lines=${hero.length}`);
-  assert.deepEqual(hero, []);
-});
