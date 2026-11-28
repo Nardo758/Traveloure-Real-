@@ -133,3 +133,94 @@ for (const width of WIDTHS) {
     expect(missing, `families that could not be captured: ${missing.join(", ")}`).toEqual([]);
   });
 }
+
+/**
+ * A ready-made trip with NO cover: the Discover shelf card and the expert storefront card (the cross-sell surface).
+ * Each must show its tinted band, no broken-image icon and no stock photo.
+ */
+for (const width of WIDTHS) {
+  test(`ready-made with no cover at ${width}`, async ({ page }) => {
+    test.setTimeout(120_000);
+    fs.mkdirSync(OUT, { recursive: true });
+    await page.setViewportSize({ width, height: width === 1280 ? 900 : 844 });
+
+    const shelf = {
+      listings: [
+        {
+          id: "cap-rm-1",
+          title: "Fixture Kyoto, No Cover",
+          planType: "city_itinerary",
+          planTypeCustom: null,
+          market: "Kyoto",
+          durationDays: 3,
+          pricingMode: "per_person",
+          priceCents: 48000,
+          heroImageUrl: null,
+          authorName: "Fixture Expert",
+          authorId: "cap-earner",
+          authorHandle: "fixture-expert",
+          insideCounts: { days: 3, items: 6 },
+          section: "trips_by_locals",
+        },
+      ],
+    };
+    await page.route("**/api/ready-made**", async (route) => {
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(shelf) });
+    });
+    await page.goto(`${BASE}/ready-made`);
+    await page.waitForLoadState("networkidle", { timeout: 30_000 }).catch(() => {});
+    console.log(`[d1-ready-made] shelf_body=${(await page.evaluate(() => document.body.innerText)).slice(0, 160).replace(/\s+/g, " ")}`);
+    const shelfCard = page.locator('[data-testid^="rm-shelf-card-"]').first();
+    const shelfSeen = (await shelfCard.count()) > 0;
+    if (shelfSeen) {
+      await shelfCard.scrollIntoViewIfNeeded();
+      await settle(page, shelfCard);
+      await shelfCard.screenshot({ path: path.join(OUT, `readymade-shelf-no-cover-${width}.png`) });
+    }
+
+    const storefront = {
+      earner: {
+        id: "cap-earner",
+        handle: "fixture-expert",
+        displayName: "Fixture Expert",
+        name: "Fixture Expert",
+        firstName: "Fixture",
+        lastName: "Expert",
+        businessName: null,
+        bio: null,
+        coverImageUrl: null,
+        city: "Kyoto",
+        localVerified: true,
+      },
+      services: [],
+      readyMade: [
+        {
+          id: "cap-rm-1",
+          title: "Fixture Kyoto, No Cover",
+          heroImageUrl: null,
+          priceCents: 48000,
+          durationDays: 3,
+          insideCounts: { items: 6 },
+          planType: "city_itinerary",
+        },
+      ],
+      isOwnStorefront: false,
+      contactAvailable: false,
+    };
+    await page.route("**/api/storefront/**", async (route) => {
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(storefront) });
+    });
+    await page.goto(`${BASE}/s/fixture-expert`);
+    await page.waitForLoadState("networkidle", { timeout: 30_000 }).catch(() => {});
+    const storefrontCard = page.locator('[data-testid^="storefront-readymade-"]').first();
+    const storefrontSeen = (await storefrontCard.count()) > 0;
+    if (storefrontSeen) {
+      await storefrontCard.scrollIntoViewIfNeeded();
+      await settle(page, storefrontCard);
+      await storefrontCard.screenshot({ path: path.join(OUT, `readymade-storefront-no-cover-${width}.png`) });
+    }
+    console.log(`[d1-ready-made] width=${width} shelf_card=${shelfSeen} storefront_card=${storefrontSeen}`);
+    expect(shelfSeen, "the Discover shelf card rendered").toBe(true);
+    expect(storefrontSeen, "the storefront cross-sell card rendered").toBe(true);
+  });
+}
