@@ -24,6 +24,7 @@ import {
 import { PLACE_PHOTO_ENDPOINT, googlePhotoLive } from "./place-photos-google";
 import { blockFor, photoBlocks } from "./place-photo-blocks.service";
 import {
+import { photoRowCredited } from "./place-photos-credit";
   WIKIMEDIA_USER_AGENT,
   placePhotosCostCents,
   placePhotosDailyCap,
@@ -136,17 +137,7 @@ export const defaultPhotoDeps: PhotoResolveDeps = {
 /** The same order as the cover read, up to V31's cap of 8. One item at a time; no item-type column (Step 0 ruling 3). */
 export const PLACE_PHOTOS_MAX = 8;
 
-/** Author AND licence, or it is not a credit (Leon, Nov 27 2026). Exported so the rule has one home and a unit test. */
-export function photoRowCredited(row: {
-  source?: string | null;
-  attribution?: string | null;
-  licence?: string | null;
-}): boolean {
-  if (row.source === "ours") return true;
-  const author = (row.attribution ?? "").trim();
-  const licence = (row.licence ?? "").trim();
-  return Boolean(author) && Boolean(licence);
-}
+
 
 export async function placePhotosFor(
   key: string,

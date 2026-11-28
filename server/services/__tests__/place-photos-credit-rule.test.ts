@@ -4,7 +4,7 @@
  */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { photoRowCredited } from "../place-photos.service";
+import { photoRowCredited } from "../place-photos-credit";
 
 test("[v31-photos] author AND licence, or the row is dropped", () => {
   assert.equal(photoRowCredited({ source: "wikimedia", attribution: "Aiko", licence: "CC BY-SA 4.0" }), true);
