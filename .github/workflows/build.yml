@@ -619,6 +619,11 @@ jobs:
         name: EX-2 service price-floor pin
         run: npx tsx --test server/__tests__/service-price-floor.test.ts
       # Ready-Made listings must pass the same completeness gate at submit and approval.
+      # V31 (Leon, Nov 27 2026): a photo credit needs an AUTHOR and a LICENCE; a third-party row with only one is
+      # dropped by placePhotosFor.
+      - if: ${{ !cancelled() }}
+        name: Place photo credit rule (author AND licence)
+        run: npx tsx --test server/services/__tests__/place-photos-credit-rule.test.ts
       - if: ${{ !cancelled() }}
         name: Ready-Made completeness gate
         run: npx tsx --test server/routes/__tests__/ready-made-completeness-gate.test.ts

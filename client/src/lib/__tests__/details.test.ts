@@ -13,6 +13,10 @@ import {
   photoCreditLine,
   splitPinnedActions,
   usablePhotos,
+  parseStoredCredit,
+  paragraphs,
+  detailsPlaceLine,
+  galleryTiles,
 } from "../details";
 
 test("[v31-actions] the board order, filtered to what the item offers", () => {
@@ -24,20 +28,20 @@ test("[v31-actions] the board order, filtered to what the item offers", () => {
 
 test("[v31-photos] an uncredited photo is not shown; ours needs no credit", () => {
   assert.equal(isPhotoUsable({ url: "https://x/1.jpg" }), false);
-  assert.equal(isPhotoUsable({ url: "https://x/1.jpg", attribution: "A · CC BY 4.0 · Wikimedia Commons" }), true);
+  assert.equal(isPhotoUsable({ url: "https://x/1.jpg", author: "A", source: "Wikimedia Commons", licence: "CC BY 4.0" }), true);
   assert.equal(isPhotoUsable({ url: "https://x/1.jpg", creditRequired: false }), true);
   assert.equal(isPhotoUsable({ url: "" }), false);
   const gallery = usablePhotos([
-    { url: "u1", attribution: "credit" },
+    { url: "u1", author: "A", licence: "CC BY-SA 4.0" },
     { url: "u2" },
-    { url: "u3", attribution: "credit" },
+    { url: "u3", author: "B", licence: "CC BY 4.0" },
   ]);
   console.log(`[v31-photos] usable=${gallery.length}`);
   assert.deepEqual(gallery.map((p) => p.url), ["u1", "u3"]);
 });
 
 test("[v31-photos] at most eight, cover first", () => {
-  const photos = Array.from({ length: 12 }, (_, i) => ({ url: `u${i}`, attribution: "credit" }));
+  const photos = Array.from({ length: 12 }, (_, i) => ({ url: `u${i}`, author: "A", licence: "CC BY-SA 4.0" }));
   const gallery = usablePhotos(photos);
   console.log(`[v31-photos] capped=${gallery.length} first=${gallery[0].url}`);
   assert.equal(gallery.length, 8);
@@ -77,4 +81,45 @@ test("[v31-byline] the expert line, or nothing at all", () => {
   );
   assert.equal(authoredByLine({ name: "Aiko", city: null }), "Written by Aiko");
   assert.equal(authoredByLine(null), "");
+});
+
+test("[v31-credit] a credit needs an author AND a licence", () => {
+  console.log(`[v31-credit] author_only=${isPhotoUsable({ url: "u", author: "Wikimedia Commons" })}`);
+  assert.equal(isPhotoUsable({ url: "u", author: "Wikimedia Commons" }), false);
+  assert.equal(isPhotoUsable({ url: "u", licence: "CC BY-SA 4.0" }), false);
+  assert.equal(isPhotoUsable({ url: "u", author: "A", licence: "CC BY-SA 4.0" }), true);
+  assert.equal(isPhotoUsable({ url: "u", author: "https://x/y", licence: "CC BY-SA 4.0" }), false);
+});
+
+test("[v31-credit] parseStoredCredit returns labels, never a URL", () => {
+  const parsed = parseStoredCredit(
+    "Aiko Tanaka. Source: https://commons.wikimedia.org/wiki/File:x.jpg License: https://creativecommons.org/licenses/by-sa/4.0/",
+  );
+  console.log(`[v31-credit] parsed=${JSON.stringify(parsed)}`);
+  assert.deepEqual(parsed, { author: "Aiko Tanaka", source: "Wikimedia Commons", licence: "CC BY-SA 4.0" });
+  assert.equal(parseStoredCredit("Source: https://commons.wikimedia.org/wiki/File:x.jpg"), null);
+  assert.equal(parseStoredCredit(null), null);
+});
+
+test("[v31-text] paragraphs: one block per paragraph", () => {
+  const blocks = paragraphs("First line.\n\nSecond paragraph here.\n\n\nThird.");
+  console.log(`[v31-text] blocks=${blocks.length}`);
+  assert.deepEqual(blocks, ["First line.", "Second paragraph here.", "Third."]);
+});
+
+test("[v31-place] TYPE · NEIGHBOURHOOD, CITY with missing parts dropped", () => {
+  assert.equal(detailsPlaceLine("Temple", "Higashiyama", "Kyoto"), "Temple · Higashiyama, Kyoto");
+  assert.equal(detailsPlaceLine("Temple", null, "Kyoto"), "Temple · Kyoto");
+  assert.equal(detailsPlaceLine(null, "Higashiyama", "Kyoto"), "Higashiyama, Kyoto");
+  assert.equal(detailsPlaceLine(null, null, null), "");
+  console.log("[v31-place] separators never dangle");
+});
+
+test("[v31-gallery] one large, two thumbnails, the rest counted", () => {
+  const five = galleryTiles(Array.from({ length: 5 }, (_, i) => ({ url: `u${i}`, creditRequired: false })));
+  const eight = galleryTiles(Array.from({ length: 8 }, (_, i) => ({ url: `u${i}`, creditRequired: false })));
+  console.log(`[v31-gallery] five=+${five.more} eight=+${eight.more}`);
+  assert.equal(five.thumbs.length, 2);
+  assert.equal(five.more, 2);
+  assert.equal(eight.more, 5);
 });

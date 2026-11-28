@@ -5,6 +5,9 @@ import { useImpressionTracker } from "@/hooks/use-impression-tracker";
 import { useQuery } from "@tanstack/react-query";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { PlanActions } from "@/components/plan/PlanActions";
+import { AskExpertButton } from "@/components/ask-expert-button";
+import { parseStoredCredit, type DetailsActionKey } from "@/lib/details";
+import type { ReactNode } from "react";
 import { PLAN_ACTIONS_COPY } from "@/lib/plan-actions";
 import { DetailsView } from "@/components/details/DetailsView";
 import { useDetailsPhotos } from "@/hooks/use-details-photos";
@@ -1101,19 +1104,13 @@ export function CityFeedCardGem({
   const showGemPhoto = !loading && Boolean(photoUrl) && !imgFailed;
   // V31: the Details view's gallery - the record's own image first, then the server's ordered rows (cover, max 8).
   const { photos: gemGallery } = useDetailsPhotos(gem.placeId ?? gem.id);
-  // Leon's ruling (Nov 27 2026): a gem's stored image is THIRD-PARTY - it is shown only with its credit, so the 97 of
-  // 107 covers whose image_credit is empty are dropped here rather than shown uncredited.
-  const gemCoverCredit =
-    typeof gem.imageCredit === "string" ? gem.imageCredit : (gem.imageCredit?.text ?? gem.imageCredits ?? null);
+  const gemSaveItem0 = buildSaveItem({ contentType: "gem", contentId: gem.id, name: gem.placeName, image: showGemPhoto ? photoUrl : null, city });
+  // Leon's ruling (Nov 27 2026): a gem's stored image is THIRD-PARTY. storedImageCredit parses the stamped string and
+  // the raw URL is never printed; a cover with no parsed author+licence is dropped, not shown uncredited.
+  const gemCover = parseStoredCredit(typeof gem.imageCredit === "string" ? gem.imageCredit : null);
   const gemDetailsPhotos = [
-    ...(photoUrl ? [{ url: photoUrl, attribution: gemCoverCredit, source: null, licence: null, creditRequired: true }] : []),
+    ...(photoUrl && gemCover ? [{ url: photoUrl, author: gemCover.author, source: gemCover.source, licence: gemCover.licence, creditRequired: true }] : []),
     ...gemGallery.filter((row) => row.url !== photoUrl),
-  ];
-  const gemDetailsActions = [
-    { key: "add" as const, label: PLAN_ACTIONS_COPY.saveToPlan, onPress: () => onAdd?.(gemAddPayload()) },
-    ...(gem.sourceUrl
-      ? [{ key: "officialSite" as const, label: "Official site", onPress: () => window.open(String(gem.sourceUrl), "_blank", "noopener") }]
-      : []),
   ];
   const gemSaveItem = buildSaveItem({ contentType: "gem", contentId: gem.id, name: gem.placeName, image: showGemPhoto ? photoUrl : null, city });
 
@@ -1162,6 +1159,73 @@ export function CityFeedCardGem({
   // QA round 3 PR 5: a day-filtered feed on a confirmed plan names the day the add lands on ("Add to Day {n}").
   const gemAddDay = useFeedAddDay(scheduledDate);
   const gemSave = { ...feedSaveIntent({ type: "gem", sourceContentId: gem.id }, city), dayNumber: gemAddDay };
+
+  // V27's order, every action this type has: Add, Ask, Book (when it has a booking), Save, Share, Official site.
+  let gemActions: Partial<Record<DetailsActionKey, ReactNode>> = {
+    add: (
+      <PlanActions
+        site="bento"
+        city={city}
+        order={["save"]}
+        save={{
+          ...gemSave,
+          testId: `btn-details-add-gem-${gem.id}`,
+          className: cn(buttonVariants({ size: "sm" }), "h-9 w-full text-xs px-3"),
+          style: ADD_BTN_STYLE,
+          icon: <Plus className="w-3 h-3 mr-1" />,
+          onClick: () => onAdd?.(gemAddPayload()),
+        }}
+      />
+    ),
+    ask: (
+      <AskExpertButton
+        testId={`btn-details-ask-gem-${gem.id}`}
+        city={city}
+        subject={gem.placeName}
+        className={cn(buttonVariants({ size: "sm", variant: "outline" }), "h-9 w-full text-xs px-2.5")}
+      />
+    ),
+    save: (
+      <SaveToggle
+        item={gemSaveItem0!}
+        showLabel
+        testId={`btn-details-save-gem-${gem.id}`}
+        className="h-9 w-full justify-center text-xs"
+      />
+    ),
+    share: (
+      <button
+        type="button"
+        data-testid={`btn-details-share-gem-${gem.id}`}
+        className={cn(buttonVariants({ size: "sm", variant: "outline" }), "h-9 w-full text-xs px-2.5")}
+        onClick={() => {
+          const url = gem.sourceUrl ? String(gem.sourceUrl) : window.location.href;
+          if (typeof navigator !== "undefined" && "share" in navigator) {
+            void ((navigator as any)).share({ title: gem.placeName, url }).catch(() => {});
+          } else if (typeof navigator !== "undefined" && (navigator as any).clipboard) {
+            void (navigator as any).clipboard.writeText(url).catch(() => {});
+          }
+        }}
+      >
+        Share
+      </button>
+    ),
+    ...(gem.sourceUrl
+      ? {
+          officialSite: (
+            <a
+              href={String(gem.sourceUrl)}
+              target="_blank"
+              rel="noopener noreferrer"
+              data-testid={`btn-details-official-gem-${gem.id}`}
+              className={cn(buttonVariants({ size: "sm", variant: "outline" }), "h-9 w-full text-xs px-2.5")}
+            >
+              Official site
+            </a>
+          ),
+        }
+      : {}),
+  };
   const { srcSet, sizes } = buildSrcSet(photoUrl);
 
   const isRow = layout === "row";
@@ -1451,11 +1515,13 @@ export function CityFeedCardGem({
             </div>
           </div>
         </div>
-      <DetailsView
+<DetailsView
         open={sheetOpen}
         onClose={() => setSheetOpen(false)}
         title={gem.placeName}
-        placeLine={[gem.city ?? city, gem.neighborhood].filter(Boolean).join(" · ") || null}
+        type={gem.category ?? null}
+        neighbourhood={gem.neighborhood ?? null}
+        city={gem.city ?? city}
         teaser={
           [gem.description, gem.whyLocalsLoveIt]
             .filter((v, i, a) => typeof v === "string" && v.trim() && a.indexOf(v) === i)
@@ -1463,7 +1529,7 @@ export function CityFeedCardGem({
         }
         curator={gemCuratorFullName(gem) ? { id: gem.id, name: gemCuratorFullName(gem)! } : null}
         photos={gemDetailsPhotos}
-        actions={gemDetailsActions}
+        actions={gemActions}
       />
       </>
     );
@@ -1485,11 +1551,13 @@ export function CityFeedCardGem({
         {photoArea}
         {cardBody}
       </div>
-      <DetailsView
+<DetailsView
         open={sheetOpen}
         onClose={() => setSheetOpen(false)}
         title={gem.placeName}
-        placeLine={[gem.city ?? city, gem.neighborhood].filter(Boolean).join(" · ") || null}
+        type={gem.category ?? null}
+        neighbourhood={gem.neighborhood ?? null}
+        city={gem.city ?? city}
         teaser={
           [gem.description, gem.whyLocalsLoveIt]
             .filter((v, i, a) => typeof v === "string" && v.trim() && a.indexOf(v) === i)
@@ -1497,7 +1565,7 @@ export function CityFeedCardGem({
         }
         curator={gemCuratorFullName(gem) ? { id: gem.id, name: gemCuratorFullName(gem)! } : null}
         photos={gemDetailsPhotos}
-        actions={gemDetailsActions}
+        actions={gemActions}
       />
     </>
   );
