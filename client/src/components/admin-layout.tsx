@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AdminSidebar } from "./admin-sidebar";
 import { Bell, CheckCircle } from "lucide-react";
@@ -16,6 +17,38 @@ export function AdminLayout({ children, title }: AdminLayoutProps) {
     "--sidebar-width": "220px",
     "--sidebar-width-icon": "56px",
   };
+
+  // The verify banner is mounted above this layout, so it cannot read the sidebar's
+  // state directly. Publish the live gap (expanded or collapsed) plus its 24px inset
+  // as a CSS variable the banner consumes; clearing it on unmount keeps non-admin
+  // pages at zero.
+  useEffect(() => {
+    const root = document.documentElement;
+    let gap: HTMLElement | null = null;
+    let observer: ResizeObserver | null = null;
+    const update = () => {
+      gap = document.querySelector<HTMLElement>('[data-slot="sidebar-container"]');
+      const desktop = window.matchMedia("(min-width: 1024px)").matches;
+      root.style.setProperty(
+        "--admin-banner-left",
+        desktop && gap ? `${gap.getBoundingClientRect().width + 24}px` : "16px",
+      );
+      root.style.setProperty("--admin-banner-max", "none");
+      if (gap && observer) observer.observe(gap);
+    };
+    update();
+    const raf = requestAnimationFrame(update);
+    observer = new ResizeObserver(update);
+    if (gap) observer.observe(gap);
+    window.addEventListener("resize", update);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", update);
+      observer?.disconnect();
+      root.style.removeProperty("--admin-banner-left");
+      root.style.removeProperty("--admin-banner-max");
+    };
+  }, []);
 
   // L9(b) fix: the dot used to render unconditionally, so it stayed lit over "0 unread"
   // on the Notifications page. Same queryKey as that page (client/src/pages/admin/notifications.tsx)
