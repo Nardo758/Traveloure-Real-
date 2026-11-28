@@ -8,7 +8,7 @@
  * Run with:
  *   npx tsx --test server/routes/__tests__/ready-made-completeness-gate.test.ts
  */
-import { after, afterEach, before, describe, it } from "node:test";
+import { after, afterEach, before, describe, it, test } from "node:test";
 import assert from "node:assert/strict";
 
 process.env.DATABASE_URL ||= "postgresql://test:test@localhost:5432/test";
@@ -16,6 +16,7 @@ process.env.STRIPE_SECRET_KEY = "sk_test_ready_made_completeness_gate";
 
 const { db } = await import("../../db.js");
 const readyMadeRouter = (await import("../ready-made.routes.js")).default;
+const { assertReadyMadeComplete } = await import("../ready-made.routes.js");
 const adminRouter = (await import("../admin.routes.js")).default;
 const { READY_MADE_PLACEHOLDER_TITLE } = await import("../ready-made.routes.js");
 
@@ -199,4 +200,24 @@ describe("Ready-Made completeness gate", () => {
     assert.equal(captured.body?.listing?.status, "approved");
     assert.equal(updateCalls, 1);
   });
+
+  /**
+   * D1 (Leon, Nov 27 2026): the cover photo is OPTIONAL. Submit passes with no hero; an existing hero still passes.
+   */
+  it("D1: submit with no hero passes", async () => {
+    (db as any).select = queueSelects([{ dayNumber: 1 }, { dayNumber: 2 }]);
+    const lines = await assertReadyMadeComplete({ ...completeListing(), heroImageUrl: null, heroImageMeta: null } as any);
+    const hero = lines.filter((l) => l.requirement === "hero");
+    console.log(`[d1-hero] no_hero hero_lines=${hero.length}`);
+    assert.deepEqual(hero, []);
+  });
+
+  it("D1: an existing hero still passes", async () => {
+    (db as any).select = queueSelects([{ dayNumber: 1 }, { dayNumber: 2 }]);
+    const lines = await assertReadyMadeComplete({ ...completeListing() } as any);
+    const hero = lines.filter((l) => l.requirement === "hero");
+    console.log(`[d1-hero] with_hero hero_lines=${hero.length}`);
+    assert.deepEqual(hero, []);
+  });
 });
+

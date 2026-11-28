@@ -234,7 +234,9 @@ test("KF6 traveler gem lists use visibleGemCondition, and Fever titles go throug
   const card = read("client/src/components/city-feed-card.tsx");
   assert.match(card, /composeGemFactLine/);
   assert.match(card, /gem-image-credit-/);
-  assert.match(card, /allowFetch: !textOnly/);
+  // D1 (Leon, Nov 27 2026): the stock-by-name fallback is gone, so the gem card no longer asks for one at all.
+  assert.equal(card.includes("allowFetch"), false, "the gem card never asks for a stock photo");
+  assert.match(card, /gem\.imageUrl/, "the gem's own image is what the card draws");
   for (const file of [
     "server/services/travelpulse.service.ts",
     "server/routes.ts",

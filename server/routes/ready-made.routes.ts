@@ -563,9 +563,8 @@ export async function assertReadyMadeComplete(
   if (!listing.planType) {
     missing.push({ requirement: "planType", message: "Choose a plan type (Hiking Itinerary, Road Trip Itinerary, …)" });
   }
-  if (!listing.heroImageUrl || !(listing.heroImageMeta as any)?.photographer) {
-    missing.push({ requirement: "hero", message: "Pick a cover photo from the Unsplash picker" });
-  }
+  // D1 (Leon, Nov 27 2026): a cover photo is OPTIONAL - a listing with no hero passes this checklist. A hero that IS
+  // present must still be an Unsplash image with its credit (the integrity check on save, below).
   if (listing.priceCents === null || listing.priceCents === undefined) {
     missing.push({ requirement: "price", message: "Set a price" });
   }

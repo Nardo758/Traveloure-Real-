@@ -1,70 +1,40 @@
 /**
- * QA round 4 R4-10: the gem cards ask for a stock photo ONCE per (place, city) for the page's life.
+ * D1 (Leon, Nov 27 2026) replaced the R4-10 stock dedupe: there is no stock request to dedupe any more.
  *
- *   D1 two cards for the same place at once: one request, the same answer
- *   D2 the same place later (a remount): no request
- *   D3 another place, or the same name in another city: its own request
- *   D4 a failed request is not kept: the next mount asks again
- *   D5 the hook asks through the shared answer, never its own fetch
+ *   D1 no source file asks /api/media/place-photo for a photo
+ *   D2 the hook returns the record's own image and never a stock answer
+ *   D3 with no image the caller gets null, so its existing no-photo state stands
  *
  * Run: npx tsx --test client/src/hooks/__tests__/r4-stock-photo-dedupe.test.ts
  */
-import { beforeEach, describe, it } from "node:test";
+import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { _resetStockPhotoAnswers, fetchStockPhoto } from "../use-gem-photo";
+import path from "node:path";
 
-const credit = { name: "P", source: "Pexels", licenseUrl: "https://www.pexels.com/license/", link: "https://www.pexels.com/photo/1/" };
-let calls: string[] = [];
-const fetcher = (async (url: any) => {
-  calls.push(String(url));
-  return new Response(JSON.stringify({ photoUrl: "https://images.pexels.com/1.jpg", credit }), { status: 200 });
-}) as typeof fetch;
+const ROOT = process.cwd();
+const HOOK = path.join(ROOT, "client/src/hooks/use-gem-photo.ts");
+const hookSrc = () => fs.readFileSync(HOOK, "utf8");
 
-beforeEach(() => {
-  _resetStockPhotoAnswers();
-  calls = [];
-});
-
-describe("QA round 4 R4-10 — one stock-photo request per place", () => {
-  it("D1 two cards at once share one request", async () => {
-    const [a, b] = await Promise.all([fetchStockPhoto("Kinkaku-ji", "Kyoto", fetcher), fetchStockPhoto("Kinkaku-ji", "Kyoto", fetcher)]);
-    assert.equal(calls.length, 1);
-    assert.deepEqual(a, b);
-    assert.equal(a.photoUrl, "https://images.pexels.com/1.jpg");
-    assert.deepEqual(a.credit, credit);
+describe("D1 - no stock-by-name fallback", () => {
+  it("D1 the hook never asks for a stock photo", () => {
+    const src = hookSrc();
+    assert.equal(src.includes("/api/media/place-photo"), false, "the hook names no stock endpoint");
+    assert.equal(src.includes("fetch("), false, "the hook makes no request");
+    assert.equal(src.includes("unsplash"), false, "no stock source is named");
   });
 
-  it("D2 a later mount for the same place sends nothing", async () => {
-    await fetchStockPhoto("Kinkaku-ji", "Kyoto", fetcher);
-    await fetchStockPhoto("Kinkaku-ji", "Kyoto", fetcher);
-    assert.equal(calls.length, 1);
+  it("D2 the hook returns the record's own image", () => {
+    const src = hookSrc();
+    assert.match(src, /photoUrl: existingImageUrl \?\? null/, "passes the record's image through");
+    assert.match(src, /credit: null/, "never invents a stock credit");
   });
 
-  it("D3 another place, or another city, is its own request", async () => {
-    await fetchStockPhoto("Kinkaku-ji", "Kyoto", fetcher);
-    await fetchStockPhoto("Ginkaku-ji", "Kyoto", fetcher);
-    await fetchStockPhoto("Kinkaku-ji", "Osaka", fetcher);
-    assert.equal(calls.length, 3);
-  });
-
-  it("D4 a failed request is not kept", async () => {
-    let fail = true;
-    const flaky = (async (url: any) => {
-      calls.push(String(url));
-      if (fail) throw new Error("offline");
-      return new Response(JSON.stringify({ photoUrl: null }), { status: 200 });
-    }) as typeof fetch;
-    await assert.rejects(fetchStockPhoto("Gion", "Kyoto", flaky));
-    fail = false;
-    assert.deepEqual(await fetchStockPhoto("Gion", "Kyoto", flaky), { photoUrl: null, credit: null });
-    assert.equal(calls.length, 2);
-  });
-
-  it("D5 the hook reads the shared answer", () => {
-    const src = fs.readFileSync("client/src/hooks/use-gem-photo.ts", "utf8");
-    assert.match(src, /const answer = await fetchStockPhoto\(placeName, city\);/);
-    assert.equal((src.match(/fetcher\(`\/api\/media\/place-photo/g) ?? []).length, 1, "one request site");
-    assert.doesNotMatch(src, /[^r]fetch\(`\/api\/media\/place-photo/, "the hook sends no request of its own");
+  it("D3 the five call sites pass a record image or nothing", () => {
+    const card = fs.readFileSync(path.join(ROOT, "client/src/components/city-feed-card.tsx"), "utf8");
+    const rec = fs.readFileSync(path.join(ROOT, "client/src/components/city-feed-card-recommendation.tsx"), "utf8");
+    assert.equal(card.includes("useGemPhoto("), false, "the feed cards no longer call the stock hook");
+    assert.equal(rec.includes("useGemPhoto"), false, "the recommendation tile no longer calls it");
+    assert.equal(card.includes("gem.imageUrl"), true, "the gem keeps its own image");
   });
 });

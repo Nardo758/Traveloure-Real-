@@ -134,7 +134,7 @@ export default function ExpertReadyMade() {
             testId="empty-ready-made"
             icon={MapIcon}
             title="No store listings yet"
-            body="Start one and the builder opens with an empty itinerary. Add days and places, choose a plan type, set a price, pick a cover photo, then submit it for review."
+            body="Start one and the builder opens with an empty itinerary. Add days and places, choose a plan type, set a price, then submit it for review."
           />
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>

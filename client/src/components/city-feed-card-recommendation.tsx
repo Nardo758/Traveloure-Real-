@@ -27,7 +27,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import { useGemPhoto } from "@/hooks/use-gem-photo";
 import { useExpertAvailability } from "@/lib/expert-availability";
 import { AskExpertButton } from "@/components/ask-expert-button";
 import type { BentoCompactActionState } from "@/lib/bento-action-state";
@@ -169,9 +168,11 @@ export function CityFeedCardRecommendation({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [candidate.offeringId]);
 
-  // Same photo pipeline as organic gem cards; offerings have no image column,
-  // so look one up by display name + city, with the category emoji fallback.
-  const { photoUrl, loading } = useGemPhoto(`rec-${position}-${name}`, name, city, null);
+  // D1 (Leon, Nov 27 2026): no photo lookup of any kind. A recommendation names an offering CATEGORY and has
+  // no image column, so it draws its category emoji and keeps its no-photo state.
+  // D1: a recommendation names a category, not a row with a photo - it keeps its no-photo state.
+  const photoUrl = null;
+  const loading = false;
 
   // CAP-2 Phase 2 (ruling, Nov 5, 2026 — option (a)): a recommendation names an offering CATEGORY
   // (`service_offering_types.offering_type_key`), not a row a PlanItemRef can name, so the card offers no save and no add.
