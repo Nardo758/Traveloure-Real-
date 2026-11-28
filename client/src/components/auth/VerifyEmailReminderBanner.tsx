@@ -20,8 +20,8 @@ export function VerifyEmailReminderBanner({ initialOutcome = null }: { initialOu
   };
 
   return (
-    <div role="status" className="w-full border-b border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-900" data-testid="banner-verify-email">
-      <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-2">
+    <div role="status" className="w-full border-b border-amber-300 bg-amber-50 px-4 py-2 text-sm text-amber-900" style={{ paddingLeft: "var(--admin-banner-left, 1rem)" }} data-testid="banner-verify-email">
+      <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-2" style={{ maxWidth: "var(--admin-banner-max, 72rem)" }}>
         <span>{T.text}</span>
         <div className="flex flex-wrap items-center gap-3">
           {outcome?.kind === "sent" ? <span data-testid="banner-verify-email-result">{outcome.message}</span> : null}
