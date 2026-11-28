@@ -1264,6 +1264,12 @@ jobs:
       - if: ${{ !cancelled() }}
         name: Client route list is current
         run: node scripts/generate-client-routes.cjs --check
+      # S5c (ledger `2026-11-28-audit-site-map`): the site map is generated from that same route list and from
+      # App.tsx, so a committed map that no longer matches a fresh run means the app moved and the census did not.
+      # The script normalises CRLF, so a Windows checkout reads exactly as an LF one.
+      - if: ${{ !cancelled() }}
+        name: Site map is current
+        run: npx tsx scripts/audit/site-map.ts --check
       - if: ${{ !cancelled() }}
         name: Ticker rules and ribbon render
         run: npx tsx --test client/src/lib/__tests__/ticker-rules.test.ts client/src/components/__tests__/ticker-ribbon.test.tsx
