@@ -743,6 +743,22 @@ jobs:
           path: playwright/g1-captures/
           retention-days: 14
           if-no-files-found: warn
+      - name: "f2-event-add: /events and the landing strip at 1280 and 390"
+        id: f2_event_add
+        if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
+        run: npx playwright test f2-event-add-captures --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          CI: 'true'
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      - name: Upload the F2 screenshots
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: f2-captures-${{ github.sha }}
+          path: playwright/f2-captures/
+          retention-days: 14
+          if-no-files-found: warn
       - name: "u8a-payment-methods: the Settings row, the page, and the first-card default at 1280 and 390"
         id: u8a_payment_methods
         if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
