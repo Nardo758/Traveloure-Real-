@@ -161,15 +161,12 @@ export async function seedMeetingPin(
 
 /**
  * seedReadyMadeHero — TEST-FIXTURE-ONLY write, R-1 fallback (lead-authorized, coordinator
- * review). `assertReadyMadeComplete` (server/routes/ready-made.routes.ts:687 submit path) requires
- * BOTH `heroImageUrl` and `heroImageMeta.photographer` before a ready-made can be submitted, and
- * D1 (Leon, Nov 27 2026) removed the Unsplash picker, so there is no UI path to either any more; this seed is
- * which answers `{ready:false, reason:"unsplash_not_configured"}` with no UNSPLASH_ACCESS_KEY —
- * absent in this environment, and the object-storage upload path also 503s here. This seeds a
- * stable, publicly-resolvable test image URL directly onto the two columns the gate reads, AFTER
- * the real picker has been attempted (so the finding records what the UI actually said first).
- * Every call site must log this as a SPEC_DIVERGENCE/P3 "seeded ready-made hero (HELD:unsplash)"
- * finding and must only ever target a run-id-tagged e2e ready-made row.
+ * review). A present hero must be the author's own upload, an official source with credit, or
+ * Wikimedia Commons under CC/public domain. D1 removed the stock picker; this CI has no
+ * object-storage upload path, so this seeds a stable Wikimedia Commons URL with its author and
+ * licence directly onto the two columns the gate reads. Every call site must log this as a
+ * SPEC_DIVERGENCE/P3 "seeded ready-made hero (HELD:commons)" finding and must only ever target a
+ * run-id-tagged e2e ready-made row.
  */
 export async function seedReadyMadeHero(readyMadeId: string): Promise<void> {
   await db().query(
@@ -180,12 +177,11 @@ export async function seedReadyMadeHero(readyMadeId: string): Promise<void> {
       WHERE id = $1`,
     [
       readyMadeId,
-      'https://images.unsplash.com/photo-1478436127897-769e1b3f0f36',
+      'https://upload.wikimedia.org/wikipedia/commons/1/15/Kusho_My%C5%8Djin_shrine%2C_Ninna-ji_temple%2C_Kyoto_-_Oct_25%2C_2009.jpg',
       JSON.stringify({
-        unsplashId: 'seeded-e2e-fixture',
-        photographer: 'e2e supply-demand fixture (HELD:unsplash — seeded, not a real Unsplash credit)',
-        profileUrl: null,
-        downloadLocation: null,
+        photographer: 'Carles Tomás Martí',
+        profileUrl: 'https://commons.wikimedia.org/wiki/File:Kusho_My%C5%8Djin_shrine,_Ninna-ji_temple,_Kyoto_-_Oct_25,_2009.jpg',
+        license: 'CC BY 2.0',
       }),
     ],
   );

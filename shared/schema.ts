@@ -11517,8 +11517,8 @@ export const readyMadeTrips = pgTable("ready_made_trips", {
   sourceTripId: varchar("source_trip_id").notNull().references(() => trips.id),
   market: varchar("market", { length: 100 }).notNull(), // launch: Kyoto only (§12)
   title: varchar("title", { length: 200 }).notNull(),
-  // Nullable by design: born-draft before any hero exists. Submit/approve enforce non-null
-  // (Unsplash picker per D2 — photoUrl + attribution stored in heroImageMeta).
+  // Nullable by design: no hero is valid (D1). A present hero is an own upload, a credited
+  // official-source photo, or licensed Wikimedia Commons; photoUrl + credit live in heroImageMeta.
   heroImageUrl: text("hero_image_url"),
   heroImageMeta: jsonb("hero_image_meta"), // { unsplashId, photographer, profileUrl, downloadLocation }
   durationDays: integer("duration_days").notNull(),
