@@ -1,4 +1,4 @@
-﻿/**
+/**
  * CMS-1 Launch (ledger `2026-11-04-cms1-launch-screens`): nothing goes public unscreened.
  *
  *   T1 ready-made approve: a banned title → 422 banned_copy with the hit; no photo tick → 422 photo_rights; clean +

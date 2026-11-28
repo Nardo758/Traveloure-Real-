@@ -1,4 +1,4 @@
-﻿import { displayCrowdBand, displayTrendScore, type DisplayCrowdBand } from "@shared/trend-display";
+import { displayCrowdBand, displayTrendScore, type DisplayCrowdBand } from "@shared/trend-display";
 import { hideBlockedGemImage, photoBlocks } from "./place-photo-blocks.service";
 import { visibleGemCondition, visibleHappeningNowCondition } from "./gem-visibility";
 import { gemCopyForTraveler } from "@shared/kyoto-gem-copy";

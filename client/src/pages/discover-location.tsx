@@ -1,4 +1,4 @@
-﻿import { useDebouncedValue, DISCOVER_THEME_DEBOUNCE_MS } from "@/hooks/use-debounced-value";
+import { useDebouncedValue, DISCOVER_THEME_DEBOUNCE_MS } from "@/hooks/use-debounced-value";
 import { SPINE_CHIPS, effectiveSpineFilter, shownSpineChips } from "@/lib/spine-chips";
 import { DISCOVER_HEADLINE_COPY } from "@shared/copy-2026-10-31";
 import { neighbourhoodHomeKey } from "@/lib/wanted-slot-link";

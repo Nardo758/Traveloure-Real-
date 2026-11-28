@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Photo-rule lane (ledger `2026-11-28-photo-rule-a-b-d`): before/after captures of the city tile at
  * 1280 and 390, for the PR. NOT a CI test — a one-shot capture, committed as images.
  *

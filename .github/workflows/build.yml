@@ -1,4 +1,4 @@
-﻿name: Build Smoke
+name: Build Smoke
 
 # Closes the gate hole that let a syntax error reach main looking clean:
 # the logic gate tests an isolated module and the e2e never had a green run, so

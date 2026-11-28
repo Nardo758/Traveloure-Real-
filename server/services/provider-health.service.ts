@@ -1,4 +1,4 @@
-﻿/**
+/**
  * provider-health.service.ts — in-memory catalog-provider health registry.
  *
  * Every /api/catalog/* source (a Travelpayouts network, a direct partner API, or a media API) reports

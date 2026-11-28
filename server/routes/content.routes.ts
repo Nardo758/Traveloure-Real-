@@ -1,4 +1,4 @@
-﻿import { verifyTripOwnership } from '../utils/trip-ownership';
+import { verifyTripOwnership } from '../utils/trip-ownership';
 import { toPublicPartnerProducts } from "../services/public-partner-product";
 import { claimFreeDraft, promoteFreeDraft, releaseFreeDraft, freeDraftRefusalBody, freeDraftStatus, FREE_DRAFT_REFUSAL_STATUS } from "../services/free-draft-cap.service";
 import { optimizedItinerariesGate } from "../config/optimized-itineraries.config";

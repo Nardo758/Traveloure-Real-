@@ -1,4 +1,4 @@
-﻿/**
+/**
  * provider-health.service.ts — behavioral proof.
  *
  * Covers: reportProviderResult never throws (even with garbage input); getProviderHealth reflects

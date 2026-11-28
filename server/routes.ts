@@ -1,4 +1,4 @@
-﻿import type { Express, RequestHandler } from "express";
+import type { Express, RequestHandler } from "express";
 import { refuseItemWrite, issuePaths } from "./services/item-write-refusal";
 import { tripGetsRoutedLegs } from "./services/routing/plan-routed-legs.service";
 import { enqueuePlanLegRecompute } from "./services/routing/plan-legs-queue";
