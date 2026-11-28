@@ -1101,8 +1101,12 @@ export function CityFeedCardGem({
   const showGemPhoto = !loading && Boolean(photoUrl) && !imgFailed;
   // V31: the Details view's gallery - the record's own image first, then the server's ordered rows (cover, max 8).
   const { photos: gemGallery } = useDetailsPhotos(gem.placeId ?? gem.id);
+  // Leon's ruling (Nov 27 2026): a gem's stored image is THIRD-PARTY - it is shown only with its credit, so the 97 of
+  // 107 covers whose image_credit is empty are dropped here rather than shown uncredited.
+  const gemCoverCredit =
+    typeof gem.imageCredit === "string" ? gem.imageCredit : (gem.imageCredit?.text ?? gem.imageCredits ?? null);
   const gemDetailsPhotos = [
-    ...(photoUrl ? [{ url: photoUrl, creditRequired: false }] : []),
+    ...(photoUrl ? [{ url: photoUrl, attribution: gemCoverCredit, source: null, licence: null, creditRequired: true }] : []),
     ...gemGallery.filter((row) => row.url !== photoUrl),
   ];
   const gemDetailsActions = [

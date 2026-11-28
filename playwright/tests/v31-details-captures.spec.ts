@@ -22,7 +22,7 @@ const LONG_TEXT =
 // One real payload per test, reused for every state: the feed is stubbed from it, so no state re-hits the API.
 let payloadCache: any = null;
 
-type State = "one" | "five" | "eight" | "none" | "notext" | "uncredited";
+type State = "one" | "five" | "eight" | "none" | "notext" | "shorttext" | "uncredited" | "cover-uncredited";
 
 const ROWS: Record<State, Array<{ url: string; source: string; licence: string | null; attribution: string | null; checkedAt: string | null }>> = {
   one: [{ url: IMG, source: "Wikimedia Commons", licence: "CC BY-SA 4.0", attribution: "A · CC BY-SA 4.0 · Wikimedia Commons", checkedAt: "2026-11-12T00:00:00Z" }],
@@ -30,6 +30,8 @@ const ROWS: Record<State, Array<{ url: string; source: string; licence: string |
   eight: Array.from({ length: 8 }, (_, i) => ({ url: IMG, source: "Wikimedia Commons", licence: "CC BY-SA 4.0", attribution: `A${i} · CC BY-SA 4.0 · Wikimedia Commons`, checkedAt: "2026-11-12T00:00:00Z" })),
   none: [],
   notext: [{ url: IMG, source: "Wikimedia Commons", licence: "CC BY-SA 4.0", attribution: "A · CC BY-SA 4.0 · Wikimedia Commons", checkedAt: "2026-11-12T00:00:00Z" }],
+  shorttext: [{ url: IMG, source: "Wikimedia Commons", licence: "CC BY-SA 4.0", attribution: "A · CC BY-SA 4.0 · Wikimedia Commons", checkedAt: "2026-11-12T00:00:00Z" }],
+  "cover-uncredited": [],
   // the second row has no attribution: the server drops it, so only one photo is usable
   uncredited: [
     { url: IMG, source: "Wikimedia Commons", licence: "CC BY-SA 4.0", attribution: "A · CC BY-SA 4.0 · Wikimedia Commons", checkedAt: "2026-11-12T00:00:00Z" },
@@ -57,8 +59,12 @@ async function stub(page: Page, state: State, ownImage: boolean) {
     const list = Array.isArray(json?.gems?.data) ? json.gems.data : [];
     const target = list[0];
     if (target) {
-      target.description = state === "notext" ? "" : LONG_TEXT;
-      target.whyLocalsLoveIt = state === "notext" ? null : target.whyLocalsLoveIt;
+      target.description =
+        state === "notext" ? "" : state === "shorttext" ? "A tiny stone bridge over the Shirakawa canal, at dusk." : LONG_TEXT;
+      target.whyLocalsLoveIt = state === "notext" || state === "shorttext" ? null : target.whyLocalsLoveIt;
+      // a cover with no credit is dropped (the third-party rule); with one it shows
+      target.imageUrl = state === "shorttext" ? IMG : target.imageUrl;
+      target.imageCredit = state === "shorttext" ? "Wikimedia Commons" : state === "cover-uncredited" ? null : target.imageCredit;
       if (!ownImage) {
         target.imageUrl = null;
         target.image = null;
@@ -107,6 +113,8 @@ for (const width of WIDTHS) {
       ["eight", false, "gallery-8"],
       ["none", false, "no-photo"],
       ["notext", true, "no-text"],
+      ["shorttext", true, "text-under-120"],
+      ["cover-uncredited", true, "own-cover-uncredited"],
       ["uncredited", false, "uncredited-dropped"],
     ];
     for (const [state, ownImage, name] of cases) {
@@ -125,7 +133,10 @@ for (const width of WIDTHS) {
       }
       if (state === "none") await expect(view.getByTestId("details-photo")).toHaveCount(0);
       if (state === "notext") await expect(view.getByTestId("details-teaser")).toHaveCount(0);
+      if (state === "shorttext") await expect(view.getByTestId("details-teaser")).toContainText("A tiny stone bridge");
+      if (state === "cover-uncredited") await expect(view.getByTestId("details-photo")).toHaveCount(0);
       if (state !== "notext") await expect(view.getByTestId("details-teaser")).toHaveCount(1);
+      if (state === "shorttext") await expect(view.getByTestId("details-photo-credit")).toContainText("Wikimedia Commons");
       await page.screenshot({ path: path.join(OUT, `gem-details-${name}-${width}.png`), fullPage: false });
       await page.getByTestId("details-close").click();
       await expect(page.getByTestId("details-view")).toHaveCount(0);
