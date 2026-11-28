@@ -1435,6 +1435,14 @@ export function CityFeedCardGem({
                   onClick: () => onAdd?.(gemAddPayload()),
                 }}
               />
+          <button
+            type="button"
+            onClick={() => setSheetOpen(true)}
+            data-testid={`btn-more-info-gem-${gem.id}`}
+            className={cn(buttonVariants({ size: "sm", variant: "outline" }), "h-7 text-xs px-2.5")}
+          >
+            More info
+          </button>
             </div>
           </div>
         </div>

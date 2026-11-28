@@ -141,7 +141,7 @@ export function DetailsView({
                     <ChevronRight className="h-4 w-4" />
                   </button>
                   <span
-                    className="absolute right-2 top-2 rounded bg-black/55 px-1.5 py-0.5 text-[11px] text-white"
+                    className="absolute left-1/2 top-2 -translate-x-1/2 rounded bg-black/55 px-1.5 py-0.5 text-[11px] text-white"
                     data-testid="details-photo-count"
                   >
                     {photoCounter(index, gallery.length)}
