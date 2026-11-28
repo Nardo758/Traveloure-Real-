@@ -415,8 +415,10 @@ test("current mounted graph parity includes auth helpers and shared api paths", 
   // /api/guest-plans/current/items/:id (the guest's Undo and Change day; the session's own item only).
   // 761 / 753 (ledger `2026-11-11-open-signup-market-waitlist`): POST /api/me/waitlist-markets and
   // DELETE /api/me/waitlist-markets/:market (an approved expert or provider joins or leaves a market).
+  // 762 -> 761 (ledger `2026-11-28-photo-rule-a-b-d`): POST /api/travelpulse/media/track-download retired with the
+  // Unsplash/Pexels pipeline (media-aggregator, pexels, and the place-photo route chain).
   // Runtime email-key diagnostic: one additional admin-only, no-send POST.
-  assert.equal(result.mutations.length, 762);
+  assert.equal(result.mutations.length, 761);
   const emailDiagnostic = result.mutations.find((m) => m.effectivePath === "/api/admin/system/email-key-diagnostic");
   assert.ok(emailDiagnostic);
   assert.equal(emailDiagnostic.expectedAuth, "required");
@@ -430,7 +432,7 @@ test("current mounted graph parity includes auth helpers and shared api paths", 
   assert.equal(qaReset[0].expectedBoundary, "admin-role");
   const adminSource = fs.readFileSync(path.resolve("server/routes/admin.routes.ts"), "utf8");
   assert.match(adminSource, /router\.post\("\/api\/admin\/users\/:id\/qa-password-reset", isAuthenticated, requireAdminLocal, strictRateLimiter,/);
-  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 754);
+  assert.equal(new Set(result.mutations.map((m) => `${m.method} ${m.effectivePath}`)).size, 753);
   assert.ok(result.mutations.some((m) => m.path === "/api/auth/login" && m.source.endsWith("emailAuth.ts")));
   assert.ok(result.mutations.some((m) => m.path === "/api/trips/:id" && m.method === "PATCH"));
 });
@@ -453,7 +455,8 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // 744 (Lane 7, ledger `2026-11-05-lane7-guest-slip`): DELETE /api/admin/guest-plans/:tripId.
   // 751 (cut-list #1 slice C): the guest item DELETE and PATCH.
   // 753 (ledger `2026-11-11-open-signup-market-waitlist`): POST and DELETE /api/me/waitlist-markets.
-  assert.equal(endpointRows.length, 754);
+  // 754 -> 753 (ledger `2026-11-28-photo-rule-a-b-d`): POST /api/travelpulse/media/track-download retired.
+  assert.equal(endpointRows.length, 753);
   // 709 / 701 (ledger `2026-10-18-fd4-share-projection`): the shadowed quick-start twin is deleted; unique paths stay 701.
   // 710 / 702 (ledger `2026-10-19-fb1-free-retime`): + POST /api/trips/:tripId/retime-fixes/:itemId/apply.
   // 712 / 704 (ledger `2026-10-18-cs1-source-signoff`): the sign-off and photo-block POSTs.
@@ -492,8 +495,10 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // 759 / 751 (cut-list #1 slice C, ledger `2026-11-11-cutlist1-slice-c-add-actions`): DELETE and PATCH
   // /api/guest-plans/current/items/:id (the guest's Undo and Change day; the session's own item only).
   // 761 / 753 (ledger `2026-11-11-open-signup-market-waitlist`): POST and DELETE /api/me/waitlist-markets.
-  assert.equal(manifest.rawRegistrationCount, 762);
-  assert.equal(manifest.uniqueMethodNormalizedPathCount, 754);
+  // 762 / 754 -> 761 / 753 (ledger `2026-11-28-photo-rule-a-b-d`): the Unsplash/Pexels pipeline's three routes
+  // are deleted, one of them a mutation (	rack-download); the manifest and inventory are regenerated.
+  assert.equal(manifest.rawRegistrationCount, 761);
+  assert.equal(manifest.uniqueMethodNormalizedPathCount, 753);
   // + POST /api/trips/:tripId/where-to-stay (ledger `2026-10-02-smoke4-draft-fixes`, R274): user-data,
   // session-self; the owner/delegate check runs in the service before any write.
   // + POST /api/admin/content-sources/:id/public-ok (ledger `2026-10-03-official-facts-public-ok`, R278):
@@ -564,7 +569,8 @@ test("generated user-facing inventory contains one row per unique endpoint and s
   // admin 204 → 208 (slice 0, ledger `2026-11-10-slice0-staff-roles`): the four new /api/admin writes.
   // other 258 → 260 (cut-list #1 slice C): the guest item DELETE and PATCH.
   // user-data 252 → 254 (ledger `2026-11-11-open-signup-market-waitlist`): POST and DELETE /api/me/waitlist-markets.
-  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 209, "user-data": 254, other: 260 });
+  // other 260 -> 259 (ledger `2026-11-28-photo-rule-a-b-d`): the retired track-download POST was in `other`.
+  assert.deepEqual(manifest.categoryTotals, { payments: 31, admin: 209, "user-data": 254, other: 259 });
   // POST /api/trips/:tripId/advisors moved session-self -> resource-owner (ledger
   // 2026-09-23-advisors-rail-takes-a-handle): it verifies trip ownership before any write, which
   // the text heuristic had missed; it is now probed by a real User A -> User B fixture.
@@ -636,7 +642,7 @@ test("generated user-facing inventory contains one row per unique endpoint and s
     // session-self 368 → 370 (ledger `2026-11-11-open-signup-market-waitlist`): POST and DELETE
     // /api/me/waitlist-markets. isAuthenticated, the signed-in expert or provider only.
     "admin-role": 209, "session-self": 370, "resource-owner": 105,
-    signature: 7, "public-or-system": 63, unknown: 0,
+    signature: 7, "public-or-system": 62, unknown: 0,
   });
   const byEndpoint = new Map(manifest.mutations.map((mutation: any) => [
     `${mutation.method} ${mutation.effectivePath}`, mutation,

@@ -447,7 +447,6 @@ async function mockBentoEndpoints(page: import('@playwright/test').Page) {
   await page.route('**/api/tracking/impression', (route) => route.fulfill(json({ ok: true })));
   await page.route('**/api/affiliates/track', (route) => route.fulfill(json({ ok: true })));
   await page.route('**/api/services/request', (route) => route.fulfill(json({ ok: true })));
-  await page.route('**/api/media/place-photo**', (route) => route.fulfill(json({ url: null })));
 }
 
 /** Collect a neighbourhood bento's tiles in DOM (render) order with their span metadata. */

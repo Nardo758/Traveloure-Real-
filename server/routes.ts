@@ -5294,56 +5294,6 @@ ${bannedCopyPromptLine()}`;
     }
   });
 
-  // Lightweight place-photo proxy — Unsplash → Pexels. Used by the useGemPhoto hook.
-  // R299: the Google branch is REMOVED. It ran a legacy Text Search and returned a legacy Place
-  // Photo URL with the server key inside it — every image load billed "Places Photo" outside the
-  // R-aq resolver, and the key was public. `source=google` (a cached client) now answers null, so
-  // the hook falls through to its Unsplash step as it always did on a Google miss.
-  app.get("/api/media/place-photo", async (req, res) => {
-    try {
-      const q = typeof req.query.q === "string" ? req.query.q : "";
-      const city = typeof req.query.city === "string" ? req.query.city : "";
-      const source = typeof req.query.source === "string" ? req.query.source : "google";
-      if (!q || source !== "unsplash") return res.json({ photoUrl: null });
-      // CS-1 item 1: no stock photo of a place under a no_photos block (the gem photo hook asks by name + city).
-      {
-        const { photoBlockedFor } = await import("./services/place-photo-blocks.service");
-        if (await photoBlockedFor({ names: [q], city })) return res.json({ photoUrl: null });
-      }
-
-      {
-        // Unsplash → Pexels fallback chain via media aggregator services
-        const { unsplashService } = await import("./services/unsplash.service");
-        const { pexelsService } = await import("./services/pexels.service");
-        // CMS-1 (ledger `2026-11-04-cms1-launch-screens`): a stock photo is returned only WITH its credit (photographer,
-        // source, licence, link — `stockPhotoCredit`); a photo the provider gave no photographer for is not returned.
-        const { stockPhotoCredit } = await import("./services/stock-photo-credit");
-        // Try Unsplash first
-        try {
-          const unsplashPhotos = await unsplashService.getCityPhotos(`${q} ${city}`, "", 1);
-          const credit = unsplashPhotos[0]?.url ? stockPhotoCredit(unsplashPhotos[0]) : null;
-          if (unsplashPhotos[0]?.url && credit) {
-            return res.json({ photoUrl: unsplashPhotos[0].url, credit });
-          }
-        } catch {
-          // fall through to Pexels
-        }
-        // Pexels fallback
-        try {
-          const pexelsPhotos = await pexelsService.searchPhotos(`${q} ${city}`, { perPage: 1, orientation: "landscape" });
-          const credit = pexelsPhotos[0]?.url ? stockPhotoCredit(pexelsPhotos[0]) : null;
-          return res.json(pexelsPhotos[0]?.url && credit ? { photoUrl: pexelsPhotos[0].url, credit } : { photoUrl: null });
-        } catch {
-          // Both photo providers failed — return a valid empty result rather than a 500.
-          return res.json({ photoUrl: null });
-        }
-      }
-
-    } catch (err: any) {
-      console.error("Error fetching place photo:", err);
-      res.json({ photoUrl: null });
-    }
-  });
 
   // === Service Categories Routes ===
 

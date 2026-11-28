@@ -41,7 +41,6 @@ const { loadStorefront } = await import("../routes/storefront.routes");
 const { gemDiscoveryService } = await import("../services/gem-discovery.service");
 const { getAiDiscoveredGemById } = await import("../services/content-query.service");
 const { toPublicFeverEvents } = await import("../services/fever-public");
-const { stockPhotoCredit } = await import("../services/stock-photo-credit");
 
 const ROOT = process.cwd();
 const RUN = crypto.randomUUID().slice(0, 8);
@@ -188,21 +187,6 @@ test("T2 profile text and cover: screened on save, omitted from the public read 
   assert.ok(screenAt > 0 && screenAt < patch.indexOf("await db.update(users)"), "screened before the users write");
 });
 
-test("T3 the stock fallback's credit, or nothing", () => {
-  assert.deepEqual(
-    stockPhotoCredit({ source: "unsplash", sourceName: "Unsplash", photographerName: "Jane Doe", sourceUrl: "https://unsplash.com/photos/abc?utm_source=traveloure" }),
-    { name: "Jane Doe", source: "Unsplash", licenseUrl: "https://unsplash.com/license", link: "https://unsplash.com/photos/abc?utm_source=traveloure" },
-  );
-  assert.equal(stockPhotoCredit({ source: "pexels", sourceName: "Pexels", photographerName: "Ann", sourceUrl: "https://www.pexels.com/photo/1" })?.licenseUrl, "https://www.pexels.com/license/");
-  assert.equal(stockPhotoCredit({ source: "unsplash", sourceName: "Unsplash", photographerName: "", sourceUrl: "https://unsplash.com/photos/abc" }), null);
-  assert.equal(stockPhotoCredit({ source: "unsplash", sourceName: "Unsplash", photographerName: "Jane", sourceUrl: "" }), null);
-  const routes = readFileSync(path.join(ROOT, "server/routes.ts"), "utf8");
-  const route = routes.slice(routes.indexOf('app.get("/api/media/place-photo"'), routes.indexOf("// === Service Categories Routes ==="));
-  assert.doesNotMatch(route, /res\.json\(\{ photoUrl: unsplashPhotos\[0\]\.url \}\)/, "never a bare Unsplash URL");
-  assert.doesNotMatch(route, /res\.json\(\{ photoUrl \}\)/, "never a bare Pexels URL");
-  assert.match(route, /\{ photoUrl: unsplashPhotos\[0\]\.url, credit \}/);
-  assert.match(route, /\{ photoUrl: pexelsPhotos\[0\]\.url, credit \}/);
-});
 
 test("T5 /hidden-gems redirects to /places; discovery reads return reviewed rows only", async () => {
   const r = await call(seoRouter, null, "GET", "/hidden-gems?city=Kyoto");

@@ -11,8 +11,6 @@ import {
 } from "@shared/schema";
 import { eq, and, desc, sql, isNull } from "drizzle-orm";
 import { logger } from "../infrastructure/logger";
-import { unsplashService } from "./unsplash.service";
-import { pexelsService } from "./pexels.service";
 import { claudeService } from "./claude.service";
 
 // The scan runs on the platform's general Anthropic client through `claudeService.completeJson`
@@ -132,13 +130,10 @@ class GemDiscoveryService {
               .limit(1);
 
             const existingImageUrl = existingRows[0]?.imageUrl;
-            const imageUrl = existingImageUrl
-              ? existingImageUrl
-              : await this.fetchGemPhoto(
-                  gem.name,
-                  result.destination,
-                  gem.imageSearchTerms ?? []
-                );
+            // S5d (ledger `2026-11-28-photo-rule-a-b-d`): NO stock-by-name photo is fetched. A gem keeps the image
+            // its own record already carries, or none — the same rule D1 (R936) put on the cards, applied where the
+            // gem is written so a new discovery never arrives with a stock URL nobody can credit.
+            const imageUrl = existingImageUrl ?? null;
             await this.saveGem({
               destination: result.destination,
               country: result.country,
@@ -278,43 +273,6 @@ Focus on authenticity and specificity. Avoid generic tourist attractions.`;
   }
 
   /**
-   * Fetches a photo URL for a gem using imageSearchTerms.
-   * Tries Unsplash first, then Pexels as a fallback. Returns null if neither is available.
-   */
-  private async fetchGemPhoto(
-    name: string,
-    destination: string,
-    imageSearchTerms: string[]
-  ): Promise<string | null> {
-    // SH-1 item 6: a place under a no_photos block is never searched for — no request at all, not only no display.
-    if (await this.gemPhotoBlocked(name, destination)) return null;
-    const searchQuery = imageSearchTerms.length > 0
-      ? `${imageSearchTerms[0]} ${destination}`
-      : `${name} ${destination}`;
-
-    try {
-      const unsplashResults = await unsplashService.searchPhotos(searchQuery, { perPage: 1, orientation: "landscape" });
-      if (unsplashResults[0]?.url && !isBannedPhotoUrl(unsplashResults[0].url)) {
-        return unsplashResults[0].url;
-      }
-    } catch {
-      // fall through to Pexels
-    }
-
-    try {
-      const pexelsResults = await pexelsService.searchPhotos(searchQuery, { perPage: 1 });
-      const photo = pexelsResults.find((r) => r.mediaType === "photo" && !isBannedPhotoUrl(r.url));
-      if (photo?.url) {
-        return photo.url;
-      }
-    } catch {
-      // no photo available
-    }
-
-    return null;
-  }
-
-  /**
    * SH-1 item 6: is this gem's place under a no_photos block (name + city, the ONE rule)? An unreadable block list
    * answers yes, so a failed read never spends a photo search on a place that may be blocked.
    */
@@ -445,44 +403,27 @@ Focus on authenticity and specificity. Avoid generic tourist attractions.`;
     return results;
   }
 
+  /**
+   * S5d (ledger `2026-11-28-photo-rule-a-b-d`): the photo BACKFILL is retired with the stock pipeline it existed
+   * for. It reads the same rows and still counts a blocked place as skipped rather than failed, so the admin
+   * screen's numbers stay honest — but it fetches nothing and writes nothing. A gem's image is whatever its own
+   * record carries (R936); an empty one stays empty.
+   */
   async backfillGemPhotos(): Promise<{ processed: number; updated: number; failed: number; skippedBlocked: number }> {
     const gems = await db.select({
       id: aiDiscoveredGems.id,
       name: aiDiscoveredGems.name,
       destination: aiDiscoveredGems.destination,
-      imageSearchTerms: aiDiscoveredGems.imageSearchTerms,
     })
       .from(aiDiscoveredGems)
       .where(isNull(aiDiscoveredGems.imageUrl));
 
-    let updated = 0;
-    let failed = 0;
     let skippedBlocked = 0;
-
     for (const gem of gems) {
-      try {
-        // SH-1 item 6: a blocked place is skipped before any photo request, and counted as skipped, not failed.
-        if (await this.gemPhotoBlocked(gem.name, gem.destination)) {
-          skippedBlocked++;
-          continue;
-        }
-        const terms = Array.isArray(gem.imageSearchTerms) ? gem.imageSearchTerms as string[] : [];
-        const imageUrl = await this.fetchGemPhoto(gem.name, gem.destination, terms);
-        if (imageUrl) {
-          await db.update(aiDiscoveredGems)
-            .set({ imageUrl, updatedAt: new Date() })
-            .where(eq(aiDiscoveredGems.id, gem.id));
-          updated++;
-        } else {
-          failed++;
-        }
-      } catch (err) {
-        logger.error(`backfillGemPhotos: failed for gem ${gem.id}`, err);
-        failed++;
-      }
+      if (await this.gemPhotoBlocked(gem.name, gem.destination)) skippedBlocked++;
     }
 
-    return { processed: gems.length, updated, failed, skippedBlocked };
+    return { processed: gems.length, updated: 0, failed: 0, skippedBlocked };
   }
 }
 

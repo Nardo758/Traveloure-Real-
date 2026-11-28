@@ -199,10 +199,6 @@ jobs:
       - name: Add-rail refusals are logged with their code (QA round 4 R4-9)
         run: npx tsx --test server/__tests__/r4-item-write-refusal.test.ts
 
-      # QA round 4 R4-10: a Pexels 429 opens a wait (Pexels's own Retry-After, else a doubling backoff from config) and
-      # every query's answer is cached; no network, no database.
-      - name: Pexels 429 backoff and cache (QA round 4 R4-10)
-        run: npx tsx --test server/__tests__/r4-pexels-backoff.test.ts
 
       # 2026-09-06-expert-work-protected (CLAUDE.md Locked Decision 42 D3 + D4): expert work is
       # protected where money is protected — rows carrying expert_note or origin='expert' join
@@ -392,7 +388,9 @@ jobs:
           # branch reports 111. The payout-setup files add no type errors. Locked in, same PR.
           # 110 measured 2026-10-27 (ledger 2026-10-26-row54-dead-files-and-fences): tsc --noEmit reports 110.
           # Deleting the nine dead itinerary files removed 1 error (my-itinerary.tsx). Locked in, same PR.
-          TSC_BASELINE: '103'
+          # 102 measured 2026-11-28 (ledger `2026-11-28-photo-rule-a-b-d`): deleting the retired Pexels/stock
+          # pipeline removed one type error. Locked in, same PR (the ratchet only moves down).
+          TSC_BASELINE: '102'
           TSC_TIMEOUT_S: '900'
           NODE_OPTIONS: '--max-old-space-size=5120'
         run: |

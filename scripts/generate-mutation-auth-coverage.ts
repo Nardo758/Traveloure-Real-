@@ -162,7 +162,10 @@ if (rows.filter((row) => handlerFixtureExclusions.has(row.key)).length !== 29) t
 const report = {
   schemaVersion: 1, generatedBy: "scripts/generate-mutation-auth-coverage.ts",
   manifest: "generated/security/mutation-auth-manifest.json", manifestSha256,
-  evidence: { path: path.relative(root, evidencePath), state: evidenceState || "fresh", timestamp: evidence?.timestamp ?? null },
+  // S5d (ledger `2026-11-28-photo-rule-a-b-d`): the report is committed and compared BYTE FOR BYTE in CI, so the
+  // path must not depend on the platform that regenerated it. `path.relative` returns `\` on Windows and `/` on the
+  // runner; normalise to POSIX separators so a Windows regeneration matches the committed artifact.
+  evidence: { path: path.relative(root, evidencePath).split(path.sep).join("/"), state: evidenceState || "fresh", timestamp: evidence?.timestamp ?? null },
   totals: { ...overall, remaining: overall.total - overall.tested, categories },
   endpoints: rows,
 };

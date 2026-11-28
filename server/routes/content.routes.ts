@@ -6018,46 +6018,6 @@ router.post("/api/travelpulse/ai/refresh-all", requireAdmin, checkAIRateLimit, a
     }
   });
 
-  // Get city media (public - for frontend gallery)
-
-router.get("/api/travelpulse/media/:cityName/:country", async (req, res) => {
-    try {
-      const { cityName, country } = req.params;
-      const { mediaAggregatorService } = await import("../services/media-aggregator.service");
-      const media = await mediaAggregatorService.getMediaForCity(cityName, country);
-      res.json(media);
-    } catch (error: any) {
-      console.error("Error getting city media:", error);
-      res.status(500).json({ message: "Failed to get city media", error: error.message });
-    }
-  });
-
-  // Track Unsplash download (required by Unsplash API guidelines)
-  // Must be called when a photo is displayed prominently or used
-
-router.post("/api/travelpulse/media/track-download", async (req, res) => {
-    try {
-      const { downloadLocationUrl } = req.body;
-      
-      if (!downloadLocationUrl || typeof downloadLocationUrl !== 'string') {
-        return res.status(400).json({ message: "downloadLocationUrl is required" });
-      }
-      
-      // Validate it's an Unsplash URL for security
-      if (!downloadLocationUrl.includes('api.unsplash.com')) {
-        return res.status(400).json({ message: "Invalid download location URL" });
-      }
-      
-      const { unsplashService } = await import("../services/unsplash.service");
-      await unsplashService.trackDownload(downloadLocationUrl);
-      
-      res.json({ success: true });
-    } catch (error: any) {
-      // Don't fail the request - tracking is best-effort
-      console.error("Error tracking Unsplash download:", error);
-      res.json({ success: false, error: error.message });
-    }
-  });
 
   // Get full destination calendar data (seasonal + events) for a city
 
