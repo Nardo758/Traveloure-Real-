@@ -67,7 +67,7 @@ const statusOptions = [
 ];
 
 const NEXT_ACTION_LABELS: Record<string, (n: number, expertAssigned: boolean) => string> = {
-  ready_for_checkout: (n) => `${n} ready for checkout`,
+  ready_for_checkout: (n) => `${n} in cart`,
   // Never "with your expert" when nobody is assigned (ledger `2026-09-26-send-to-expert-needs-expert`).
   with_expert: (n, expertAssigned) => (expertAssigned ? `${n} with your expert` : `${n} not with an expert — none assigned`),
   in_planning: (n) => `${n} in planning`,

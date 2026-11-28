@@ -7,13 +7,11 @@
  *
  * PURE: no React.
  */
-import { resolveActions, type ActionContext, type ActionKey, type ContentItem, type ContentItemType } from "./action-engine";
+import { resolveActions, SECONDARY_ORDER, type ActionContext, type ActionKey, type ContentItem, type ContentItemType } from "./action-engine";
 
 /** The slots a card row can draw, in order. `book` is the Book-or-Hire slot. */
 export type CardActionSlot = "book" | "add" | "ask_expert" | "details";
 
-/** Book or Hire first when it draws, then the engine's ruled order (Add, Ask an expert, Details). */
-const CARD_ROW_ORDER: readonly CardActionSlot[] = ["book", "add", "ask_expert", "details"];
 
 export interface CardContentInput {
   type: ContentItemType;
@@ -58,5 +56,6 @@ export function cardContentItem(input: CardContentInput): ContentItem {
 export function cardActionSlots(item: ContentItem, ctx: ActionContext): CardActionSlot[] {
   const resolved = resolveActions(item, ctx);
   const keys = new Set<ActionKey>([...(resolved.primary ? [resolved.primary.key] : []), ...resolved.secondary.map((a) => a.key)]);
-  return CARD_ROW_ORDER.filter((slot) => (slot === "book" ? item.bookable : keys.has(slot)));
+  const slots = new Set<CardActionSlot>(["add", "ask_expert", "details", "book"]);
+  return SECONDARY_ORDER.filter((key): key is CardActionSlot => slots.has(key as CardActionSlot) && keys.has(key));
 }

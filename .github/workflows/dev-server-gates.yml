@@ -661,6 +661,23 @@ jobs:
           path: playwright/dx4-captures/
           retention-days: 14
           if-no-files-found: warn
+      - name: "p1-action-alignment: one order, one word, one ask label, the ready-made tile, and the R3 surface"
+        id: p1_action_alignment
+        if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
+        run: npx playwright test p1-action-alignment --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          CI: 'true'
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          R3_SURFACE: '1'
+      - name: Upload the P1 screenshots
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: p1-captures-${{ github.sha }}
+          path: playwright/p1-captures/
+          retention-days: 14
+          if-no-files-found: warn
       - name: "dx3-server-claims: the expert application carries its picked neighborhoods"
         id: dx3_server_claims
         if: ${{ !cancelled() && steps.ready.outcome == 'success' }}

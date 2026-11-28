@@ -193,7 +193,7 @@ export function summarizeBulkRoute(result: BulkRouteResult): {
   title: string;
   description?: string;
 } {
-  const added = `${result.succeeded} item${result.succeeded === 1 ? "" : "s"} added to checkout`;
+  const added = `${result.succeeded} item${result.succeeded === 1 ? "" : "s"} added to cart`;
   if (result.failed.length === 0) {
     return { title: added };
   }

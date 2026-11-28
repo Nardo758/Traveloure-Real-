@@ -3,7 +3,7 @@
  * label from `tileActionLabel`, and no card types a primary label of its own. Hrefs are unchanged.
  *
  *   T1 each card's primary control reads the label tileActionLabel gives its kind.
- *   T2 the ready-made tile reads "Get this trip" and still links to /ready-made/:id.
+ *   T2 the ready-made tile reads "Details" and still links to /ready-made/:id.
  *   T3 no card source writes a retired primary label inside a primary control.
  *
  * Rendered with react-dom/server. No network.
@@ -89,11 +89,11 @@ describe("row 302a — cards read tileActionLabel", () => {
     assert.equal(primaryText(render(<FeedWantedSlotCard item={wanted} density="compact" />)), "Apply");
   });
 
-  it("T2: the ready-made tile reads Get this trip and links to its detail page", () => {
+  it("T2: the ready-made tile reads Details and links to its detail page", () => {
     const template = { id: "rm-7", title: "Three days in Kyoto", destination: CITY, durationDays: 3 };
     const html = render(<FeedReadyMadeCard template={template as any} density="compact" />);
-    assert.equal(primaryText(html), "Get this trip");
-    assert.match(html, /href="\/ready-made\/rm-7"[^>]*>Get this trip</);
+    assert.equal(primaryText(html), "Details");
+    assert.match(html, /href="\/ready-made\/rm-7"[^>]*>Details</);
   });
 
   it("T3: no card source writes a retired primary label in a primary control", () => {

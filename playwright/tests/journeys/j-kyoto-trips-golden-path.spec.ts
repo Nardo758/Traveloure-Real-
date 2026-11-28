@@ -1104,7 +1104,7 @@ test.describe("smoke 7 · ask a local", () => {
     await trigger.click();
     const entry = testid(page, `item-menu-ask-local-${itemId}`);
     await expect(entry).toBeVisible();
-    await expect(entry).toHaveText("Ask a local about this");
+    await expect(entry).toHaveText("Ask an expert");
     await entry.click();
     await testid(page, `item-ask-local-input-${itemId}`).fill("Which stall has the best tamagoyaki?");
     const status = await actAndAwait(

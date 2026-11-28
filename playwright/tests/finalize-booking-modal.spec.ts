@@ -141,7 +141,7 @@ test.describe("Finalize booking chooser", () => {
     expect(afterFinalize.final_hashes).toHaveLength(1);
     expect(afterFinalize.final_hashes[0].content_hash).toMatch(/^[a-f0-9]{64}$/);
     expect(afterFinalize.transition_types).toContain("plan_finalized");
-    await expect(page.getByTestId("finalize-staged-unbooked-note")).toContainText("1 stop is in checkout but not booked yet");
+    await expect(page.getByTestId("finalize-staged-unbooked-note")).toContainText("1 stop is in your cart but not booked yet");
     await expect(page.getByTestId("finalize-option-myself")).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByTestId("finalize-option-myself")).toContainText("I book them myself");
     // Row 194 (R2, Nov 1, 2026): the Booking agent lane is not rendered while row 298 is parked.
