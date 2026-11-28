@@ -472,20 +472,31 @@ async function loadAuthorListing(id: string, userId: string) {
   return row ?? null;
 }
 
-/** D2 (Leon, 2026-07-25): "Unsplash proves the photo" — enforced here, not just in the picker UI. */
-const UNSPLASH_IMAGE_HOSTS = new Set(["images.unsplash.com", "plus.unsplash.com"]);
+/** D1 (Leon, Nov 27 2026): a ready-made hero is one of the three credited photo sources the
+ *  preview/share surfaces already understand. Unsplash and Pexels serve from their image CDNs;
+ *  Wikimedia Commons serves originals from upload.wikimedia.org. */
+const HERO_IMAGE_HOSTS: Readonly<Record<string, "unsplash" | "pexels" | "wikimedia">> = {
+  "images.unsplash.com": "unsplash",
+  "plus.unsplash.com": "unsplash",
+  "images.pexels.com": "pexels",
+  "upload.wikimedia.org": "wikimedia",
+};
 
-function isUnsplashImageUrl(url: string): boolean {
+/** DRAFT string for Leon: replaces the retired picker sentence. */
+export const READY_MADE_HERO_REFUSAL =
+  "Hero image must be an Unsplash, Pexels or Wikimedia Commons image with its photographer credit.";
+
+export function readyMadeHeroSource(url: string): "unsplash" | "pexels" | "wikimedia" | null {
   try {
     const u = new URL(url);
-    return u.protocol === "https:" && UNSPLASH_IMAGE_HOSTS.has(u.hostname);
+    return u.protocol === "https:" ? HERO_IMAGE_HOSTS[u.hostname] ?? null : null;
   } catch {
-    return false;
+    return null;
   }
 }
 
 const heroMetaSchema = z.object({
-  unsplashId: z.string().trim().min(1).max(120),
+  unsplashId: z.string().trim().min(1).max(120).optional(),
   photographer: z.string().trim().min(1).max(200),
   profileUrl: z.string().trim().url().max(500),
   downloadLocation: z.string().trim().url().max(500).optional(),
@@ -678,18 +689,14 @@ router.patch("/api/expert/ready-made/:id", isAuthenticated, async (req, res) => 
       return res.status(400).json({ message: "No editable fields supplied" });
     }
 
-    // Hero integrity (D2): a hero must be an Unsplash image URL carrying its attribution.
-    // Both are required together — an image without its photographer credit is a rights
-    // problem, and a credit without an Unsplash-hosted URL defeats the provenance rule.
+    // Hero integrity (D1, Nov 27 2026): a present hero is one of the three credited sources
+    // (Unsplash, Pexels, Wikimedia Commons) and carries its photographer credit. A listing with
+    // no hero is complete; clearing the hero clears its credit.
     if (patch.heroImageUrl != null) {
-      if (!isUnsplashImageUrl(patch.heroImageUrl)) {
-        return res.status(400).json({
-          message: "Hero image must be chosen from the Unsplash picker (images.unsplash.com)",
-        });
-      }
+      const source = readyMadeHeroSource(patch.heroImageUrl);
       const meta = patch.heroImageMeta ?? (existing.heroImageMeta as any);
-      if (!meta?.unsplashId || !meta?.photographer || !meta?.profileUrl) {
-        return res.status(400).json({ message: "Hero image requires Unsplash attribution metadata" });
+      if (!source || !meta?.photographer || !meta?.profileUrl || (source === "unsplash" && !meta?.unsplashId)) {
+        return res.status(400).json({ message: READY_MADE_HERO_REFUSAL });
       }
     }
     if (patch.heroImageUrl === null) patch.heroImageMeta = null; // clearing the hero clears its credit
@@ -1007,50 +1014,6 @@ router.get("/api/expert/ready-made/:id/earnings-preview", isAuthenticated, async
   } catch (err: any) {
     console.error("[ready-made] earnings-preview error:", err);
     res.status(500).json({ message: "Failed to resolve earnings preview", error: err.message });
-  }
-});
-
-/**
- * Hero-image search (Unsplash proxy). Author-role-gated so the platform key can't be used
- * as an open image proxy. `ready:false` is the HONEST unconfigured answer — an empty
- * results array would read as "no photos match", which is a different claim (§13).
- */
-router.get("/api/expert/ready-made/hero-search", isAuthenticated, async (req, res) => {
-  try {
-    const userId = sessionUserId(req);
-    if (!userId) return res.status(401).json({ message: "Unauthorized" });
-    const user = await storage.getUser(userId);
-    if (!user || !AUTHOR_ROLES.has(user.role ?? "")) {
-      return res.status(403).json({ message: STORE_GATE_MESSAGE });
-    }
-
-    if (!unsplashService.isReady()) {
-      return res.json({ ready: false, reason: "unsplash_not_configured", results: [] });
-    }
-
-    const q = String(req.query.q ?? "").trim().slice(0, 120);
-    if (!q) return res.status(400).json({ message: "Missing search query" });
-
-    const photos = await unsplashService.searchPhotos(q, { perPage: 12, orientation: "landscape" });
-    res.json({
-      ready: true,
-      results: photos.map((p) => ({
-        // The picker hands these straight back to PATCH — same shape the hero validator expects.
-        url: p.url,
-        thumbnailUrl: p.thumbnailUrl,
-        description: p.description,
-        meta: {
-          unsplashId: p.photoId,
-          photographer: p.photographerName,
-          profileUrl: p.photographerUrl,
-          downloadLocation: p.downloadLocationUrl,
-          description: p.description,
-        },
-      })),
-    });
-  } catch (err: any) {
-    console.error("[ready-made] hero-search error:", err);
-    res.status(500).json({ message: "Hero search failed", error: err.message });
   }
 });
 

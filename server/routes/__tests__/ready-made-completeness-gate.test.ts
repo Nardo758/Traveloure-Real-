@@ -10,13 +10,14 @@
  */
 import { after, afterEach, before, describe, it, test } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 
 process.env.DATABASE_URL ||= "postgresql://test:test@localhost:5432/test";
 process.env.STRIPE_SECRET_KEY = "sk_test_ready_made_completeness_gate";
 
 const { db } = await import("../../db.js");
 const readyMadeRouter = (await import("../ready-made.routes.js")).default;
-const { assertReadyMadeComplete } = await import("../ready-made.routes.js");
+const { assertReadyMadeComplete, READY_MADE_HERO_REFUSAL, readyMadeHeroSource } = await import("../ready-made.routes.js");
 const adminRouter = (await import("../admin.routes.js")).default;
 const { READY_MADE_PLACEHOLDER_TITLE } = await import("../ready-made.routes.js");
 
@@ -221,3 +222,26 @@ describe("Ready-Made completeness gate", () => {
   });
 });
 
+
+test("D1: the unused hero-search route is gone", () => {
+  const src = fs.readFileSync("server/routes/ready-made.routes.ts", "utf8");
+  assert.equal(src.includes("/api/expert/ready-made/hero-search"), false);
+  assert.equal(src.includes("[ready-made] hero-search error"), false);
+});
+
+test("D1: present heroes accept the three credited photo sources", () => {
+  assert.equal(readyMadeHeroSource("https://images.unsplash.com/photo-1"), "unsplash");
+  assert.equal(readyMadeHeroSource("https://plus.unsplash.com/premium_photo-1"), "unsplash");
+  assert.equal(readyMadeHeroSource("https://images.pexels.com/photos/1/a.jpg"), "pexels");
+  assert.equal(readyMadeHeroSource("https://upload.wikimedia.org/wikipedia/commons/a/ab/x.jpg"), "wikimedia");
+  assert.equal(readyMadeHeroSource("https://example.com/a.jpg"), null);
+  assert.equal(readyMadeHeroSource("http://images.unsplash.com/photo-1"), null);
+});
+
+test("D1: the non-allowed hero refusal is the DRAFT string, not the retired picker sentence", () => {
+  assert.equal(
+    READY_MADE_HERO_REFUSAL,
+    "Hero image must be an Unsplash, Pexels or Wikimedia Commons image with its photographer credit.",
+  );
+  assert.doesNotMatch(READY_MADE_HERO_REFUSAL, /picker/i);
+});
