@@ -21,6 +21,7 @@ import { useLocation } from "wouter";
 import { CheckCircle, Lightbulb, Loader2, ShoppingCart, XCircle } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { BUY_NOW_CART_PATH } from "@/lib/cart-intent";
+import { CART_ADD_FAILED_SENTENCE } from "@/lib/cart-copy";
 import { useRouteRefusalToast } from "./use-route-refusal-toast";
 // The accept/decline mutation lives in ONE hook (ledger `2026-09-07-home-time-axis`) — Home's
 // "Since you were here" offers the same Accept / Decline through it (§18 rule 1).
@@ -80,7 +81,7 @@ export function ExpertSuggestionsPanel({
       showRefusal(
         err,
         "Added to your plan",
-        "It couldn't be moved to checkout automatically — send it to checkout from your plan.",
+        CART_ADD_FAILED_SENTENCE,
       );
     } finally {
       setBookingId(null);

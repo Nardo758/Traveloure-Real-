@@ -74,7 +74,7 @@ test("M4: Ask a local — a live local opens the door, none records the question
   // A2 (Leon, Nov 20, 2026 - sanctioned edit): "Move" (the Move sheet) joins after Swap. Move up / Move down
   // leave with A3's menu trim.
   assert.deepEqual(Object.values(ITEM_MENU_LABELS).slice(0, 6), ["Details", "Swap", "Move", "Move up", "Move down", "Remove"]);
-  assert.equal(ITEM_MENU_LABELS.askLocal, "Ask a local about this");
+  assert.equal(ITEM_MENU_LABELS.askLocal, "Ask an expert");
   assert.equal(ITEM_MENU_LABELS.findHost, "Find a host");
 });
 

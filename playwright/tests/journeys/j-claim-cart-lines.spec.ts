@@ -104,6 +104,6 @@ test("slice D — guest saves an instant listing, signs up, lands on the same pl
   // D3: one cart line keyed on the saved item, and the strip reads it.
   const lines = await rows<{ itinerary_item_id: string }>(`SELECT itinerary_item_id FROM cart_items WHERE user_id = $1`, [userId]);
   expect(lines.map((l) => l.itinerary_item_id)).toEqual([itemId]);
-  await expect(testid(page, "slip-count-ready_for_checkout")).toHaveText("1 in checkout", { timeout: 20_000 });
-  await expect(testid(page, "slip-action-go-to-checkout")).toHaveText("Go to checkout (1)");
+  await expect(testid(page, "slip-count-ready_for_checkout")).toHaveText("1 in cart", { timeout: 20_000 });
+  await expect(testid(page, "slip-action-go-to-checkout")).toHaveText("Go to cart (1)");
 });

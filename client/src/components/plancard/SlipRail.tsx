@@ -1329,7 +1329,7 @@ export function FinishCard({
         {checkoutReady > 0 ? (
           <p className="text-xs text-[color:var(--slip-muted)]">
             <Link href="/cart" className="font-semibold text-[color:var(--slip-navy)] underline underline-offset-2" data-testid="slip-action-go-to-checkout">
-              Go to checkout ({checkoutReady})
+              Go to cart ({checkoutReady})
             </Link>
           </p>
         ) : null}
@@ -1420,7 +1420,7 @@ export function FinishCard({
 
       {checkoutReady > 0 ? (
         <RailRow
-          label={`Go to checkout (${checkoutReady})`}
+          label={`Go to cart (${checkoutReady})`}
           icon={<ShoppingCart className="w-3.5 h-3.5" />}
           href="/cart"
           testId="slip-action-go-to-checkout"

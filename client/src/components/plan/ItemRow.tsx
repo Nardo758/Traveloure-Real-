@@ -18,6 +18,7 @@
  * a plan, not a basket.
  */
 import { SET_AS_STAY_LABEL } from "@shared/where-to-stay";
+import { ASK_EXPERT_COPY } from "@/lib/ask-expert-copy";
 import { MOVE_STOP_COPY } from "@/lib/move-stop";
 import type { UpsellLine as UpsellLineDto } from "@shared/upsell-line";
 import { UpsellLine } from "./UpsellLine";
@@ -388,7 +389,7 @@ export const ITEM_MENU_LABELS = {
   moveUp: "Move up",
   moveDown: "Move down",
   remove: "Remove",
-  askLocal: "Ask a local about this",
+  askLocal: ASK_EXPERT_COPY.button,
   seeQuestion: "See your question",
   findHost: "Find a host",
   buildAround: "Build my days around this",

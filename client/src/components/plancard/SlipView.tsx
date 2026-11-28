@@ -768,7 +768,7 @@ function SlipStatusStrip({ activities }: { activities: PlanCardActivity[] }) {
   const allSegments: Array<{ status: RoutingStatus; n: number; label: string }> = [
     { status: "in_planning", n: counts.in_planning, label: "planning" },
     { status: "with_expert", n: counts.with_expert, label: "with expert" },
-    { status: "ready_for_checkout", n: counts.ready_for_checkout, label: "in checkout" },
+    { status: "ready_for_checkout", n: counts.ready_for_checkout, label: "in cart" },
     { status: "purchased", n: counts.purchased, label: "purchased" },
   ];
   const segments = allSegments.filter((s) => s.n > 0); // omit zero-count segments

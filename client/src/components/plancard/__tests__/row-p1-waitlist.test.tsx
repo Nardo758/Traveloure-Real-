@@ -144,7 +144,7 @@ describe("P-1c — waitlist mode", () => {
     // CAP-2 Phase 2 (sanctioned edit): no Add on a recommendation in either mode.
     assert.doesNotMatch(html, /data-testid="btn-add-rec-0"/);
     const rail = read("client/src/components/plancard/SlipRail.tsx");
-    assert.ok(rail.includes("Go to checkout ({checkoutReady})"));
+    assert.ok(rail.includes("Go to cart ({checkoutReady})"));
     assert.ok(read("client/src/components/plancard/SlipView.tsx").includes(">Book</Link>"));
   });
 });

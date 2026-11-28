@@ -36,7 +36,6 @@ const ASK_LABEL = /(["'`>]\s*)Ask (an expert|a local|the local|this expert|a tri
 
 const NAMED: Record<string, string> = {
   "client/src/lib/ask-expert-copy.ts": "the approved words, the one place they live",
-  "client/src/components/plan/ItemRow.tsx": "plan page: replaced by the one door (UI brief 19), ruling 3",
   "client/src/components/plan/ItemSheet.tsx": "plan page: replaced by the one door (UI brief 19), ruling 3",
 };
 
