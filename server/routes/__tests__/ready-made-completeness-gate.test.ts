@@ -10,13 +10,14 @@
  */
 import { after, afterEach, before, describe, it, test } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 
 process.env.DATABASE_URL ||= "postgresql://test:test@localhost:5432/test";
 process.env.STRIPE_SECRET_KEY = "sk_test_ready_made_completeness_gate";
 
 const { db } = await import("../../db.js");
 const readyMadeRouter = (await import("../ready-made.routes.js")).default;
-const { assertReadyMadeComplete } = await import("../ready-made.routes.js");
+const { assertReadyMadeComplete, READY_MADE_HERO_REFUSAL, readyMadeHeroRefusal, readyMadeHeroSource } = await import("../ready-made.routes.js");
 const adminRouter = (await import("../admin.routes.js")).default;
 const { READY_MADE_PLACEHOLDER_TITLE } = await import("../ready-made.routes.js");
 
@@ -221,3 +222,54 @@ describe("Ready-Made completeness gate", () => {
   });
 });
 
+
+test("D1: the unused hero-search route is gone", () => {
+  const src = fs.readFileSync("server/routes/ready-made.routes.ts", "utf8");
+  assert.equal(src.includes("/api/expert/ready-made/hero-search"), false);
+  assert.equal(src.includes("[ready-made] hero-search error"), false);
+});
+
+test("D1: own upload, official source with credit, and Commons with licence pass", () => {
+  assert.equal(readyMadeHeroRefusal("https://storage.googleapis.com/traveloure-uploads/a.jpg", null), null);
+  assert.equal(
+    readyMadeHeroRefusal("https://www.shokoku-ji.jp/en/ginkakuji/photo.jpg", {
+      photographer: "Ginkaku-ji", profileUrl: "https://www.shokoku-ji.jp/en/ginkakuji/",
+    }),
+    null,
+  );
+  assert.equal(
+    readyMadeHeroRefusal("https://upload.wikimedia.org/wikipedia/commons/a/ab/x.jpg", {
+      photographer: "A. Author", profileUrl: "https://commons.wikimedia.org/wiki/File:X.jpg", license: "CC BY-SA 4.0",
+    }),
+    null,
+  );
+});
+
+test("D1: Commons without a licence fails", () => {
+  assert.equal(
+    readyMadeHeroRefusal("https://upload.wikimedia.org/wikipedia/commons/a/ab/x.jpg", {
+      photographer: "A. Author", profileUrl: "https://commons.wikimedia.org/wiki/File:X.jpg",
+    }),
+    READY_MADE_HERO_REFUSAL,
+  );
+});
+
+test("D1: Unsplash and Pexels are refused", () => {
+  assert.equal(readyMadeHeroSource("https://images.unsplash.com/photo-1"), null);
+  assert.equal(readyMadeHeroSource("https://plus.unsplash.com/premium_photo-1"), null);
+  assert.equal(readyMadeHeroSource("https://images.pexels.com/photos/1/a.jpg"), null);
+  assert.equal(
+    readyMadeHeroRefusal("https://images.pexels.com/photos/1/a.jpg", {
+      photographer: "A", profileUrl: "https://www.pexels.com/@a",
+    }),
+    READY_MADE_HERO_REFUSAL,
+  );
+});
+
+test("D1: the refusal is the DRAFT photo-rule sentence", () => {
+  assert.equal(
+    READY_MADE_HERO_REFUSAL,
+    "Use your own photo, an official source's photo with its credit, or a Wikimedia Commons image with its licence.",
+  );
+  assert.doesNotMatch(READY_MADE_HERO_REFUSAL, /picker/i);
+});

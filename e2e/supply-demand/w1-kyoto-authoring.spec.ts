@@ -15,7 +15,8 @@
  *
  * STATED DIVERGENCES (R-1, each filed as a finding): this CI has no Google key, so the real
  * `transport-legs/generate` routes nothing — the PROPOSED leg is seeded (never a confirmed one: the
- * author's pick, tip and confirm are the UI's); and no Unsplash key, so the hero is seeded.
+ * author's pick, tip and confirm are the UI's); and no object-storage upload path, so a Wikimedia
+ * Commons hero is seeded.
  */
 import { test, expect } from '@playwright/test';
 import { e2eTitle } from './lib/run-id';
@@ -48,9 +49,9 @@ test('W1: an expert builds a 3-day Kyoto trip on the Workstation and submits it'
   expect(patched.ok(), await patched.text()).toBeTruthy();
   await seedReadyMadeHero(listingId);
   fileFinding({
-    journey: 'W1', step: 'hero', class: 'SPEC_DIVERGENCE', severity: 'P3', known: 'HELD:unsplash',
-    title: 'seeded ready-made hero (HELD:unsplash)', expected: 'the Unsplash picker supplies the hero',
-    actual: 'no UNSPLASH_ACCESS_KEY in CI; hero seeded on the run-tagged listing', where: `ready_made_trips ${listingId}`,
+    journey: 'W1', step: 'hero', class: 'SPEC_DIVERGENCE', severity: 'P3', known: 'HELD:commons',
+    title: 'seeded ready-made hero (HELD:commons)', expected: 'a Wikimedia Commons hero with author and licence',
+    actual: 'no object-storage upload path in CI; Commons hero seeded on the run-tagged listing', where: `ready_made_trips ${listingId}`,
     behavioural: false,
   });
 
