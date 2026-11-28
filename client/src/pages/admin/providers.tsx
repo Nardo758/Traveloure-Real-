@@ -805,7 +805,7 @@ export default function AdminProviders() {
                       <AttestationFacts id={app.id} insurance={app.hasInsurance} license={app.hasLicense} />
 
                       {app.description && (
-                        <p className="text-sm text-gray-600 italic">
+                        <p className="text-sm text-gray-600 italic [overflow-wrap:anywhere]">
                           "{app.description.slice(0, 150)}{app.description.length > 150 ? "..." : ""}"
                         </p>
                       )}

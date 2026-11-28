@@ -1,56 +1,43 @@
 /**
- * UI brief 1 (page frame), commit 1: ONE action row with exactly two actions.
+ * UI brief 1 (page frame): ONE action row with exactly two actions.
  *
- * EACH BUTTON KEEPS THE VISIBILITY RULE IT HAS TODAY, and the row is NOT gated as a whole:
- *   Optimize        - owner only, the same gate the optimizer slot carries (`SlipView.tsx:2688`).
- *   expert door     - `expertDoorLive && expertDoorState === "dismissed"`, the same gate the header's
- *                     `slip-add-local-expert` carried (`SlipView.tsx:2475`), which this replaces.
- * The expert action opens the ONE HandoffChooser through `openHandoffChooser` - the same opener every other
- * door uses - so nothing about what the door DOES changes. Optimize scrolls to the existing optimizer card
- * (the rail still portals it into the slot): this commit moves layout, not behaviour.
- */
-import { optimizeBoardCtaLabel } from "@/components/plan/OptimizerLead";
-import type { OptimizationFeeQuote } from "@/lib/optimization-preview";
-
-/**
- * THE BUTTON SAYS WHAT THE CARD SAYS: the row calls `optimizeBoardCtaLabel` itself - the function the card
- * uses in its `tone="board"` mount (`SlipRail.tsx:654,673`, `OptimizerLead.tsx:109`) - with the SAME fee quote
- * the card is given. No wrapper, no second label rule, no literal, no second fetch: the fee is the one
- * `useOptimizerLeadData` already reads for the card (query key `["/api/optimization-fee", { tripId }]`).
+ * EACH ACTION KEEPS THE VISIBILITY RULE IT HAS TODAY, and the row is NOT gated as a whole:
+ *   Optimize        - owner only, and only while the optimizer itself would be drawn.
+ *   expert door     - `expertDoorLive`, the gate the header's `slip-add-local-expert` carried.
  *
- * Loading and disabled match the card exactly: no fee yet -> "Optimize"; `fee.aiDisabled` -> "Optimize".
+ * FRAME LIFT (Leon, Nov 19, 2026): the row no longer draws an Optimize button of its own. It offers a SLOT,
+ * and `SlipRail` - which owns the Optimize state (the dates gate, the build-around step, busy, the disabled
+ * reason, the fee) - portals the one real control into it (`OptimizeAction`, `OptimizerLead.tsx`). So the
+ * button here is the control that runs Optimize, with the testid it has always had (`slip-action-optimize`),
+ * and the card under the tools keeps its findings but not a second pair of buttons. Before this the row's
+ * button only scrolled to the card.
+ *
+ * The expert action opens the ONE HandoffChooser through `openHandoffChooser` - the opener the card's own
+ * "Local expert" button used - and takes that button's testid (`slip-action-hire-expert`).
+ *
+ * A row with no button in it is not drawn: when the rail draws no Optimize (waitlist mode, or Optimize
+ * unavailable) and the expert door is closed, `:has(button)` is false and the row hides itself.
  */
 
 export interface SlipActionRowProps {
   showOptimize: boolean;
   showExpert: boolean;
-  /** The same fee quote the optimizer card is given; null while it loads. */
-  fee: OptimizationFeeQuote | null | undefined;
-  onOptimize: () => void;
+  /** Receives the element `SlipRail` portals the Optimize control into. */
+  optimizeSlotRef: (el: HTMLSpanElement | null) => void;
   onExpert: () => void;
 }
 
-export function SlipActionRow({ showOptimize, showExpert, fee, onOptimize, onExpert }: SlipActionRowProps) {
-  const optimizeLabel = optimizeBoardCtaLabel(fee);
+export function SlipActionRow({ showOptimize, showExpert, optimizeSlotRef, onExpert }: SlipActionRowProps) {
   if (!showOptimize && !showExpert) return null;
   return (
-    <div className="flex flex-wrap items-center gap-2" data-testid="slip-action-row">
-      {showOptimize ? (
-        <button
-          type="button"
-          className="inline-flex h-10 items-center rounded-full bg-[color:var(--slip-navy)] px-5 text-sm font-semibold text-white"
-          onClick={onOptimize}
-          data-testid="button-slip-optimize"
-        >
-          {optimizeLabel}
-        </button>
-      ) : null}
+    <div className="flex flex-wrap items-center gap-2 [&:not(:has(button))]:hidden" data-testid="slip-action-row">
+      {showOptimize ? <span ref={optimizeSlotRef} className="contents" data-testid="slip-action-optimize-slot" /> : null}
       {showExpert ? (
         <button
           type="button"
           className="inline-flex h-10 items-center rounded-full border border-[color:var(--slip-line)] px-5 text-sm font-semibold"
           onClick={onExpert}
-          data-testid="button-slip-expert-help"
+          data-testid="slip-action-hire-expert"
         >
           Get help from a local expert
         </button>
@@ -58,3 +45,7 @@ export function SlipActionRow({ showOptimize, showExpert, fee, onOptimize, onExp
     </div>
   );
 }
+
+/** The Optimize control's dress in the row (the navy pill the frame shipped with). */
+export const SLIP_ACTION_OPTIMIZE_CLASS =
+  "inline-flex h-10 items-center rounded-full bg-[color:var(--slip-navy)] px-5 text-sm font-semibold text-white disabled:opacity-60";

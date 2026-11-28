@@ -29,13 +29,17 @@ export function useSendMessage() {
         credentials: "include",
       });
 
-      if (!res.ok) throw new Error("Failed to send message");
+      if (!res.ok) {
+        const body = await res.text().catch(() => "");
+        throw new Error(`${res.status}: ${body}`);
+      }
       return api.chats.create.responses[201].parse(await res.json());
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.chats.list.path] });
     },
-    onError: () => {
+    onError: (error) => {
+      if (String((error as Error)?.message ?? "").includes("email_verification_required")) return;
       toast({
         title: "Error",
         description: "Failed to send message. Please try again.",

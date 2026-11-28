@@ -278,7 +278,7 @@ export function FinalizeBookingModal({
         )}
         {stagedUnbookedCount > 0 && (
           <p className="text-[12px] text-muted-foreground" data-testid="finalize-staged-unbooked-note">
-            {stagedUnbookedCount} stop{stagedUnbookedCount === 1 ? " is" : "s are"} in checkout but not booked yet —
+            {stagedUnbookedCount} stop{stagedUnbookedCount === 1 ? " is" : "s are"} in your cart but not booked yet —
             finalizing doesn't book {stagedUnbookedCount === 1 ? "it" : "them"}; you can book any time.
           </p>
         )}

@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import { getDestinationPhoto } from "../plancard-types";
 
 /**
@@ -10,14 +11,13 @@ import { getDestinationPhoto } from "../plancard-types";
  * Run: npx tsx --test client/src/components/plancard/__tests__/hero-photo-honesty.test.ts
  */
 
-test("a curated destination matches its photo", () => {
-  const url = getDestinationPhoto("Tokyo, Japan");
-  assert.ok(url && url.includes("photo-1540959733332-eab4deabeeaf"));
+test("G1: no curated destination gets a stock photo", () => {
+  assert.equal(getDestinationPhoto("Tokyo, Japan"), null);
 });
 
-test("matching is case-insensitive and substring-based (a country key still matches)", () => {
-  assert.ok(getDestinationPhoto("Backpacking PERU") === null); // Peru is not curated — no photo of nowhere
-  assert.ok(getDestinationPhoto("JAPAN highlights")?.includes("photo-1490806843957-31f4c9a91c65"));
+test("G1: destination matching never invents a photo", () => {
+  assert.equal(getDestinationPhoto("Backpacking PERU"), null);
+  assert.equal(getDestinationPhoto("JAPAN highlights"), null);
 });
 
 test("an unmatched destination returns NULL — never the generic travel shot", () => {
@@ -35,4 +35,18 @@ test("absence is honest: no destination ⇒ null, not a stock photo", () => {
   assert.equal(getDestinationPhoto(undefined), null);
   assert.equal(getDestinationPhoto(null), null);
   assert.equal(getDestinationPhoto(""), null);
+});
+
+test("G1: no Unsplash address survives in the city seed, deals page, or plan-card map", () => {
+  const sources = [
+    "server/data/cities.json",
+    "client/src/pages/deals.tsx",
+    "client/src/components/plancard/plancard-types.tsx",
+  ];
+  for (const file of sources) {
+    const src = fs.readFileSync(file, "utf8");
+    assert.doesNotMatch(src, /images\.unsplash\.com|source\.unsplash\.com/, file);
+  }
+  const deals = fs.readFileSync("client/src/pages/deals.tsx", "utf8");
+  assert.doesNotMatch(deals, /DESTINATION_PHOTOS|TYPE_FALLBACK_PHOTOS|const BASE = "https:\/\/images/);
 });

@@ -107,6 +107,9 @@ async function listen(): Promise<void> {
 }
 
 async function call(method: string, path: string, body?: unknown, userId?: string) {
+  if (path === "/api/waitlist" && body && typeof body === "object" && !("role" in body) && !("contactName" in body)) {
+    body = { ...(body as Record<string, unknown>), contactName: "Lw Tester" };
+  }
   const res = await fetch(`${baseUrl}${path}`, {
     method,
     headers: {
@@ -534,4 +537,22 @@ test("T7 T8 T9 — market opened enqueues only the consented audience, once, and
     assert.equal(text.includes("@"), false, text);
     assert.equal(text.includes(yes), false);
   }
+});
+
+test("T12 - opening a city never makes it live: the live switch is a separate setting", async () => {
+  // S5 (ledger `2026-11-27-s5-live-vs-opened`). OPENED means the `waitlist_open` emails went out for a market.
+  // LIVE means bookings are on, and it is its own admin setting (`LIVE_MARKET_SLUGS_SETTING` = `live_market_slugs`,
+  // `shared/ticker.ts:225`), written by its own switch. Opening a city must leave the live list exactly as it was.
+  const liveSlugs = async () => {
+    const r = await pool.query(`SELECT setting_value FROM platform_settings WHERE setting_key = $1`, ["live_market_slugs"]);
+    return r.rows[0]?.setting_value ?? null;
+  };
+  const before = await liveSlugs();
+  const opened = await call("POST", "/api/admin/waitlist/market-opened", { market: MARKET, role: "provider" }, adminId);
+  assert.equal(opened.status, 200, opened.text);
+  assert.equal(await liveSlugs(), before, "opening a city leaves the live list untouched");
+  // A second open (the never-twice rule) is not a live flip either.
+  const again = await call("POST", "/api/admin/waitlist/market-opened", { market: MARKET, role: "provider" }, adminId);
+  assert.equal(again.status, 200, again.text);
+  assert.equal(await liveSlugs(), before, "and a repeat open is still not a live flip");
 });

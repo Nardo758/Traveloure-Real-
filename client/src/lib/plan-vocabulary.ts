@@ -69,7 +69,7 @@ export const PLAN_NOUN_LOWER = "plan" as const;
  */
 export const ADD_TO_PLAN_LABEL = ADD_COPY.addToPlan;
 /** Button label for the trip-less / guest fallback, which genuinely is the cart. */
-export const ADD_TO_CART_LABEL = "Add to Cart";
+export const ADD_TO_CART_LABEL = "Add to cart";
 
 /**
  * Button label for the ENTRY that starts a plan from a browse surface (ledger

@@ -18,6 +18,8 @@
  * a plan, not a basket.
  */
 import { SET_AS_STAY_LABEL } from "@shared/where-to-stay";
+import { ASK_EXPERT_COPY } from "@/lib/ask-expert-copy";
+import { MOVE_STOP_COPY } from "@/lib/move-stop";
 import type { UpsellLine as UpsellLineDto } from "@shared/upsell-line";
 import { UpsellLine } from "./UpsellLine";
 import type { ReactNode } from "react";
@@ -93,6 +95,8 @@ export interface ItemRowMenu {
   /** Smoke 7 item 4: a question is already saved on this row ⇒ the entry reads "See your question". */
   askLocalSaved?: boolean;
   onSwap?: () => void;
+  /** A2 (Leon, Nov 20): open the Move sheet - another day, keeping the time or picking one. */
+  onMove?: () => void;
   onMoveUp?: (() => void) | null;
   onMoveDown?: (() => void) | null;
   onRemove?: () => void;
@@ -373,17 +377,19 @@ function inAppDetailsHref(item: PlanCardActivity | null | undefined): string | n
 }
 
 function hasAnyEntry(m: ItemRowMenu, isAnchor: boolean): boolean {
-  return !!(m.onEdit || m.onAddAfter || m.onDetails || m.onSwap || (!isAnchor && (m.onMoveUp || m.onMoveDown)) || m.onRemove || m.onToggleLock || m.onAskLocal || m.onBookForMe || m.findHostHref || m.onBuildAround || m.onSetAsStay);
+  return !!(m.onEdit || m.onAddAfter || m.onDetails || m.onSwap || (!isAnchor && (m.onMove || m.onMoveUp || m.onMoveDown)) || m.onRemove || m.onToggleLock || m.onAskLocal || m.onBookForMe || m.findHostHref || m.onBuildAround || m.onSetAsStay);
 }
 
 /** The labels, ONCE (spec §3's order). */
 export const ITEM_MENU_LABELS = {
   details: "Details",
   swap: "Swap",
+  // A2: "Move" is `MOVE_STOP_COPY.menu` (Wording approved - Leon, Nov 20, 2026). Move up / Move down leave with A3.
+  move: MOVE_STOP_COPY.menu,
   moveUp: "Move up",
   moveDown: "Move down",
   remove: "Remove",
-  askLocal: "Ask a local about this",
+  askLocal: ASK_EXPERT_COPY.button,
   seeQuestion: "See your question",
   findHost: "Find a host",
   buildAround: "Build my days around this",
@@ -438,6 +444,9 @@ function ItemRowMenuButton({ id, menu, isAnchor, locked, board = false, detailsH
         ) : null}
         {menu.onSwap ? (
           <DropdownMenuItem onSelect={menu.onSwap} data-testid={`item-menu-swap-${id}`}>{ITEM_MENU_LABELS.swap}</DropdownMenuItem>
+        ) : null}
+        {!isAnchor && menu.onMove ? (
+          <DropdownMenuItem onSelect={menu.onMove} data-testid={`item-menu-move-${id}`}>{ITEM_MENU_LABELS.move}</DropdownMenuItem>
         ) : null}
         {!isAnchor && menu.onMoveUp ? (
           <DropdownMenuItem onSelect={menu.onMoveUp} data-testid={`item-menu-move-up-${id}`}>{ITEM_MENU_LABELS.moveUp}</DropdownMenuItem>

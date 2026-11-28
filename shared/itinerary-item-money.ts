@@ -80,3 +80,28 @@ export const ITEM_BOOKED_DELETE_ERROR = {
   message:
     "This item is booked. Cancel the booking first — removing it here would leave the booking with no plan row.",
 } as const;
+
+/**
+ * A BOOKED STOP DOES NOT CHANGE DAY (Leon, Nov 20, 2026). The booking is for a date and a slot; a plan row
+ * moved to another day would show the booking on a day it is not for. The Move sheet says so before asking;
+ * this is the server's own refusal, for every caller and every role - the same one predicate as the delete
+ * refusal above. Its sentence is the Move sheet's ("Wording approved - Leon", Nov 20, 2026).
+ */
+export const ITEM_BOOKED_MOVE_ERROR = {
+  code: "item_booked",
+  message: "This stop is booked. Change the booking to move it.",
+} as const;
+
+/**
+ * True when an update naming `nextDay` would move a money-committed row off its day. An update that does not
+ * name a day (`undefined`), or names the day the row is already on, is not a move and is never refused here.
+ */
+export function bookedItemDayMoveRefused(
+  row: (ItineraryItemMoneyShape & { dayNumber?: number | null }) | null | undefined,
+  nextDay: unknown,
+): boolean {
+  if (nextDay === undefined || !itineraryItemIsMoneyCommitted(row)) return false;
+  const current = row?.dayNumber ?? null;
+  const next = nextDay === null || nextDay === "" ? null : Number(nextDay);
+  return next !== current;
+}

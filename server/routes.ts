@@ -52,6 +52,7 @@ import { accommodationCategoryId, isPropertyProductShape } from "./utils/propert
 import { trackFunnelEvent } from "./utils/funnelTracker";
 import fs from "fs";
 import path from "path";
+import { REORDER_BODY_ERROR, reorderDayNumber, reorderRefused } from "@shared/itinerary-reorder";
 import { storage, ExpertApplicationExistsError, stampItemSourceClass, type BookingStatusNotification, type BookingStatusInTransaction } from "./storage";
 import { withOccasionLabels } from "./services/occasion-label.service";
 import { claimFreeDraft, promoteFreeDraft, releaseFreeDraft, freeDraftRefusalBody, FREE_DRAFT_REFUSAL_STATUS } from "./services/free-draft-cap.service";
@@ -164,7 +165,7 @@ import { eq, and, or, ilike, sql, desc, count, ne, inArray, asc, isNull } from "
 import Anthropic from "@anthropic-ai/sdk";
 import { toPublicListing } from "./utils/public-service-listing";
 import { scoreKnowledgeProof, KNOWLEDGE_PROOF_QUESTIONS, type KnowledgeProofAnswerInput } from "./services/expertise-scoring.service";
-import { stampNoNeighborhoodsAvailable } from "./services/neighborhood-claims.service";
+import { saveApplicationClaims, stampNoNeighborhoodsAvailable } from "./services/neighborhood-claims.service";
 // W2 (Trip-Canon Lane 1 Phase 1b): `cart_items` has exactly ONE writer — the projection module.
 // Every cart write below goes through `cartProjection.*`; the functions are thin passthroughs to
 // the storage layer, so behavior is identical to the pre-funnel code. Do not call
@@ -2746,6 +2747,12 @@ ${bannedCopyPromptLine()}`;
     }
   }
 
+  // DX-3 (option A): the application carries its picked neighborhoods; the service applies the cap.
+  const applicationNeighborhoodClaimsSchema = z.object({
+    neighborhoodClaims: z.array(z.object({ neighborhoodId: z.string().min(1) })).max(100).optional(),
+    neighborhoodCapture: z.unknown().optional(),
+  });
+
   // Submit expert application
   app.post("/api/expert-application", isAuthenticated, strictRateLimiter, async (req, res) => {
     try {
@@ -2759,10 +2766,18 @@ ${bannedCopyPromptLine()}`;
           const input = sanitizeObject(insertLocalExpertFormSchema.parse(req.body));
           const imgErr = validateImageDataUrl(input.govId, "govId") ?? validateImageDataUrl(input.travelLicence, "travelLicence");
           if (imgErr) return res.status(400).json({ message: imgErr });
+          const claimsParsed = applicationNeighborhoodClaimsSchema.safeParse(req.body ?? {});
+          if (!claimsParsed.success) return res.status(400).json(zodErrorBody(claimsParsed.error));
           const form = await storage.updateLocalExpertForm(existing.id, {
             ...input,
             status: "pending",
             rejectionMessage: null,
+          });
+          const neighborhoodClaims = await saveApplicationClaims({
+            userId,
+            city: form!.city ?? null,
+            claims: claimsParsed.data.neighborhoodClaims ?? [],
+            capture: claimsParsed.data.neighborhoodCapture,
           });
           await mirrorBioToUsersRow(userId, input.bio);
           void scoreKnowledgeProof(
@@ -2781,6 +2796,7 @@ ${bannedCopyPromptLine()}`;
           return res.status(200).json({
             ...pickPublicFields(form!, EXPERT_APPLICATION_PUBLIC_FIELDS),
             offeringTypeKeyUnrecorded: offeringKeyUnrecorded(input.offeringTypeKey, form!.offeringTypeKey),
+            neighborhoodClaims,
           });
         }
         return res.status(400).json({ message: "You already have an application submitted" });
@@ -2790,7 +2806,15 @@ ${bannedCopyPromptLine()}`;
       const input = sanitizeObject(insertLocalExpertFormSchema.parse(req.body));
       const imgErr = validateImageDataUrl(input.govId, "govId") ?? validateImageDataUrl(input.travelLicence, "travelLicence");
       if (imgErr) return res.status(400).json({ message: imgErr });
+      const claimsParsed = applicationNeighborhoodClaimsSchema.safeParse(req.body ?? {});
+      if (!claimsParsed.success) return res.status(400).json(zodErrorBody(claimsParsed.error));
       const form = await storage.createLocalExpertForm({ ...input, userId });
+      const neighborhoodClaims = await saveApplicationClaims({
+        userId,
+        city: form.city ?? null,
+        claims: claimsParsed.data.neighborhoodClaims ?? [],
+        capture: claimsParsed.data.neighborhoodCapture,
+      });
       await mirrorBioToUsersRow(userId, input.bio);
       // Field-knowledge Phase 0 D5 (amended): when the picker had no city_neighborhoods rows for
       // this city and the applicant holds no claim, stamp the honest skip so ops can backfill the
@@ -2826,6 +2850,7 @@ ${bannedCopyPromptLine()}`;
       res.status(201).json({
         ...pickPublicFields(form, EXPERT_APPLICATION_PUBLIC_FIELDS),
         offeringTypeKeyUnrecorded: offeringKeyUnrecorded(input.offeringTypeKey, form.offeringTypeKey),
+        neighborhoodClaims,
       });
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -7941,6 +7966,20 @@ ${bannedCopyPromptLine()}`;
           currentStatus: booking.status,
         });
       }
+      // WG-1 addition (P6 path b is not built yet): a concierge accept needs a plan. A
+      // concierge booking with no trip cannot grant the expert plan access, and accepting it
+      // would move money before that missing link is repaired. Refuse BEFORE any capture or
+      // status flip. Remove this when P6 path (b) lands.
+      if (status === "confirmed" && !booking.tripId) {
+        const earlyAcceptService = booking.serviceId ? await storage.getProviderServiceById(booking.serviceId) : null;
+        if (earlyAcceptService?.serviceType === "concierge") {
+          console.warn("[concierge-accept] skipped: booking has no plan", req.params.id, userId);
+          return res.status(409).json({
+            code: "concierge_needs_plan",
+            message: "This booking needs a plan before it can be accepted.",
+          });
+        }
+      }
       // ── ACCEPT NEVER CONFIRMS AROUND THE CHECKOUT (ledger `2026-09-24-request-rail-unpaid`) ──
       // A `pending` row with NO PaymentIntent on record is a request nobody has paid for: an
       // expert-booking-request (storefront / visa-help) or a quote-born booking awaiting its
@@ -11548,6 +11587,11 @@ ${bannedCopyPromptLine()}`;
   app.post("/api/coordination-states/:id/pay", isAuthenticated, requireVerifiedEmail("checkout"), async (req, res) => {
     const coordinationId = req.params.id;
     const userId = getUserId(req)!;
+    // WG-1: in traveler waitlist mode no payment may start. This gate runs before any read or Stripe call.
+    const waitlistGate = await waitlistPurchaseDecisionFor(userId);
+    if (!waitlistGate.allowed) {
+      return res.status(403).json({ code: TRAVELER_WAITLIST, message: TRAVELER_WAITLIST_MESSAGE });
+    }
     let claimedCreditCents = 0;
     try {
       const state = await storage.getCoordinationState(coordinationId);
@@ -13766,18 +13810,26 @@ ${bannedCopyPromptLine()}`;
       // grants; it only refuses the advisor branch once the assignment's plan is approved.
       const owned = await verifyTripOwnership(req.params.tripId, userId);
       const isAdvisor = owned ? false : await storage.isExpertAssignedToTripForWrite(req.params.tripId, userId);
-      const { dayNumber, itemIds } = req.body;
+      const { dayNumber: rawDay, itemIds } = req.body;
+      // ONLY THIS PLAN'S STOPS ON THE DAY SENT (Leon, Nov 20, 2026). Authorization above answers "may this
+      // person write THIS plan"; it says nothing about the ids in the body, and the write below is keyed on the
+      // id alone. So the list is checked against the plan's own day before either branch - the owner's write
+      // and the advisor's filed suggestion - and a refusal writes nothing.
+      const dayNumber = reorderDayNumber(rawDay);
+      const dayItemIds = dayNumber == null
+        ? []
+        : (await storage.getItineraryItems(req.params.tripId)).filter((i) => i.dayNumber === dayNumber).map((i) => i.id);
+      if (dayNumber == null || reorderRefused({ dayNumber, itemIds, dayItemIds })) {
+        return res.status(400).json({ message: REORDER_BODY_ERROR });
+      }
       // Step 7b (R323, R-n): an advisor's reorder on a traveler's plan is a `move` suggestion.
       if (isAdvisor) {
-        if (!Number.isInteger(Number(dayNumber)) || !Array.isArray(itemIds) || itemIds.length > 200) {
-          return res.status(400).json({ message: "Send a day and its stops in order" });
-        }
         const { fileExpertSuggestion } = await import("./services/expert-suggestions.service");
         const suggestion = await fileExpertSuggestion({
           tripId: req.params.tripId,
           expertId: userId,
           kind: "move",
-          payload: { dayNumber: Number(dayNumber), itemIds: itemIds.map(String) },
+          payload: { dayNumber, itemIds },
         });
         return res.status(202).json({ suggested: true, suggestion });
       }

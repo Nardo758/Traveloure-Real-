@@ -46,7 +46,8 @@ import {
 } from "@shared/launch-waitlist";
 import { TRAVELER_WAITLIST_BUTTON, TRAVELER_WAITLIST_MESSAGE } from "@shared/launch-signup";
 import { LIVE_MARKETS_ROUTE } from "@shared/live-markets";
-import { waitlistProviderApplyInvite } from "@shared/waitlist-apply-invite";
+import { waitlistProviderApplyInvite, providerApplyPath } from "@shared/waitlist-apply-invite";
+import { OPERATING_MARKETS } from "@shared/operating-markets";
 import { waitlistSourceFromSearch, type SignupModeView } from "@/lib/launch-waitlist-view";
 import { ProviderWaitlistResult } from "@/lib/waitlist-apply-done";
 import { arrivalRef } from "@/lib/ready-made-waitlist";
@@ -115,7 +116,7 @@ function ConsentTick({
     <div className="flex items-start gap-2">
       <Checkbox id={id} checked={checked} onCheckedChange={(v) => onChange(v === true)} data-testid={`checkbox-${id}`} />
       <div className="text-sm leading-snug">
-        <Label htmlFor={id} className="font-normal" data-testid={`label-${id}`}>{waitlistConsentLine(market)}{alsoMarkets.map((m) => ` ${waitlistConsentLine(m)}`).join("")}</Label>{" "}
+        <Label htmlFor={id} className="font-normal" data-testid={`label-${id}`}>{waitlistConsentLine(market)}{market === "kyoto" ? "." : ""}{alsoMarkets.map((m) => ` ${waitlistConsentLine(m)}`).join("")}</Label>{" "}
         {WAITLIST_CONSENT_PRIVACY_LINK.before}
         <Link href={WAITLIST_CONSENT_PRIVACY_LINK.href} className="underline">{WAITLIST_CONSENT_PRIVACY_LINK.label}</Link>
         {WAITLIST_CONSENT_PRIVACY_LINK.after}
@@ -212,19 +213,14 @@ function TravelerForm({
   const [markets, setMarkets] = useState<string[]>([launchMarket]);
   const market = markets[0] ?? launchMarket;
   const [email, setEmail] = useState("");
+  const [contactName, setContactName] = useState("");
   const [consent, setConsent] = useState(false);
   const [marketingConsent, setMarketingConsent] = useState(false);
   const marketingOpen = marketingBoxOpen(market);
-  const [tripType, setTripType] = useState<WaitlistTripType | "">("");
-  const [month, setMonth] = useState("");
-  const [year, setYear] = useState("");
-  const [worry, setWorry] = useState("");
   const [otherCity, setOtherCity] = useState("");
   const [homepage, setHomepage] = useState("");
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
-  const thisYear = new Date().getFullYear();
-  const years = [thisYear, thisYear + 1, thisYear + 2];
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -232,19 +228,18 @@ function TravelerForm({
       setError(WAITLIST_EMAIL_ERROR);
       return;
     }
+    if (!contactName.trim()) return;
     setStatus("sending");
     setError(null);
     const r = await postWaitlist({
       role: "traveler",
       email: email.trim(),
+      contactName: contactName.trim(),
       markets,
       consent,
       marketingConsent: marketingOpen && marketingConsent,
       ...(source ? { source } : {}),
       ...(refCode ? { ref: refCode } : {}),
-      ...(tripType ? { tripType } : {}),
-      ...(month && year ? { roughMonth: `${year}-${month}` } : {}),
-      ...(worry.trim() ? { worry: worry.trim() } : {}),
       ...(otherCity.trim() ? { otherCity: otherCity.trim() } : {}),
       ...(homepage ? { homepage } : {}),
     });
@@ -268,6 +263,10 @@ function TravelerForm({
 
   return (
     <form className="mt-6 space-y-5" onSubmit={submit} noValidate data-testid="form-waitlist">
+      <div className="space-y-1.5">
+        <Label htmlFor="waitlist-name">Your name</Label>
+        <Input id="waitlist-name" required autoComplete="name" value={contactName} onChange={(e) => setContactName(e.target.value)} data-testid="input-waitlist-name" />
+      </div>
       <div className="space-y-1.5">
         <Label htmlFor="waitlist-email">Email</Label>
         <Input
@@ -297,57 +296,6 @@ function TravelerForm({
         onMarketingConsent={setMarketingConsent}
         marketingOpen={marketingOpen}
       />
-      <fieldset className="space-y-2">
-        <legend className="text-sm font-medium">What's the trip for?</legend>
-        <div className="flex flex-wrap gap-2">
-          {WAITLIST_TRIP_TYPES.map((t) => (
-            <label
-              key={t.key}
-              className={`cursor-pointer rounded-full border px-3 py-1.5 text-sm ${tripType === t.key ? "border-primary bg-primary/10" : ""}`}
-            >
-              <input
-                type="radio"
-                name="tripType"
-                value={t.key}
-                className="sr-only"
-                checked={tripType === t.key}
-                onChange={() => setTripType(t.key)}
-                data-testid={`radio-trip-type-${t.key}`}
-              />
-              {t.label}
-            </label>
-          ))}
-        </div>
-      </fieldset>
-      <fieldset className="space-y-1.5">
-        <legend className="text-sm font-medium">Rough dates (optional)</legend>
-        <div className="flex gap-2">
-          <select aria-label="Month" className={selectClass} value={month} onChange={(e) => setMonth(e.target.value)} data-testid="select-waitlist-month">
-            <option value="">—</option>
-            {MONTHS.map((m, i) => (
-              <option key={m} value={String(i + 1).padStart(2, "0")}>{m}</option>
-            ))}
-          </select>
-          <select aria-label="Year" className={selectClass} value={year} onChange={(e) => setYear(e.target.value)} data-testid="select-waitlist-year">
-            <option value="">—</option>
-            {years.map((y) => (
-              <option key={y} value={String(y)}>{y}</option>
-            ))}
-          </select>
-        </div>
-        <p className="text-sm text-muted-foreground">Month and year is plenty.</p>
-      </fieldset>
-      <div className="space-y-1.5">
-        <Label htmlFor="waitlist-worry">What worries you most about planning it?</Label>
-        <Textarea
-          id="waitlist-worry"
-          placeholder="Anything, big or small."
-          maxLength={WAITLIST_WORRY_MAX}
-          value={worry}
-          onChange={(e) => setWorry(e.target.value)}
-          data-testid="input-waitlist-worry"
-        />
-      </div>
       <ElsewhereField id="waitlist-city" value={otherCity} onChange={setOtherCity} />
       <Button type="submit" disabled={status === "sending"} data-testid="button-waitlist-join">
         {waitlistJoinButtonLabel(markets)}
@@ -372,7 +320,6 @@ function ProviderForm({
   const [markets, setMarkets] = useState<string[]>([launchMarket]);
   const market = markets[0] ?? launchMarket;
   const [contactName, setContactName] = useState("");
-  const [businessName, setBusinessName] = useState("");
   const [email, setEmail] = useState("");
   const [serviceType, setServiceType] = useState<WaitlistServiceType | "">("");
   const [consent, setConsent] = useState(false);
@@ -399,7 +346,6 @@ function ProviderForm({
       consent,
       marketingConsent: marketingOpen && marketingConsent,
       contactName: contactName.trim(),
-      ...(businessName.trim() ? { businessName: businessName.trim() } : {}),
       serviceType,
       ...(source ? { source } : {}),
       ...(refCode ? { ref: refCode } : {}),
@@ -420,14 +366,22 @@ function ProviderForm({
       liveMarketKeys,
       email,
       contactName,
-      businessName,
       serviceType: serviceType || null,
     });
     const cityName = waitlistCityName(market);
+    const marketInfo = OPERATING_MARKETS.find((m) => m.marketKey === market);
+    const applyPath = marketInfo
+      ? providerApplyPath({
+          city: marketInfo.cityName,
+          country: marketInfo.country,
+          email,
+          serviceType: serviceType || null,
+        })
+      : null;
     const hold = market === "kyoto"
       ? "Thanks, we've got your details. We'll be in touch about joining Traveloure in Kyoto."
       : waitlistOtherCityProviderDone(cityName ?? market);
-    return <ProviderWaitlistResult invite={invite} hold={hold} />;
+    return <ProviderWaitlistResult invite={invite} hold={hold} applyPath={applyPath} city={cityName} />;
   }
 
   return (
@@ -435,10 +389,6 @@ function ProviderForm({
       <div className="space-y-1.5">
         <Label htmlFor="provider-name">Your name</Label>
         <Input id="provider-name" required autoComplete="name" value={contactName} onChange={(e) => setContactName(e.target.value)} data-testid="input-provider-name" />
-      </div>
-      <div className="space-y-1.5">
-        <Label htmlFor="provider-business">Business name (if any)</Label>
-        <Input id="provider-business" autoComplete="organization" value={businessName} onChange={(e) => setBusinessName(e.target.value)} data-testid="input-provider-business" />
       </div>
       <div className="space-y-1.5">
         <Label htmlFor="provider-email">Email</Label>
@@ -610,15 +560,12 @@ export default function LaunchWaitlistPage() {
       </section>
       )}
 
-      <section id="join" className="mt-12 scroll-mt-20 rounded-xl border p-6" data-testid="section-waitlist-join">
+      <section id="join" className="mt-12 scroll-mt-28 rounded-xl border p-6" data-testid="section-waitlist-join">
         <h2 className="text-2xl font-semibold">Join the Kyoto list.</h2>
-        <p className="mt-3 text-muted-foreground">
-          Traveloure starts in Kyoto. Join the waitlist and tell us about your trip, so it's shaped around trips like yours.
-        </p>
         <TravelerForm key={launchMarket} source={source} refCode={refCode} launchMarket={launchMarket} settings={settings} />
       </section>
 
-      <section id="providers" className="mt-12 scroll-mt-20 rounded-xl border p-4 sm:p-6" data-testid="section-waitlist-providers">
+      <section id="providers" className="mt-12 scroll-mt-28 rounded-xl border p-4 sm:p-6" data-testid="section-waitlist-providers">
         <h2 className="text-xl font-semibold">Know Kyoto? Help travelers plan it.</h2>
         {showKyotoExperts && (
           <p className="mt-3 text-muted-foreground" data-testid="text-waitlist-plan-with">
@@ -631,7 +578,7 @@ export default function LaunchWaitlistPage() {
         </p>
       </section>
 
-      <section id="experts" className="mt-12 scroll-mt-20 rounded-xl border p-4 sm:p-6" data-testid="section-waitlist-experts">
+      <section id="experts" className="mt-12 scroll-mt-28 rounded-xl border p-4 sm:p-6" data-testid="section-waitlist-experts">
         <h2 className="text-xl font-semibold">{WLB_SIGNUP_COPY.expertHeading}</h2>
         <ExpertWaitlistForm key={launchMarket} source={source} launchMarket={launchMarket} />
       </section>
@@ -661,15 +608,15 @@ export function OtherMarketWaitlistPage({
   return (
     <div className="mx-auto max-w-2xl px-4 py-12" data-testid="page-launch-waitlist">
       <OtherMarketWaitlistHeader market={market} cityName={cityName} settings={settings} />
-      <section id="join" className="mt-12 scroll-mt-20 rounded-xl border p-6" data-testid="section-waitlist-join">
+      <section id="join" className="mt-12 scroll-mt-28 rounded-xl border p-6" data-testid="section-waitlist-join">
         <h2 className="text-2xl font-semibold">{WAITLIST_SIGNUP_ROW_COPY.travelersHeading}</h2>
         <TravelerForm key={market} source={source} refCode={refCode} launchMarket={market} settings={settings} />
       </section>
-      <section id="providers" className="mt-12 scroll-mt-20 rounded-xl border p-4 sm:p-6" data-testid="section-waitlist-providers">
+      <section id="providers" className="mt-12 scroll-mt-28 rounded-xl border p-4 sm:p-6" data-testid="section-waitlist-providers">
         <h2 className="text-xl font-semibold">{WAITLIST_SIGNUP_ROW_COPY.providersHeading}</h2>
         <ProviderForm key={market} source={source} refCode={refCode} launchMarket={market} liveMarketKeys={liveMarketKeys} settings={settings} />
       </section>
-      <section id="experts" className="mt-12 scroll-mt-20 rounded-xl border p-4 sm:p-6" data-testid="section-waitlist-experts">
+      <section id="experts" className="mt-12 scroll-mt-28 rounded-xl border p-4 sm:p-6" data-testid="section-waitlist-experts">
         <h2 className="text-xl font-semibold">{WLB_SIGNUP_COPY.expertHeading}</h2>
         <ExpertWaitlistForm key={market} source={source} launchMarket={market} />
       </section>

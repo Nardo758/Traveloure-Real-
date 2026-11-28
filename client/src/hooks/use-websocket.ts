@@ -9,6 +9,7 @@ interface ChatMessage {
   timestamp?: string;
   userId?: string;
   error?: string;
+  errorCode?: string;
 }
 
 interface UseWebSocketOptions {
@@ -16,7 +17,7 @@ interface UseWebSocketOptions {
   onMessage?: (message: ChatMessage) => void;
   onTyping?: (senderId: string) => void;
   onConnected?: () => void;
-  onError?: (error: string) => void;
+  onError?: (error: string, code?: string) => void;
 }
 
 export function useWebSocket({ userId, onMessage, onTyping, onConnected, onError }: UseWebSocketOptions) {
@@ -73,7 +74,7 @@ export function useWebSocket({ userId, onMessage, onTyping, onConnected, onError
               break;
             case "error":
               if (message.error) {
-                handlersRef.current.onError?.(message.error);
+                handlersRef.current.onError?.(message.error, message.errorCode);
               }
               break;
           }

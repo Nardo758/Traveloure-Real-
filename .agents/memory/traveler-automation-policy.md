@@ -88,3 +88,11 @@ claiming otherwise would overstate the requested no-send-after-booking guarantee
 
 **How to apply:** Exercise both database race orderings and retain their actual evidence.
 Keep recipient-server delivery and authenticated-link usability as separate certification checks.
+
+## Suspension email policy
+
+On account suspension, cancel account-owned non-security email rows; unsuspension never revives cancelled rows. Keep authentication-critical mail (`password_reset`, `email_verification`, `password_changed`, or rows marked `authCritical`), the payment/refund set (`booking_confirmation`, `canonical_booking_confirmation`, `liteapi_stay_voucher`, `cancellation_refund`, `payment_failed`, `late_success_refund`), and `email_changed_old` as the old-address security notice. Leave non-account-bound admin, operations, QA, and vendor mail untouched.
+
+**Why:** The user approved this exact J13 suspension scope on 2026-11-19, including the strict direct payment/refund boundary and no automatic revival after unsuspension.
+
+**How to apply:** Cancel pending/claimable owned rows within the existing suspension transaction and re-check suspension at send time. Preserve the existing admin failure response. Do not add schema, email types, direct sends, or automatic unsuspension requeue behavior. Treat the other non-security types—including fulfillment and booking-related messages—as cancelled unless the user revises this policy.

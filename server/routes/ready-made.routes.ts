@@ -35,6 +35,7 @@ import { parsePagination } from "../utils/pagination";
 import { holdWindowDays } from "../config/earnings-hold.config";
 import { getBand } from "../services/commission";
 import { unsplashService } from "../services/unsplash.service";
+import { CONTENT_SOURCE_TARGETS } from "../config/content-source-targets.config";
 import { getStripeSecretKey } from "../utils/stripe-key";
 import { stripePaymentService } from "../services/stripe-payment.service";
 import { createPaymentIntentPreservingKey } from "../services/stripe-intent-key";
@@ -472,22 +473,66 @@ async function loadAuthorListing(id: string, userId: string) {
   return row ?? null;
 }
 
-/** D2 (Leon, 2026-07-25): "Unsplash proves the photo" — enforced here, not just in the picker UI. */
-const UNSPLASH_IMAGE_HOSTS = new Set(["images.unsplash.com", "plus.unsplash.com"]);
+/** D1 photo rule (Leon, Nov 27 2026): stock is never a hero. The only valid present heroes are
+ *  the author's own upload in our object storage, a photo from an official content source with
+ *  its credit, or Wikimedia Commons under CC/public domain with author + licence. */
+const OWN_STORAGE_HOST = "storage.googleapis.com";
+const WIKIMEDIA_HOST = "upload.wikimedia.org";
 
-function isUnsplashImageUrl(url: string): boolean {
+function officialSourceHosts(): string[] {
+  const hosts: string[] = [];
+  for (const targets of Object.values(CONTENT_SOURCE_TARGETS)) {
+    for (const target of targets) {
+      try {
+        hosts.push(new URL(target.url).hostname.toLowerCase().replace(/^www\./, ""));
+      } catch {
+        // an invalid target is the registry's problem, not a hero pass
+      }
+    }
+  }
+  return hosts;
+}
+const OFFICIAL_SOURCE_HOSTS = officialSourceHosts();
+
+function hostMatches(host: string, allowed: string): boolean {
+  return host === allowed || host.endsWith(`.${allowed}`);
+}
+
+/** DRAFT string for Leon: the photo rule, in one sentence. */
+export const READY_MADE_HERO_REFUSAL =
+  "Use your own photo, an official source's photo with its credit, or a Wikimedia Commons image with its licence.";
+
+export function readyMadeHeroSource(url: string): "own" | "official" | "wikimedia" | null {
   try {
     const u = new URL(url);
-    return u.protocol === "https:" && UNSPLASH_IMAGE_HOSTS.has(u.hostname);
+    if (u.protocol !== "https:") return null;
+    const host = u.hostname.toLowerCase();
+    if (host === OWN_STORAGE_HOST) return "own";
+    if (host === WIKIMEDIA_HOST) return "wikimedia";
+    if (OFFICIAL_SOURCE_HOSTS.some((h) => hostMatches(host, h))) return "official";
+    return null;
   } catch {
-    return false;
+    return null;
   }
 }
 
+/** Null when the present hero is valid; otherwise the one DRAFT refusal. */
+export function readyMadeHeroRefusal(url: string, meta: any): string | null {
+  const source = readyMadeHeroSource(url);
+  if (!source) return READY_MADE_HERO_REFUSAL;
+  if (source === "own") return null;
+  if (!meta?.photographer || !meta?.profileUrl) return READY_MADE_HERO_REFUSAL;
+  if (source === "wikimedia" && !/^(cc\b|public domain\b)/i.test(String(meta.license ?? "").trim())) {
+    return READY_MADE_HERO_REFUSAL;
+  }
+  return null;
+}
+
 const heroMetaSchema = z.object({
-  unsplashId: z.string().trim().min(1).max(120),
+  unsplashId: z.string().trim().min(1).max(120).optional(),
   photographer: z.string().trim().min(1).max(200),
   profileUrl: z.string().trim().url().max(500),
+  license: z.string().trim().max(200).optional(),
   downloadLocation: z.string().trim().url().max(500).optional(),
   description: z.string().trim().max(500).nullable().optional(),
 });
@@ -563,9 +608,8 @@ export async function assertReadyMadeComplete(
   if (!listing.planType) {
     missing.push({ requirement: "planType", message: "Choose a plan type (Hiking Itinerary, Road Trip Itinerary, …)" });
   }
-  if (!listing.heroImageUrl || !(listing.heroImageMeta as any)?.photographer) {
-    missing.push({ requirement: "hero", message: "Pick a cover photo from the Unsplash picker" });
-  }
+  // D1 (Leon, Nov 27 2026): a cover photo is OPTIONAL - a listing with no hero passes this checklist. A hero that IS
+  // present must still be an Unsplash image with its credit (the integrity check on save, below).
   if (listing.priceCents === null || listing.priceCents === undefined) {
     missing.push({ requirement: "price", message: "Set a price" });
   }
@@ -679,18 +723,13 @@ router.patch("/api/expert/ready-made/:id", isAuthenticated, async (req, res) => 
       return res.status(400).json({ message: "No editable fields supplied" });
     }
 
-    // Hero integrity (D2): a hero must be an Unsplash image URL carrying its attribution.
-    // Both are required together — an image without its photographer credit is a rights
-    // problem, and a credit without an Unsplash-hosted URL defeats the provenance rule.
+    // Hero integrity (D1, Nov 27 2026): a present hero is one of the three credited sources
+    // (Unsplash, Pexels, Wikimedia Commons) and carries its photographer credit. A listing with
+    // no hero is complete; clearing the hero clears its credit.
     if (patch.heroImageUrl != null) {
-      if (!isUnsplashImageUrl(patch.heroImageUrl)) {
-        return res.status(400).json({
-          message: "Hero image must be chosen from the Unsplash picker (images.unsplash.com)",
-        });
-      }
       const meta = patch.heroImageMeta ?? (existing.heroImageMeta as any);
-      if (!meta?.unsplashId || !meta?.photographer || !meta?.profileUrl) {
-        return res.status(400).json({ message: "Hero image requires Unsplash attribution metadata" });
+      if (readyMadeHeroRefusal(patch.heroImageUrl, meta)) {
+        return res.status(400).json({ message: READY_MADE_HERO_REFUSAL });
       }
     }
     if (patch.heroImageUrl === null) patch.heroImageMeta = null; // clearing the hero clears its credit
@@ -1008,50 +1047,6 @@ router.get("/api/expert/ready-made/:id/earnings-preview", isAuthenticated, async
   } catch (err: any) {
     console.error("[ready-made] earnings-preview error:", err);
     res.status(500).json({ message: "Failed to resolve earnings preview", error: err.message });
-  }
-});
-
-/**
- * Hero-image search (Unsplash proxy). Author-role-gated so the platform key can't be used
- * as an open image proxy. `ready:false` is the HONEST unconfigured answer — an empty
- * results array would read as "no photos match", which is a different claim (§13).
- */
-router.get("/api/expert/ready-made/hero-search", isAuthenticated, async (req, res) => {
-  try {
-    const userId = sessionUserId(req);
-    if (!userId) return res.status(401).json({ message: "Unauthorized" });
-    const user = await storage.getUser(userId);
-    if (!user || !AUTHOR_ROLES.has(user.role ?? "")) {
-      return res.status(403).json({ message: STORE_GATE_MESSAGE });
-    }
-
-    if (!unsplashService.isReady()) {
-      return res.json({ ready: false, reason: "unsplash_not_configured", results: [] });
-    }
-
-    const q = String(req.query.q ?? "").trim().slice(0, 120);
-    if (!q) return res.status(400).json({ message: "Missing search query" });
-
-    const photos = await unsplashService.searchPhotos(q, { perPage: 12, orientation: "landscape" });
-    res.json({
-      ready: true,
-      results: photos.map((p) => ({
-        // The picker hands these straight back to PATCH — same shape the hero validator expects.
-        url: p.url,
-        thumbnailUrl: p.thumbnailUrl,
-        description: p.description,
-        meta: {
-          unsplashId: p.photoId,
-          photographer: p.photographerName,
-          profileUrl: p.photographerUrl,
-          downloadLocation: p.downloadLocationUrl,
-          description: p.description,
-        },
-      })),
-    });
-  } catch (err: any) {
-    console.error("[ready-made] hero-search error:", err);
-    res.status(500).json({ message: "Hero search failed", error: err.message });
   }
 });
 

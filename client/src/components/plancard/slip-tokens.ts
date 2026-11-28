@@ -46,7 +46,7 @@ export const ROUTING_TINTS: Record<RoutingStatus, StatusTint> = {
   // other outline element. Empty bg/border strings mean "use the theme classes".
   in_planning: { fg: "", bg: "", border: "", label: "Planning" },
   with_expert: { fg: TEAL, bg: `${TEAL}${BG_ALPHA}`, border: `${TEAL}${BORDER_ALPHA}`, label: "With your expert" },
-  ready_for_checkout: { fg: GOLD, bg: `${GOLD}${BG_ALPHA}`, border: `${GOLD}${BORDER_ALPHA}`, label: "In checkout" },
+  ready_for_checkout: { fg: GOLD, bg: `${GOLD}${BG_ALPHA}`, border: `${GOLD}${BORDER_ALPHA}`, label: "In cart" },
   purchased: { fg: GREEN, bg: `${GREEN}${BG_ALPHA}`, border: `${GREEN}${BORDER_ALPHA}`, label: "Purchased" },
 };
 

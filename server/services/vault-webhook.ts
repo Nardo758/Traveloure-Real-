@@ -1,6 +1,10 @@
 /**
- * Platform webhook events that record a saved payment method and do nothing else
- * (ledger `2026-10-21-saved-method-required`).
+ * Platform webhook events for a saved payment method (ledger `2026-10-21-saved-method-required`).
+ *
+ * Since R3 U8a (Leon, Nov 26 2026) ONE of them does one extra thing: `payment_method.attached` may make the traveller's
+ * FIRST saved card the default, and only when it is the only card and none is default. `setup_intent.succeeded` and
+ * `payment_method.detached` remain record only. None of them creates a booking, a membership, a PaymentIntent or a local
+ * card row, and the saved-method list is still read live from Stripe.
  *
  * The route signature-checks the delivery before `handleWebhook` runs. These
  * three types then take the same claim as every other platform event and write

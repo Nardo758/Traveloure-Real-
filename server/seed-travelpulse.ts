@@ -105,8 +105,8 @@ interface CityData {
   total_trending_spots: number;
   total_hidden_gems: number;
   total_alerts: number;
-  image_url?: string;
-  thumbnail_url?: string;
+  image_url?: string | null;
+  thumbnail_url?: string | null;
 }
 
 export async function seedTravelPulseData(): Promise<{ created: number }> {

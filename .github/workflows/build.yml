@@ -532,6 +532,11 @@ jobs:
       - if: ${{ !cancelled() }}
         name: Supply registration pins (S-08 S-18 S-19 S-21)
         run: npx tsx --test shared/__tests__/supply-registration.test.ts
+      # S5 (ledger `2026-11-27-s5-r3-surface-flag`, `2026-11-27-s5-qa-domain-boot-guard`): the R3 switch is the exact
+      # string "1" and every other value is off; a production boot with QA_ACCOUNT_EMAIL_DOMAIN set refuses to start.
+      - if: ${{ !cancelled() }}
+        name: S5 flag pins (R3 surface, QA-domain boot guard)
+        run: npx tsx --test shared/__tests__/r3-surface-flag.test.ts shared/__tests__/qa-domain-guard.test.ts
       # LW-1g: the /earn Ready-Made calculator — empty boxes, the rate from the resolver, nothing on bad input,
       # no average/typical wording, hidden without Ready-Made Trips in the launch market.
       - if: ${{ !cancelled() }}
@@ -2435,6 +2440,9 @@ jobs:
       - if: ${{ !cancelled() }}
         name: Email verification gate (S-09)
         run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/email-verification-gate.http.test.ts
+      # R3 U5: the GET /api/trips list contract the no-plan landing decides from.
+      - name: GET /api/trips (R3 U5)
+        run: npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/r3-trips-list-own.http.test.ts
 
 
   quote-born-charge:
@@ -3131,6 +3139,8 @@ jobs:
       - run: npm ci
       - name: shared/__tests__ (all)
         run: npx tsx --test shared/__tests__/*.test.ts*
+      - name: Resend runtime diagnostic (no database or provider calls)
+        run: npx tsx --test server/services/__tests__/resend-diagnostic.test.ts server/services/__tests__/resend-key.test.ts
       # SH-1 item 1 (ledger 2026-10-19-sh1-banned-copy): the site never-say scan over seed, UI, i18n and email copy.
       # Fixtures first (§18d), then the scan against scripts/never-say-baseline.json, which only shrinks. NEGATIVE
       # SPACE: it reads source string literals / JSX text / JSON values only — not copy built at runtime, not rows no
@@ -3631,6 +3641,12 @@ jobs:
       - name: query-userid-reads-guard · Booked-item delete refusal pin
         if: ${{ !cancelled() }}
         run: npx tsx --test server/__tests__/item-delete-booked-guard.test.ts
+      - name: query-userid-reads-guard · Reorder body rule pin (only this plan's stops on the day sent)
+        if: ${{ !cancelled() }}
+        run: npx tsx --test server/__tests__/reorder-body-rule.test.ts
+      - name: query-userid-reads-guard · Booked-item day-move refusal pin
+        if: ${{ !cancelled() }}
+        run: npx tsx --test server/__tests__/item-move-booked-guard.test.ts
       # 
       - name: ai-draft-eligibility-guard · AI-draft eligibility guard predicate self-test
         if: ${{ !cancelled() }}

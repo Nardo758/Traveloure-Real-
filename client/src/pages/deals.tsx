@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useContentAgentBooking } from "@/hooks/use-content-agent-booking";
+import { isStockPhotoUrl } from "@/lib/photo-provenance";
 import { Link } from "wouter";
 import { OPERATING_MARKETS } from "@shared/operating-markets";
 import { marketStatusLabel } from "@shared/ticker";
@@ -67,30 +68,11 @@ const typeColors: Record<string, string> = {
   car_rental: "bg-amber-50 text-amber-700",
 };
 
-const BASE = "https://images.unsplash.com/photo-";
-const Q = "?w=600&q=80&auto=format&fit=crop";
-
-// CITY-1 (ledger `2026-11-04-city1-marquee-defaults`): photos only for operating cities; a deal for any other city
-// is not listed (`dealsForMarkets`).
-const DESTINATION_PHOTOS: Record<string, string> = {
-  kyoto: `${BASE}1528360983277-13d401cdc186${Q}`,
-  mumbai: `${BASE}1570168007204-dfb528c6958f${Q}`,
-};
-
-const TYPE_FALLBACK_PHOTOS: Record<string, string> = {
-  flight: `${BASE}1436491865332-7a61a109cc05${Q}`,
-  hotel: `${BASE}1566073771259-6a8506099945${Q}`,
-  activity: `${BASE}1527004013197-933c4bb611b3${Q}`,
-  car_rental: `${BASE}1449965408869-eaa3f722e40d${Q}`,
-};
-
+// G1 photo rule (Leon, Nov 27 2026): stock URLs are gone. A deal shows only the image its own
+// record carries; with none the existing tinted band stands. No destination or type fallback.
 function resolveImage(deal: DealItem): string | null {
-  if (deal.imageUrl) return deal.imageUrl;
-  const dest = (deal.destination || "").toLowerCase().trim();
-  for (const [key, url] of Object.entries(DESTINATION_PHOTOS)) {
-    if (dest.includes(key)) return url;
-  }
-  return TYPE_FALLBACK_PHOTOS[deal.type] ?? null;
+  const url = deal.imageUrl?.trim() || null;
+  return url && !isStockPhotoUrl(url) ? url : null;
 }
 
 function DealCardSkeleton() {

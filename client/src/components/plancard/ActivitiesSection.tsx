@@ -220,7 +220,7 @@ export function ItemBookingActionLink({
       ]);
       setLocation(toPlan ? `/plans/${tripId}` : BUY_NOW_CART_PATH);
     },
-    onError: (err: unknown) => showRefusal(err, toPlan ? "Couldn't return this to your plan" : "Couldn't put this back in checkout"),
+    onError: (err: unknown) => showRefusal(err, toPlan ? "Couldn't return this to your plan" : "Couldn't put this back in your cart"),
   });
 
   const action = itemBookingAction(activity);
@@ -478,7 +478,7 @@ export function RoutingActions({
       <>
         <RoutingActionButton
           icon={Undo2}
-          label="Remove from checkout"
+          label="Remove from cart"
           busy={busy}
           onClick={() => mutation.mutate("in_planning")}
           testId={`button-route-remove-checkout-${itemId}`}
@@ -494,7 +494,7 @@ export function RoutingActions({
           className="flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-full text-primary hover:underline"
           data-testid={`link-go-to-checkout-${itemId}`}
         >
-          <ShoppingCart className="w-3 h-3" /> Go to checkout
+          <ShoppingCart className="w-3 h-3" /> Go to cart
         </Link>
         )}
       </>
@@ -518,7 +518,7 @@ export function RoutingActions({
       ) : (
       <RoutingActionButton
         icon={ShoppingCart}
-        label="Add to checkout"
+        label="Add to cart"
         busy={busy}
         onClick={() => mutation.mutate("ready_for_checkout")}
         testId={`button-route-add-checkout-${itemId}`}

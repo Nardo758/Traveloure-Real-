@@ -81,7 +81,7 @@ export function PlanApprovalBanner({
     },
     onError: (err: any) => {
       toast({
-        title: "Couldn't send these to checkout",
+        title: "Couldn't send these to your cart",
         description: parseApiErrorMessage(err, "Please try again."),
         variant: "destructive",
       });
@@ -133,7 +133,7 @@ export function PlanApprovalBanner({
             className="ml-auto text-xs h-7"
             onClick={() => approveAndBook.mutate(false)}
             disabled={approveAndBook.isPending}
-            title="Sends these to checkout. You pay for them there."
+            title="Sends these to your cart. You pay for them there."
             data-testid={`button-book-approved-${tripId}`}
           >
             {approveAndBook.isPending ? "Sending…" : `Book ${bookLabel}`}
@@ -187,7 +187,7 @@ export function PlanApprovalBanner({
               className="text-xs h-7"
               onClick={() => approveAndBook.mutate(true)}
               disabled={decide.isPending || approveAndBook.isPending}
-              title="Approves the plan and sends these to checkout. You pay for them there."
+              title="Approves the plan and sends these to your cart. You pay for them there."
               data-testid={`button-approve-and-book-${tripId}`}
             >
               {approveAndBook.isPending ? "Sending…" : `Approve & book ${bookLabel}`}

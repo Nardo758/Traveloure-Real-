@@ -141,7 +141,7 @@ describe("WL-B decision", () => {
   it("G10 the form path and the role", () => {
     assert.equal(WAITLIST_EXPERT_FORM_PATH, "/waitlist/kyoto#experts");
     assert.ok((WAITLIST_ROLES as readonly string[]).includes("expert"));
-    assert.deepEqual([...WAITLIST_MARKET_OPENED_ROLES], ["traveler", "provider"], "no market-opened email is sent to experts");
+    assert.deepEqual([...WAITLIST_MARKET_OPENED_ROLES], ["traveler", "provider", "expert"], "the city action covers all three roles");
     assert.equal(supplyRefusalRedirect(EXPERT_APPLY_NOW), WAITLIST_EXPERT_FORM_PATH);
     assert.equal(supplyRefusalRedirect(PROVIDER_FIELDS_REQUIRED), PROVIDER_EMAIL_SIGNUP_PATH);
   });
@@ -212,7 +212,8 @@ describe("WL-B waitlist body", () => {
     assert.ok(!trip.success && trip.error.issues.some((i) => i.message === "traveler field"));
     const svc = waitlistJoinBodySchema.safeParse({ ...base, role: "expert", contactName: "X", market: "kyoto", serviceType: "venue" });
     assert.ok(!svc.success && svc.error.issues.some((i) => i.message === "provider field"));
-    assert.ok(waitlistJoinBodySchema.safeParse({ ...base, tripType: "wedding" }).success, "a traveler body as before");
+    assert.ok(waitlistJoinBodySchema.safeParse({ ...base, contactName: "T", tripType: "wedding" }).success, "a traveler body with the required name");
+    assert.equal(waitlistJoinBodySchema.safeParse({ ...base, tripType: "wedding" }).success, false, "a traveler name is required");
     assert.ok(waitlistJoinBodySchema.safeParse({ ...base, role: "provider", contactName: "P", serviceType: "transport", businessName: "B" }).success, "a provider body as before");
     assert.equal(waitlistJoinBodySchema.safeParse({ ...base, link: "https://example.com" }).success, false, "a traveler may not send expert fields");
     assert.equal(waitlistJoinBodySchema.safeParse({ ...base, role: "expert", contactName: "X", market: "kyoto", expertCity: "Kyoto" } as any).success, false, "no expertCity key");

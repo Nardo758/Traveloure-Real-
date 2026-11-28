@@ -184,7 +184,6 @@ describe("LC3 public copy", () => {
     assert.equal(kyotoExpertsSectionVisible([{ id: "e1" }], true), true);
     const page = readFileSync("client/src/pages/launch-waitlist.tsx", "utf8");
     assert.ok(page.includes("Join the Kyoto list"));
-    assert.ok(page.includes("Traveloure starts in Kyoto."));
     assert.ok(page.includes("Plan your Kyoto trip with local experts and businesses."));
     assert.ok(page.includes("{showKyotoExperts && ("));
   });

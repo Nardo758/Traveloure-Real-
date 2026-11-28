@@ -521,7 +521,7 @@ export function ServiceCard({
           onClick: () => (guestWaitlist ? void saveForGuest() : onAddToCart(service.id)),
           disabled: guestSaving || isAddingToCart || isAdded,
           testId: `button-add-to-cart-${service.id}`,
-          className: cn(buttonVariants({ size: "sm" }), "bg-[var(--earn-navy)] hover:bg-[var(--earn-navy)] text-white border border-[var(--earn-navy)]", isAdded && "opacity-90"),
+          className: cn(buttonVariants({ size: "sm", variant: "outline" }), "border-[var(--earn-navy)] text-[var(--earn-navy)] hover:bg-[var(--earn-chip)]", isAdded && "opacity-90"),
         }
       : null,
     book: !messageOnly && planAction?.output === "book"

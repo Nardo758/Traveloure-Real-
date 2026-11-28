@@ -359,6 +359,9 @@ jobs:
             playwright/tests/slip-trip-card-link.spec.ts \
             playwright/tests/discover-tabs.spec.ts \
             playwright/tests/f1-ask-chooser.spec.ts \
+            playwright/tests/a1-day-columns.spec.ts \
+            playwright/tests/a2-move-stop.spec.ts \
+            playwright/tests/r3-surface.spec.ts \
             playwright/tests/earn-captures.spec.ts; do
             if [ ! -f "$f" ]; then
               echo "::error file=.github/workflows/dev-server-gates.yml::Spec file not found: $f"
@@ -423,6 +426,10 @@ jobs:
           # Playwright process had the flag; the server it talks to did not, so the door's chooser
           # never saw the fixture and slip-rail A4's availability poll could not turn true.
           SHOW_DEMO_EXPERTS: '1'
+          # R3 planning surface (Leon, Nov 22 2026): the SERVER reads this and answers
+          # GET /api/public/r3-surface, so staging switches the surface without a rebuild.
+          R3_SURFACE: '1'
+          # R3 planning surface (Leon, Nov 22 2026): staging-only, and this job is where its screenshots come from.
           # Loopback-only rate-limit exemption. The cart-redirect gate ran without it; with one
           # login per test it never needed it, and the exemption only removes 429s.
           RATE_LIMIT_LOOPBACK_SKIP: '1'
@@ -533,6 +540,297 @@ jobs:
           path: playwright/f1-captures/
           retention-days: 14
           if-no-files-found: warn
+      - name: "a1-day-columns: the desktop days board and the phone day cards, with screenshots"
+        # A1 (Leon, Nov 20): the first browser proof of the days board. A fresh traveler and plan in this job's
+        # own database; no secret, no deploy. A failure here fails the job: it is a behavioural check.
+        id: a1_day_columns
+        if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
+        run: npx playwright test a1-day-columns --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          CI: 'true'
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      - name: Keep the a1-day-columns reports
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p reports/a1-day-columns
+          [ -d playwright-report ] && mv playwright-report reports/a1-day-columns/html || true
+          [ -d playwright-json ] && mv playwright-json reports/a1-day-columns/json || true
+      - name: Upload the A1 screenshots
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: a1-captures-${{ github.sha }}
+          path: playwright/a1-captures/
+          retention-days: 14
+          if-no-files-found: warn
+      - name: "dx1-review-display: long review answers wrap and services show names"
+        id: dx1_review_display
+        if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
+        run: npx playwright test dx1-review-display --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          CI: 'true'
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      - name: Upload the DX1 screenshots
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: dx1-captures-${{ github.sha }}
+          path: playwright/dx1-captures/
+          retention-days: 14
+          if-no-files-found: warn
+      - name: "a2-move-stop: the Move sheet on a phone and on the days board, with screenshots"
+        # A2 (Leon, Nov 20): the first browser proof of the Move sheet. A fresh traveler and plan in this job's
+        # own database; no secret, no deploy. A failure here fails the job: it is a behavioural check.
+        id: a2_move_stop
+        if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
+        run: npx playwright test a2-move-stop --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          CI: 'true'
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      - name: Keep the a2-move-stop reports
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p reports/a2-move-stop
+          [ -d playwright-report ] && mv playwright-report reports/a2-move-stop/html || true
+          [ -d playwright-json ] && mv playwright-json reports/a2-move-stop/json || true
+      - name: Upload the A2 screenshots
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: a2-captures-${{ github.sha }}
+          path: playwright/a2-captures/
+          retention-days: 14
+          if-no-files-found: warn
+      - name: "dx2-signup-field-errors: field messages under the sign-up fields, at 1280 and 390"
+        id: dx2_signup_field_errors
+        if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
+        run: npx playwright test dx2-signup-field-errors --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          CI: 'true'
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      - name: Upload the DX2 screenshots
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: dx2-captures-${{ github.sha }}
+          path: playwright/dx2-captures/
+          retention-days: 14
+          if-no-files-found: warn
+      - name: "dx4-server-signup-hardening: common passwords and the per-action hold"
+        id: dx4_server_signup_hardening
+        if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
+        run: |
+          EMAIL_SENDS_ENABLED=true EMAIL_TEMPLATE_ALLOWLIST= RATE_LIMIT_LOOPBACK_SKIP= \
+          ALLOW_TEST_ACCOUNTS=1 SESSION_COOKIE_INSECURE=1 PORT=5001 NODE_ENV=development \
+          SESSION_SECRET=ci-test-secret-not-for-production STRIPE_SECRET_KEY=sk_test_ci_stub_no_real_calls \
+          DATABASE_URL=postgresql://postgres:postgres@localhost:5432/traveloure \
+          npx tsx server/index.ts &
+          SERVER_PID=$!
+          echo "$SERVER_PID" > /tmp/dx4-hold-server.pid
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          for i in $(seq 1 60); do
+            result=$(curl -s http://127.0.0.1:5001/api/ready || true)
+            if echo "$result" | grep -q '"ready":true'; then echo "DX-4 gate server ready"; break; fi
+            if [ "$i" = "60" ]; then echo "::error::DX-4 gate server did not become ready"; exit 1; fi
+            echo "attempt $i/60: waiting... ($result)"; sleep 5
+          done
+          EMAIL_SENDS_ENABLED=true EMAIL_TEMPLATE_ALLOWLIST= RATE_LIMIT_LOOPBACK_SKIP= \
+          JOURNEY_BASE_URL=http://127.0.0.1:5001 JOURNEY_DB_WRITES_OK=1 \
+          DATABASE_URL=postgresql://postgres:postgres@localhost:5432/traveloure \
+          npx tsx --test --test-force-exit server/__tests__/dx4-signup-hardening.http.test.ts
+          JOURNEY_DB_WRITES_OK=1 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/traveloure \
+          npx tsx --test --test-concurrency=1 --test-force-exit server/__tests__/wg1-waitlist-pay-gates.db.test.ts
+          npx tsx --test server/__tests__/dx4-gate-inventory.test.ts
+      - name: "dx4-signup-hardening: password toggles, common-password error, unverified browsing"
+        id: dx4_signup_hardening
+        if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
+        run: npx playwright test dx4-signup-hardening --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          CI: 'true'
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      - name: Upload the DX4 screenshots
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: dx4-captures-${{ github.sha }}
+          path: playwright/dx4-captures/
+          retention-days: 14
+          if-no-files-found: warn
+      - name: "p1-action-alignment: one order, one word, one ask label, the ready-made tile, and the R3 surface"
+        id: p1_action_alignment
+        if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
+        run: npx playwright test p1-action-alignment --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          CI: 'true'
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          R3_SURFACE: '1'
+      - name: Upload the P1 screenshots
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: p1-captures-${{ github.sha }}
+          path: playwright/p1-captures/
+          retention-days: 14
+          if-no-files-found: warn
+      - name: "dx3-server-claims: the expert application carries its picked neighborhoods"
+        id: dx3_server_claims
+        if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
+        run: npx tsx --test --test-force-exit server/__tests__/dx3-claims-with-application.http.test.ts
+        env:
+          JOURNEY_BASE_URL: http://localhost:5000
+          JOURNEY_DB_WRITES_OK: '1'
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      - name: "dx3-claims-with-application: the wizard carries the claims and caps at three"
+        id: dx3_claims_with_application
+        if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
+        run: npx playwright test dx3-claims-with-application --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          CI: 'true'
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      - name: Upload the DX3 screenshots
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: dx3-captures-${{ github.sha }}
+          path: playwright/dx3-captures/
+          retention-days: 14
+          if-no-files-found: warn
+      - name: "wl1-waitlist-simple: three simplified forms and one admin city action"
+        id: wl1_waitlist_simple
+        if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
+        run: npx playwright test wl1-waitlist-simple --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          CI: 'true'
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      - name: Upload the WL-1 screenshots
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: wl1-captures-${{ github.sha }}
+          path: playwright/wl1-captures/
+          retention-days: 14
+          if-no-files-found: warn
+      - name: "admin-banner-clip: the verify banner clears the sidebar at 1280 and 390"
+        id: admin_banner_clip
+        if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
+        run: npx playwright test admin-banner-clip --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          CAPTURE_DIR: after
+          CI: 'true'
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      - name: "g1-photo-rule: city and deal cards with no photo"
+        id: g1_photo_rule
+        if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
+        run: npx playwright test g1-photo-rule --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          CI: 'true'
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      - name: Upload the G1 screenshots
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: g1-captures-${{ github.sha }}
+          path: playwright/g1-captures/
+          retention-days: 14
+          if-no-files-found: warn
+      - name: "u8a-payment-methods: the Settings row, the page, and the first-card default at 1280 and 390"
+        id: u8a_payment_methods
+        if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
+        run: npx playwright test r3-surface --project=chromium -g "U8a"
+        env:
+          BASE_URL: http://localhost:5000
+          CI: 'true'
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          R3_SURFACE: '1'
+      - name: "u8a-first-card-default: D2 against a stubbed Stripe client"
+        id: u8a_first_card_default
+        if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
+        run: npx tsx --test --test-force-exit server/__tests__/u8a-first-card-default.test.ts
+        env:
+          STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
+          SESSION_SECRET: "ci-test-secret-not-for-production"
+          NODE_ENV: test
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      - name: Upload the U8a screenshots
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: u8a-captures-${{ github.sha }}
+          path: playwright/r3-captures/
+          retention-days: 14
+          if-no-files-found: warn
+      - name: "d1-captures: the photo card families, with and without a photo"
+        id: d1_captures
+        if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
+        run: npx playwright test d1-captures --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          CI: 'true'
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      - name: Keep the d1-captures reports
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p reports/d1-captures
+          [ -d playwright-report ] && mv playwright-report reports/d1-captures/html || true
+          [ -d playwright-json ] && mv playwright-json reports/d1-captures/json || true
+      - name: Upload the D1 screenshots
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: d1-captures-${{ github.sha }}
+          path: playwright/d1-captures/
+          retention-days: 14
+          if-no-files-found: warn
+      - name: Upload the d1-captures Playwright JSON report (the spec-arming gate reads playwright-json*)
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-json-d1-captures
+          path: reports/d1-captures/json/
+          retention-days: 14
+          if-no-files-found: warn
+      - name: "r3-surface: the Revision 3 shell, at 1280 and 390, with screenshots"
+        # R3 P0 (Leon, Nov 22 2026): the shell behind ?surface=r3. It asserts r3-surface is on the page, so a
+        # green step is never a picture of the old page.
+        id: r3_surface
+        if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
+        run: npx playwright test r3-surface --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          CI: 'true'
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      - name: Keep the r3-surface reports
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p reports/r3-surface
+          [ -d playwright-report ] && mv playwright-report reports/r3-surface/html || true
+          [ -d playwright-json ] && mv playwright-json reports/r3-surface/json || true
+      - name: Upload the R3 screenshots
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: r3-captures-${{ github.sha }}
+          path: playwright/r3-captures/
+          retention-days: 14
+          if-no-files-found: warn
+      - name: Upload the r3-surface Playwright JSON report (the spec-arming gate reads playwright-json*)
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-json-r3-surface
+          path: reports/r3-surface/json/
+          retention-days: 14
+          if-no-files-found: warn
       - name: "Earn-grammar captures (Lane 2, screenshots — never fails the job)"
         id: earn_captures
         if: ${{ !cancelled() && steps.ready.outcome == 'success' }}
@@ -610,6 +908,20 @@ jobs:
         with:
           name: playwright-json-f1-ask-chooser
           path: reports/f1-ask-chooser/json/
+          if-no-files-found: ignore
+      - name: Upload a1-day-columns Playwright JSON report (the spec-arming gate reads playwright-json*)
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-json-a1-day-columns
+          path: reports/a1-day-columns/json/
+          if-no-files-found: ignore
+      - name: Upload a2-move-stop Playwright JSON report (the spec-arming gate reads playwright-json*)
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-json-a2-move-stop
+          path: reports/a2-move-stop/json/
           if-no-files-found: ignore
       - name: Upload earn-captures Playwright JSON report (the spec-arming gate reads playwright-json*)
         if: ${{ !cancelled() }}

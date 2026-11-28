@@ -100,7 +100,16 @@ test("E8: a before value past today is clamped to today, not honoured", async ({
   await openEventDetails(page);
 
   await tid(page, "plan-entry-days-before").fill("14");
-  // The market's today is exactly where the clamp stops: the start cannot precede it.
+  // The market's today is exactly where the clamp stops: the start cannot precede it. The event starts ten
+  // days from today, so of the 14 asked for the field keeps 10 - it is drawn from the plan's own start date,
+  // the same state the calendar renders.
+  //
+  // This read the calendar's cell for today instead, until 2026-11-20T15:00Z. The calendar shows ONE month and
+  // opens on the event's month; once today + 10 falls in the next month (the last ten days of every month)
+  // today's cell is a month back and not drawn, so the cell could not be found although the clamp was right.
+  await expect(tid(page, "plan-entry-days-before")).toHaveValue("10");
+  // The calendar follows the start (Leon, Nov 20, 2026): today's cell is drawn and selected even when the event
+  // is in the next month.
   await expect(selectedDay(page, marketToday)).toBeVisible();
   await expect(selectedDay(page, plusDays(marketToday, -1))).toHaveCount(0);
 });

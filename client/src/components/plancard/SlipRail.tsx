@@ -97,7 +97,8 @@ import {
   type OptimizationPaymentSheet,
 } from "@/lib/optimization-gate";
 import { useSlipFreeDraft } from "@/components/plan/useSlipFreeDraft";
-import { OptimizerLead } from "@/components/plan/OptimizerLead";
+import { OptimizeAction, OptimizerLead } from "@/components/plan/OptimizerLead";
+import { SLIP_ACTION_OPTIMIZE_CLASS } from "@/components/plancard/SlipActionRow";
 import { useOptimizerLeadData } from "@/components/plan/use-optimizer-lead-data";
 import { FeedbackTap } from "@/components/plan/FeedbackTap";
 import { FEEDBACK_CODES } from "@shared/feedback";
@@ -371,6 +372,7 @@ function BuildCard({
   expertState,
   aiAction,
   optimizerSlot,
+  optimizeActionSlot = null,
   leadCopy = null,
 }: {
   trip: SlipTrip;
@@ -384,6 +386,8 @@ function BuildCard({
   aiAction: SlipBuildAiAction;
   /** Smoke 9 S9-4: the slip's slot under the tools tray, where the optimizer card renders. */
   optimizerSlot?: HTMLElement | null;
+  /** Frame lift: the page frame's action-row slot, where the ONE Optimize control renders. */
+  optimizeActionSlot?: HTMLElement | null;
   /**
    * The expert row's state, resolved ONCE by `SlipRail` from the ONE owner-gated advisor read
    * (ledger `2026-09-06-slip-conformance`). It used to be fetched here; the Expert card above now
@@ -626,7 +630,17 @@ function BuildCard({
           {/* Lane E1 (ruling 7): no confirmed dates ⇒ the dates panel opens under the card, then the
               build-around step continues with the saved window. */}
           <DatesGate trip={trip} action="Optimize" testId="slip-optimize-dates-gate">
-          {(guard) => (
+          {(guard) => {
+          // Frame lift: ONE guarded open for a press, used by the card's own CTA (where a
+          // mount still draws it) and by the action row's control. Same checks, same gate, same next step.
+          const openOptimize = () => {
+            if (optimizing || creatingComparison || optimizeDisabledReason) return;
+            guard((dates) => {
+              gatedWindow.current = dates;
+              setBuildAroundOpen(true);
+            });
+          };
+          return (
           <>
           {/* Row 188: `?optimize=1` runs the SAME guarded open as the Optimize click below. */}
           <RunWhen
@@ -640,6 +654,27 @@ function BuildCard({
               });
             }}
           />
+          {/* Frame lift (Leon, Nov 19, 2026): the ONE Optimize control lives in the page frame's action row.
+              The state stays here; the control is portalled into the row's slot. The dates gate still opens
+              under the card, so a press brings the card into view first (a no-op when it already is). */}
+          {optimizeActionSlot
+            ? createPortal(
+                <OptimizeAction
+                  fee={leadData.fee}
+                  testId="slip-action-optimize"
+                  drafted={aiAction === "optimize"}
+                  onClick={() => {
+                    optimizerSlot?.scrollIntoView?.({ behavior: "smooth", block: "nearest" });
+                    openOptimize();
+                  }}
+                  busy={optimizing || creatingComparison}
+                  disabledReason={optimizeDisabledReason}
+                  ctaLabelOverride={creatingComparison ? "Building…" : null}
+                  className={SLIP_ACTION_OPTIMIZE_CLASS}
+                />,
+                optimizeActionSlot,
+              )
+            : null}
           {leadData.previewLoading ? (
             <p role="status" aria-live="polite" className="text-sm text-muted-foreground" data-testid="optimizer-lead-loading">
               Checking this draft…
@@ -660,13 +695,8 @@ function BuildCard({
             fee={leadData.fee}
             realised={leadData.realised as any}
             testId="slip-action-optimize"
-            onClick={() => {
-              if (optimizing || creatingComparison || optimizeDisabledReason) return;
-              guard((dates) => {
-                gatedWindow.current = dates;
-                setBuildAroundOpen(true);
-              });
-            }}
+            onClick={openOptimize}
+            actions={optimizeActionSlot ? "none" : "inline"}
             busy={optimizing || creatingComparison}
             disabledReason={optimizeDisabledReason}
             ctaLabelOverride={creatingComparison ? "Building…" : null}
@@ -678,7 +708,8 @@ function BuildCard({
             localExpertTestId="slip-action-hire-expert"
           />
           </>
-          )}
+          );
+          }}
           </DatesGate>
           </span>
           {/* RULING 3 (Main board): the Trip Pass is offered HERE, under the optimizer card, once the
@@ -1298,7 +1329,7 @@ export function FinishCard({
         {checkoutReady > 0 ? (
           <p className="text-xs text-[color:var(--slip-muted)]">
             <Link href="/cart" className="font-semibold text-[color:var(--slip-navy)] underline underline-offset-2" data-testid="slip-action-go-to-checkout">
-              Go to checkout ({checkoutReady})
+              Go to cart ({checkoutReady})
             </Link>
           </p>
         ) : null}
@@ -1389,7 +1420,7 @@ export function FinishCard({
 
       {checkoutReady > 0 ? (
         <RailRow
-          label={`Go to checkout (${checkoutReady})`}
+          label={`Go to cart (${checkoutReady})`}
           icon={<ShoppingCart className="w-3.5 h-3.5" />}
           href="/cart"
           testId="slip-action-go-to-checkout"
@@ -1423,6 +1454,7 @@ export function SlipRail({
   stopsLine,
   zoneLine,
   optimizerSlot = null,
+  optimizeActionSlot = null,
   leadCopy = null,
 }: {
   trip: SlipTrip;
@@ -1452,6 +1484,8 @@ export function SlipRail({
   zoneLine: string | null;
   /** Smoke 9 S9-4: the slot under the tools tray where the optimizer card renders (§8). */
   optimizerSlot?: HTMLElement | null;
+  /** Frame lift: the action-row slot where the ONE Optimize control renders. */
+  optimizeActionSlot?: HTMLElement | null;
 }) {
   /**
    * THE ONE ADVISOR READ FOR THE WHOLE RAIL (ledger `2026-09-06-slip-conformance`).
@@ -1503,6 +1537,7 @@ export function SlipRail({
         expertState={expertState}
         aiAction={aiAction}
         optimizerSlot={optimizerSlot}
+        optimizeActionSlot={optimizeActionSlot}
         leadCopy={leadCopy}
       />
     </div>

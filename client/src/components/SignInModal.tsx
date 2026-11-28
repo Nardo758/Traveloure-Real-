@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { LogIn, Mail, Lock, Loader2 } from "lucide-react";
 import { isRegistrationNeutral } from "@shared/registration-neutral";
@@ -332,10 +333,9 @@ export function SignInModal({
                 <Label htmlFor="password">{t("fields.password")}</Label>
                 <div className="relative">
                   <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
+                  <PasswordInput
                     id="password"
                     name="password"
-                    type="password"
                     autoComplete="current-password"
                     placeholder={t("fields.passwordPlaceholderSignin")}
                     className="pl-9"

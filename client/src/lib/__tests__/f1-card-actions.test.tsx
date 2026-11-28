@@ -43,13 +43,13 @@ const MODES: Record<string, Pick<ActionContext, "mode" | "signedIn">> = {
 };
 const base: CardContentInput = { type: "listing", id: "x", title: "X", city: "Kyoto", placeable: true, bookable: false, hasExpert: true };
 const CARDS: Record<string, { input: CardContentInput; slots: CardActionSlot[] }> = {
-  "/services listing, bookable": { input: { ...base, bookable: true, detailHref: "/services/x" }, slots: ["book", "add", "ask_expert", "details"] },
+  "/services listing, bookable": { input: { ...base, bookable: true, detailHref: "/services/x" }, slots: ["add", "ask_expert", "details", "book"] },
   "/services listing, add only": { input: { ...base, detailHref: "/services/x" }, slots: ["add", "ask_expert", "details"] },
   "/services listing, message-only": { input: { ...base, placeable: false, detailHref: "/services/x" }, slots: ["ask_expert", "details"] },
   "feed gem": { input: { ...base, type: "gem", detailSheet: true }, slots: ["add", "ask_expert", "details"] },
-  "feed gem with a listing to book": { input: { ...base, type: "gem", bookable: true, detailSheet: true }, slots: ["book", "add", "ask_expert", "details"] },
+  "feed gem with a listing to book": { input: { ...base, type: "gem", bookable: true, detailSheet: true }, slots: ["add", "ask_expert", "details", "book"] },
   "feed event": { input: { ...base, type: "event", detailSheet: true }, slots: ["add", "ask_expert", "details"] },
-  "feed vendor": { input: { ...base, bookable: true, detailHref: "/services/x" }, slots: ["book", "add", "ask_expert", "details"] },
+  "feed vendor": { input: { ...base, bookable: true, detailHref: "/services/x" }, slots: ["add", "ask_expert", "details", "book"] },
   "feed hotel": { input: { ...base, type: "hotel", detailSheet: true }, slots: ["add", "ask_expert", "details"] },
   "feed activity": { input: { ...base, type: "activity", detailSheet: true }, slots: ["add", "ask_expert", "details"] },
   "no expert in the city": { input: { ...base, type: "gem", hasExpert: false, detailSheet: true }, slots: ["add", "details"] },
@@ -78,7 +78,8 @@ describe("F1 - card actions from the action engine", () => {
       for (const [modeName, who] of Object.entries(MODES)) {
         const surface = card === "the sheet a tile opens" ? "sheet" : "card";
         const got = cardActionSlots(cardContentItem(input), { ...who, surface, density: "full" });
-        assert.deepEqual(got, slots, `${card} / ${modeName}`);
+        const expected = who.mode === "open" ? slots : slots.filter((slot) => slot !== "book");
+        assert.deepEqual(got, expected, `${card} / ${modeName}`);
       }
     }
   });
@@ -143,8 +144,8 @@ describe("F1 - card actions from the action engine", () => {
     assert.match(noExpert, /button-service-details-svc-f1/, "Details does not depend on an expert");
 
     const open = render(<ServiceCard service={service} onAddToCart={() => {}} />, { mode: "open", expertCity: "Kyoto" });
-    const openAt = order(open, ["button-service-action-svc-f1", ...ids]);
-    assert.ok(openAt.every((i) => i > 0) && [...openAt].sort((a, b) => a - b).join() === openAt.join(), "open: Book leads, then Add, Ask, Details");
+    const openAt = order(open, [...ids, "button-service-action-svc-f1"]);
+    assert.ok(openAt.every((i) => i > 0) && [...openAt].sort((a, b) => a - b).join() === openAt.join(), "open: Add, Ask, Details, then Book");
 
     const messageOnly: any = { ...service, id: "svc-msg", buyAction: { primary: { kind: "message", label: "Message" } } };
     const msg = render(<ServiceCard service={messageOnly} onAddToCart={() => {}} />, { mode: "open", expertCity: "Kyoto" });

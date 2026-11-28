@@ -5,12 +5,12 @@
 import { useState } from "react";
 import { useLocation, useSearch, Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { Lock, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
-import { AUTH_GENERIC_ERROR, authFailureMessage, readAuthResponse } from "@/lib/auth-response";
+import { AUTH_GENERIC_ERROR, authFailureMessage, authFieldErrors, readAuthResponse } from "@/lib/auth-response";
 
 export default function ResetPasswordPage() {
   const [, setLocation] = useLocation();
@@ -21,6 +21,7 @@ export default function ResetPasswordPage() {
 
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [newPasswordError, setNewPasswordError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
   const [invalidToken, setInvalidToken] = useState(false);
@@ -114,7 +115,15 @@ export default function ResetPasswordPage() {
       const read = await readAuthResponse(res);
       if (read.kind === "non-json") throw new Error(AUTH_GENERIC_ERROR);
       if (res.ok) { setDone(true); return; }
-      if (res.status === 400) { setInvalidToken(true); return; }
+      if (res.status === 400) {
+        const fieldErrors = authFieldErrors(read);
+        if (fieldErrors.newPassword) {
+          setNewPasswordError(fieldErrors.newPassword);
+          return;
+        }
+        setInvalidToken(true);
+        return;
+      }
       throw new Error(authFailureMessage(read, AUTH_GENERIC_ERROR, `Reset failed (${res.status})`));
     } catch (err: any) {
       toast({ title: "Couldn't reset password", description: err?.message ?? "Please try again.", variant: "destructive" });
@@ -139,11 +148,27 @@ export default function ResetPasswordPage() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="reset-new-password">New password</Label>
-              <Input id="reset-new-password" type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Min 8 characters" required minLength={8} autoComplete="new-password" data-testid="input-reset-new-password" />
+              <PasswordInput
+                id="reset-new-password"
+                value={newPassword}
+                onChange={(e) => { setNewPassword(e.target.value); setNewPasswordError(null); }}
+                placeholder="Min 8 characters"
+                required
+                minLength={8}
+                autoComplete="new-password"
+                data-testid="input-reset-new-password"
+                aria-invalid={newPasswordError ? true : undefined}
+                aria-describedby={newPasswordError ? "reset-new-password-error" : undefined}
+              />
+              {newPasswordError && (
+                <p id="reset-new-password-error" className="text-xs text-red-700" data-testid="error-reset-new-password">
+                  {newPasswordError}
+                </p>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="reset-confirm-password">Confirm new password</Label>
-              <Input id="reset-confirm-password" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Re-enter your new password" required minLength={8} autoComplete="new-password" data-testid="input-reset-confirm-password" />
+              <PasswordInput id="reset-confirm-password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Re-enter your new password" required minLength={8} autoComplete="new-password" data-testid="input-reset-confirm-password" />
             </div>
             <Button type="submit" className="w-full" disabled={submitting} data-testid="button-reset-submit">
               {submitting ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />Updating password…</>) : (<><Lock className="mr-2 h-4 w-4" />Update password</>)}

@@ -136,7 +136,14 @@ test("8d — signed out: browse with no plan, add, sign up → exactly one plan,
 
   // The record replays: ONE plan, landing on Days (TEST EDIT, slip-first hotfix, ledger `2026-11-07-slip-first-landing`).
   await expect(page).toHaveURL(/\/plans\/(?!new)[a-zA-Z0-9-]+(\?view=days)?$/, { timeout: 30_000 });
-  await expect(testid(page, "button-slip-view-list")).toHaveAttribute("aria-pressed", "true", { timeout: 20_000 });
+  // A7 (Leon, Nov 21 2026) made "Days and map" the DEFAULT view at desktop width; view memory lives only in
+  // the link (?view=days = Days only). This assertion was written before that default, and it fails on main
+  // at 91d5a9ea for exactly that reason - not because of A10. Assert the view the URL asks for instead.
+  const wantedView = new URL(page.url()).searchParams.get("view");
+  await expect(
+    testid(page, wantedView === "days" ? "button-slip-view-list" : "button-slip-view-days-map"),
+    `the view the URL asks for (view=${wantedView ?? "unset"}) is pressed`,
+  ).toHaveAttribute("aria-pressed", "true", { timeout: 20_000 });
   const tripId = page.url().match(/\/plans\/([a-zA-Z0-9-]+)/)![1];
 
   const [user] = await rows<{ id: string }>(`SELECT id FROM users WHERE email = $1`, [email]);

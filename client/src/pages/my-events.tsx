@@ -21,6 +21,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useBookingActionsShown } from "@/lib/signup-mode";
 import { DashboardLayout } from "@/components/dashboard-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -83,6 +84,7 @@ function FeeBadge({ feePaymentStatus }: { feePaymentStatus: string }) {
 
 function EngagementCard({ engagement }: { engagement: Engagement }) {
   const { toast } = useToast();
+  const waitlist = !useBookingActionsShown();
   const [payOpen, setPayOpen] = useState(false);
   const [starting, setStarting] = useState(false);
   const [oneClickPaying, setOneClickPaying] = useState(false);
@@ -233,7 +235,7 @@ function EngagementCard({ engagement }: { engagement: Engagement }) {
           )}
         </div>
 
-        {isPaid ? (
+        {waitlist ? null : isPaid ? (
           <div className="flex items-center gap-2 text-sm text-emerald-600">
             <CheckCircle2 className="w-4 h-4" /> Paid — your coordinator is handling the rest.
           </div>

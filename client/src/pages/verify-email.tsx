@@ -51,6 +51,7 @@ export default function VerifyEmailPage() {
             return { ...(prev as object), emailVerificationRequired: false, nextStep: null };
           });
           setState("success");
+          window.dispatchEvent(new Event("traveloure:email-verified"));
         } else if (read.kind === "non-json") {
           setState("unavailable");
         } else {

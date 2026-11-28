@@ -34,6 +34,7 @@ import { loadDeliveryTargetMisses, type DeliveryTargetMisses } from "./email-del
 import { getStripeSecretKey } from "../utils/stripe-key";
 import { runBackgroundJob } from "./background-job-runner";
 import { jitteredStartupDelay } from "./startup-delay";
+import { resolveResendKey } from "./resend-key";
 import { claimAdminDigestSend, releaseAdminDigestClaim } from "./admin-digest-claim";
 import {
   adminDigestDateKey,
@@ -259,7 +260,7 @@ class AdminDigestSchedulerService {
       }
 
       // sendAdminDigestEmail no-ops without a client and would burn the day if we claimed first.
-      if (!process.env.RESEND_API_KEY) {
+      if (!resolveResendKey().key) {
         console.log("[AdminDigest] RESEND_API_KEY not set — skipping digest");
         return;
       }

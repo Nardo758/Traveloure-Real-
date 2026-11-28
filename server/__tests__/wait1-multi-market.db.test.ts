@@ -1,9 +1,9 @@
-/**
+﻿/**
  * WAIT-1 (ledger `2026-11-04-wait1-all-markets`): one waitlist covering every operating market.
  *
- *   R1 getLiveMarketSlugs: no `live_market_slugs` row ⇒ [] (432 seeds the row later)
- *   R2 getMarketLaunchDates: no `market_launch_dates` row ⇒ {}
- *   T2 one join for [kyoto, porto] ⇒ two rows for the same email, each with consent_at and its own consent_records;
+ *   R1 getLiveMarketSlugs: no `live_market_slugs` row â‡’ [] (432 seeds the row later)
+ *   R2 getMarketLaunchDates: no `market_launch_dates` row â‡’ {}
+ *   T2 one join for [kyoto, porto] â‡’ two rows for the same email, each with consent_at and its own consent_records;
  *      re-posting upserts and keeps the first consent_at
  *   T3 the older body `market: "kyoto"` still works (one row)
  *   T8 a market-opened enqueue for porto/traveler reaches only porto rows that consented and did not unsubscribe
@@ -84,21 +84,21 @@ after(async () => {
   }
 });
 
-test("R1 no live_market_slugs row ⇒ []", async () => {
+test("R1 no live_market_slugs row â‡’ []", async () => {
   await db.execute(sql`DELETE FROM platform_settings WHERE setting_key = ${LIVE_MARKET_SLUGS_SETTING}`);
   invalidatePlatformFlagCache(LIVE_MARKET_SLUGS_SETTING);
   assert.deepEqual(await getLiveMarketSlugs(), []);
 });
 
-test("R2 no market_launch_dates row ⇒ {}", async () => {
+test("R2 no market_launch_dates row â‡’ {}", async () => {
   await db.execute(sql`DELETE FROM platform_settings WHERE setting_key = ${MARKET_LAUNCH_DATES_SETTING}`);
   invalidatePlatformFlagCache(MARKET_LAUNCH_DATES_SETTING);
   assert.deepEqual(await getMarketLaunchDates(), {});
 });
 
-test("T2 one join for two markets ⇒ two rows, each consented; a re-post keeps the first consent_at", async () => {
+test("T2 one join for two markets â‡’ two rows, each consented; a re-post keeps the first consent_at", async () => {
   const address = email("two");
-  const body = waitlistJoinBodySchema.parse({ role: "traveler", email: address, markets: ["kyoto", "porto"], consent: true });
+  const body = waitlistJoinBodySchema.parse({ role: "traveler", email: address, contactName: "Fixture Traveler", markets: ["kyoto", "porto"], consent: true });
   const resolved = resolveWaitlistMarkets(body.markets, body.market, "kyoto");
   assert.deepEqual(resolved, { ok: true, markets: ["kyoto", "porto"] });
   const { markets: _m, market: _one, homepage: _h, ref: _r, ...rest } = body as any;
@@ -120,10 +120,10 @@ test("T2 one join for two markets ⇒ two rows, each consented; a re-post keeps 
 
 test("T3 the older single-market body still works", async () => {
   const address = email("one");
-  const body = waitlistJoinBodySchema.parse({ role: "traveler", email: address, market: "kyoto", consent: true });
+  const body = waitlistJoinBodySchema.parse({ role: "traveler", email: address, contactName: "Fixture Traveler", market: "kyoto", consent: true });
   const resolved = resolveWaitlistMarkets(body.markets, body.market, "kyoto");
   assert.deepEqual(resolved, { ok: true, markets: ["kyoto"] });
-  await joinWaitlist({ role: "traveler", email: address, consent: true }, "kyoto");
+  await joinWaitlist({ role: "traveler", email: address, contactName: "Fixture Traveler", consent: true }, "kyoto");
   assert.deepEqual((await rows(address)).map((r) => r.market_slug), ["kyoto"]);
   assert.deepEqual(resolveWaitlistMarkets(["kyoto", "atlantis"], undefined, "kyoto"), { ok: false, code: "UNKNOWN_MARKET" });
   assert.deepEqual(resolveWaitlistMarkets(["porto", "porto"], undefined, "kyoto"), { ok: true, markets: ["porto"] });
@@ -134,10 +134,10 @@ test("T8 market-opened for porto/traveler reaches only consented, subscribed por
   const kyotoOnly = email("kyoto-only");
   const noConsent = email("porto-no-consent");
   const gone = email("porto-unsubscribed");
-  await joinWaitlistMarkets({ role: "traveler", email: yes, consent: true }, ["kyoto", "porto"]);
-  await joinWaitlistMarkets({ role: "traveler", email: kyotoOnly, consent: true }, ["kyoto"]);
-  await joinWaitlistMarkets({ role: "traveler", email: noConsent, consent: false }, ["porto"]);
-  await joinWaitlistMarkets({ role: "traveler", email: gone, consent: true }, ["porto"]);
+  await joinWaitlistMarkets({ role: "traveler", email: yes, contactName: "Fixture Traveler", consent: true }, ["kyoto", "porto"]);
+  await joinWaitlistMarkets({ role: "traveler", email: kyotoOnly, contactName: "Fixture Traveler", consent: true }, ["kyoto"]);
+  await joinWaitlistMarkets({ role: "traveler", email: noConsent, contactName: "Fixture Traveler", consent: false }, ["porto"]);
+  await joinWaitlistMarkets({ role: "traveler", email: gone, contactName: "Fixture Traveler", consent: true }, ["porto"]);
   await pool.query(`UPDATE launch_waitlist SET unsubscribed_at = NOW() WHERE email = $1`, [gone]);
 
   for (const key of FOOTER_KEYS) {

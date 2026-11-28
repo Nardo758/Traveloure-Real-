@@ -18,6 +18,8 @@ import { affiliatePartnerIdForSource, isLegAffiliateOptionId, syncLegAffiliateOp
 import { z } from "zod";
 import { resolveViewerTransportBookings } from "../services/transport-viewer-booking.service";
 import { isAuthenticated } from "../replit_integrations/auth";
+import { waitlistPurchaseDecisionFor } from "../services/waitlist-purchase-gate";
+import { TRAVELER_WAITLIST, TRAVELER_WAITLIST_MESSAGE } from "@shared/launch-signup";
 import { requireTestSeedEnabled } from "../middleware/test-only-endpoint";
 import { authorizeTripLogistics } from "../utils/trip-logistics-auth";
 import { toClientTransportOption } from "../services/transport-option-client";
@@ -341,6 +343,12 @@ router.post(
 
       if (!userId) {
         return res.status(401).json({ error: "User not authenticated" });
+      }
+
+      // WG-1: no payment starts in traveler waitlist mode. Run before any read or Stripe call.
+      const waitlistGate = await waitlistPurchaseDecisionFor(userId);
+      if (!waitlistGate.allowed) {
+        return res.status(403).json({ code: TRAVELER_WAITLIST, message: TRAVELER_WAITLIST_MESSAGE });
       }
 
       // Fetch the booking option

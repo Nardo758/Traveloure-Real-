@@ -13,7 +13,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { eventDrawerWhen } from "@/lib/event-drawer";
 import { Calendar, ExternalLink, Info, MapPin, Plus, Star, CheckCircle2, Wifi, Waves, Globe, Tag, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useGemPhoto, type StockPhotoCredit } from "@/hooks/use-gem-photo";
+import type { StockPhotoCredit } from "@/hooks/use-gem-photo";
 import { useToast } from "@/hooks/use-toast";
 import { getOrCreateGuestSessionId } from "@/lib/guest-session";
 import { gemCategory, type MatchSuggestion } from "@/lib/feed-stream";
@@ -444,7 +444,7 @@ function gemTypeMeta(placeType: string | null | undefined): TypeMeta {
 // navy fills come from the earn tokens; every handler stops propagation so the
 // card-as-link container never double-fires.
 const BOOK_BTN_STYLE = { background: "var(--earn-teal)", color: "#fff", border: "none" } as const;
-const ADD_BTN_STYLE = { background: "var(--earn-navy)", color: "#fff", border: "none" } as const;
+const ADD_BTN_STYLE = { background: "transparent", color: "var(--earn-navy)", border: "1px solid var(--earn-navy)" } as const;
 
 // ─── Booking badge ─────────────────────────────────────────────────────────────
 
@@ -1086,7 +1086,10 @@ export function CityFeedCardGem({
   const expertAvailable = useExpertAvailability({ city });
   // An official source with no stored image is text-only. A stock search would invent a photo.
   const textOnly = !gem.imageUrl && typeof gem.sourceUrl === "string" && gem.sourceUrl.length > 0;
-  const { photoUrl, loading, credit: stockCredit } = useGemPhoto(gem.id, gem.placeName, city, gem.imageUrl, { allowFetch: !textOnly });
+  // D1: the gem's own image, or the card's existing no-photo state. No stock fallback.
+  const photoUrl = textOnly ? null : gem.imageUrl ?? null;
+  const stockCredit = null;
+  const loading = false;
   useEffect(() => {
     setImgFailed(false);
     setImgLoaded(false);
@@ -1472,12 +1475,9 @@ export function CityFeedCardEvent({ event, city, scheduledDate, onAdd: onAddProp
   const expertAvailable = useExpertAvailability({ city });
   const dbImageUrl = event.image || event.imageUrl || null;
   const eventName = event.title || event.name || "";
-  const { photoUrl, loading } = useGemPhoto(
-    `event-${event.id ?? event.eventId ?? eventName}`,
-    eventName,
-    city,
-    dbImageUrl,
-  );
+  // D1: the event's own stored image only.
+  const photoUrl = dbImageUrl ?? null;
+  const loading = false;
 
   // SH-1 item 7: a Fever event carries no amount and no partner URL — only an opaque token that the tracked redirect
   // resolves. The token stands for the partner link here (deeplink bookability); the URL never reaches the client.
@@ -1793,7 +1793,9 @@ export function CityFeedCardVendorService({ service, city, className, cardPositi
   // SH-1 item 11: Ask draws only when the server says this city has an expert to ask.
   const expertAvailable = useExpertAvailability({ city });
   const imageUrl = service.serviceImage || service.vendorPhoto || null;
-  const { photoUrl, loading } = useGemPhoto(`vsvc-${service.id}`, service.serviceName, city, imageUrl);
+  // D1: the listing's own cover (serviceImage || vendorPhoto) only.
+  const photoUrl = imageUrl ?? null;
+  const loading = false;
   const { ref: impressionRefVendor, getImpressionId: getImpIdVendor } = useImpressionTracker(
     "vendor-service",
     String(service.id),
@@ -2131,12 +2133,9 @@ export function CityFeedCardSupply({ item, kind, city, scheduledDate, onAdd: onA
   const dbImageUrl = item.media?.[0]?.url || item.imageUrl || null;
   const isHotel = kind === "supply-hotel";
 
-  const { photoUrl, loading } = useGemPhoto(
-    `supply-${item.id ?? itemName}`,
-    itemName,
-    city,
-    dbImageUrl,
-  );
+  // D1: the item's own stored image only.
+  const photoUrl = dbImageUrl ?? null;
+  const loading = false;
 
   const { ref: impressionRefSupply, getImpressionId: getImpIdSupply } = useImpressionTracker(
     kind,

@@ -476,6 +476,18 @@ export function planEntryHref(step?: string | null): string {
   return `/${withPlanEntryUrl("", true, step)}`;
 }
 
+/**
+ * R3 U5: carry `surface` from the live query string into an already-built URL, and nothing else (R4-5 keeps every other
+ * parameter dropping). Kept separate so `writeEntryUrl`'s open branch stays the literal `planEntryHref(step)`.
+ */
+export function withSurfaceParam(href: string, search: string): string {
+  const surface = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search).get("surface");
+  if (!surface) return href;
+  const next = new URLSearchParams(href.startsWith("/?") ? href.slice(2) : "");
+  next.set("surface", surface);
+  return `/?${next.toString()}`;
+}
+
 export function planEntryUrlRequested(search: string): boolean {
   return new URLSearchParams(search.startsWith("?") ? search.slice(1) : search).get("start") === "1";
 }

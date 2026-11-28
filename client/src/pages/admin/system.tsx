@@ -1,4 +1,5 @@
 import React from "react";
+import { ResendKeyDiagnostic } from "@/components/admin/ResendKeyDiagnostic";
 import { AdminLayout } from "@/components/admin-layout";
 import { SlowQueryWidget } from "@/components/admin/SlowQueryWidget";
 import { MarketStatusSettingsCard } from "@/components/admin/MarketStatusSettingsCard";
@@ -390,6 +391,8 @@ export default function AdminSystem() {
                   />
                 </div>
               ))}
+
+              <ResendKeyDiagnostic />
 
               {/* Test email delivery */}
               <div className="pt-2 border-t border-gray-100">

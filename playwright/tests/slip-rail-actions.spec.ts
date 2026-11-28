@@ -88,9 +88,12 @@ async function openPlanMenu(page: Page): Promise<void> {
 
 // ── 1 · placement ─────────────────────────────────────────────────────────────────────────────
 
-test("A1: one centered column at most 680px wide, no rail, and the bottom bar under it (rulings 3 and 7)", async ({
+test("A1: one centered column (680px; a multi-day plan's desktop days board up to 1,152), no rail, and the bottom bar under it (rulings 3 and 7)", async ({
   page,
 }) => {
+  // A1 day columns (Leon, Nov 20, 2026 - sanctioned edit): "the plan page stays at most 680 wide except the
+  // map and the multi-day desktop days board (up to 1,152)". This plan has five days, so at desktop width it
+  // is the days board; below the board's breakpoint the same plan is back inside 680.
   // Main-rail (decision-maker, Oct 8, 2026 — sanctioned rewrite; ledger `2026-10-08-slip-main-rail`).
   // This was "the rail is a fixed right column at lg"; rulings 3 and 7 replace that layout.
   const tripId = await registerAndCreateTrip(page, "layout");
@@ -101,7 +104,14 @@ test("A1: one centered column at most 680px wide, no rail, and the bottom bar un
   await expect(page.getByTestId("slip-rail")).toHaveCount(0);
   const column = await page.getByTestId(`slip-view-${tripId}`).boundingBox();
   expect(column, "the slip column has a box").toBeTruthy();
-  expect(Math.round(column!.width)).toBeLessThanOrEqual(680);
+  await expect(page.locator('[data-day-layout="columns"]')).toHaveCount(1);
+  expect(Math.round(column!.width)).toBeLessThanOrEqual(1152);
+  await page.setViewportSize({ width: 1000, height: 1000 });
+  await expect(page.locator('[data-day-layout="stack"]')).toHaveCount(1);
+  const narrow = await page.getByTestId(`slip-view-${tripId}`).boundingBox();
+  expect(Math.round(narrow!.width)).toBeLessThanOrEqual(680);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await expect(page.locator('[data-day-layout="columns"]')).toHaveCount(1);
   // The bar's two actions, in the board's order: Ask AI (secondary), Finalize (primary).
   // The frame's two blocks, not the bar: Ask in the one tools row, Finalize in the foot below the days.
   const toolsRow = page.getByTestId("slip-tools-row");
@@ -348,22 +358,24 @@ test("A8: the tools tray opens the existing tools (surface step 2)", async ({ pa
   // contract board left the rail; the group manifest's tools open them from the slip's tray.
   const tripId = await registerAndCreateTrip(page, "plan");
   await openSlip(page, tripId);
-  const tray = page.getByTestId("slip-tools-tray");
-  await expect(tray).toBeVisible();
+  // A10 fix (Leon, Nov 22 2026): a plan with no occasion resolves to plain_plan, which the app treats as a trip,
+  // so the strip is drawn INSTEAD of the tray row. Same tools, same sheets - only the container changed.
+  const strip = page.getByTestId("slip-told-strip");
+  await expect(strip).toBeVisible();
   // Only live tools render (ledger `2026-10-08-tools-tray-live-only`, sanctioned rewrite): a tool
   // with no existing component draws nothing, and the tray says "coming soon" nowhere.
-  await expect(tray).not.toContainText("coming soon");
+  await expect(strip).not.toContainText("coming soon");
   // Step 9c D7 (ledger `2026-10-07-step9c-leg-options`; sanctioned amendment): Getting around is live —
   // it reads the plan's own days and every gap between their stops.
   // QW-4 (stage-aware tray): a fresh plan has no two stops, so neither content-gated chip is drawn —
   // the tray never offers a tool that would open empty.
-  await expect(page.getByTestId("tool-chip-getting_around")).toHaveCount(0);
-  await expect(page.getByTestId("tool-chip-pace")).toHaveCount(0);
+  await expect(page.getByTestId("slip-told-getting_around")).toHaveCount(0);
+  await expect(page.getByTestId("slip-told-pace")).toHaveCount(0);
   // Two stops make both questions answerable; the slip then draws both chips.
   await addItem(page, tripId);
   await addItem(page, tripId);
   await openSlip(page, tripId);
-  await page.getByTestId("tool-chip-getting_around").click();
+  await page.getByTestId("slip-told-getting_around").click();
   await expect(page.getByTestId("tool-sheet-getting_around")).toBeVisible();
   // Production smoke F1 (ledger `2026-10-08-getting-around-every-gap`; sanctioned): a free plan says where
   // travel times come from, and its days are listed rather than replaced by an empty line.
@@ -371,7 +383,7 @@ test("A8: the tools tray opens the existing tools (surface step 2)", async ({ pa
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("tool-sheet-getting_around")).toHaveCount(0);
   // Pace opens the EXISTING energy budget in a sheet.
-  await page.getByTestId("tool-chip-pace").click();
+  await page.getByTestId("slip-told-pace").click();
   await expect(page.getByTestId("tool-sheet-pace")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByTestId("tool-sheet-pace")).toHaveCount(0);

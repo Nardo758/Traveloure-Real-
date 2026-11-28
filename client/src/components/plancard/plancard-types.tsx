@@ -151,98 +151,11 @@ export function getTemplateConfig(occasion?: PlanCardSkinInput): TemplateConfig 
 }
 
 /**
- * Curated destination → Unsplash CDN photo.
- * Keyed by lowercase city/country keyword.
- *
- * L4 trip-card honesty (ledger `2026-09-07-trip-card-honesty`): there is NO generic fallback
- * anymore. The three generic keys below (`beach`, `mountains`, `travel`) are kept as data but are
- * never matched — a destination containing "beach" is not THE beach photo's place, and an
- * unmatched destination used to silently draw the generic `travel` shot: a photo of nowhere is
- * the §13 lie. An unmatched destination returns NULL and the header draws its typographic block.
+ * G1 (Leon, Nov 27 2026): stock destination photos are gone. No curated URL map, no URL builder,
+ * and no destination/type fallback remains. The header draws its typographic block; a record's
+ * own allowed image is the only photo path.
  */
-const DESTINATION_PHOTOS: Record<string, string> = {
-  // Japan
-  tokyo: "photo-1540959733332-eab4deabeeaf",
-  // kyoto: none — SH-1 item 6 dropped its photo (Kiyomizu-dera, shared/banned-photos.ts); a Kyoto plan draws the typographic block.
-  osaka: "photo-1590559899731-a382839e5549",
-  japan: "photo-1490806843957-31f4c9a91c65",
-  // Europe
-  paris: "photo-1502602898657-3e91760cbb34",
-  london: "photo-1513635269975-59663e0ac1ad",
-  rome: "photo-1552832230-c0197dd311b5",
-  barcelona: "photo-1539037116277-4db20889f2d4",
-  amsterdam: "photo-1534351590666-13e3e96b5017",
-  florence: "photo-1523906834658-6e24ef2386f9",
-  venice: "photo-1523905330026-b8bd1f5f320e",
-  santorini: "photo-1570077188670-e3a8d69ac5ff",
-  athens: "photo-1555993539-1732b0258235",
-  lisbon: "photo-1585208798174-6cedd4d46d9e",
-  porto: "photo-1555881400-74d7acaacd8b",
-  edinburgh: "photo-1506377585622-bedcbb027afc",
-  prague: "photo-1541849546-216549ae216d",
-  vienna: "photo-1516550893923-42d28e5677af",
-  budapest: "photo-1541849546-216549ae216d",
-  berlin: "photo-1560969184-10fe8719e047",
-  // Asia
-  bali: "photo-1537996194471-e657df975ab4",
-  singapore: "photo-1525625293386-3f8f99389edd",
-  bangkok: "photo-1506665531195-3566af2b4dfa",
-  "hong kong": "photo-1507941097613-9f2157b69235",
-  seoul: "photo-1538485399081-7191377e8241",
-  dubai: "photo-1512453979798-5ea266f8880c",
-  // India
-  mumbai: "photo-1566552881560-0be862a7c445",
-  goa: "photo-1614082242765-7c98ca0f3df3",
-  delhi: "photo-1587474260584-136574528ed5",
-  jaipur: "photo-1477587458883-47145ed6979e",
-  india: "photo-1524492412937-b28074a5d7da",
-  // Americas
-  "new york": "photo-1496442226666-8d4d0e62e6e9",
-  california: "photo-1449034446853-66c86144b0ad",
-  "los angeles": "photo-1534190760961-74e8c1c5c3da",
-  miami: "photo-1514214246283-d8a5e0942f6c",
-  "san francisco": "photo-1501594907352-04cda38ebc29",
-  "new orleans": "photo-1568869944-ef2e4e9a51ba",
-  cancun: "photo-1552074284-5e88ef1aef18",
-  mexico: "photo-1518638150340-f706e86654de",
-  bogota: "photo-1591804774201-e3779a445793",
-  colombia: "photo-1557499305-0af888c3d8ec",
-  "rio de janeiro": "photo-1483729558449-99ef09a8c945",
-  // Oceania
-  sydney: "photo-1506973035872-a4ec16b8e8d9",
-  "new zealand": "photo-1507699622108-4be3abd695ad",
-  // Africa
-  marrakech: "photo-1539020140153-e479b8c22e70",
-  morocco: "photo-1489749798305-4fea3ae63d43",
-  "cape town": "photo-1580060839134-75a5edca2e99",
-  // Nordic
-  iceland: "photo-1531366936337-7c912a4589a7",
-  norway: "photo-1513519245088-0e12902e5a38",
-  // Generic fallback keyword
-  beach: "photo-1507525428034-b723cf961d3e",
-  mountains: "photo-1464822759023-fed622ff2c3b",
-  travel: "photo-1488085061387-422e29b40080",
-};
-
-/** Generic-keyword keys are stock MOODS, not places — never matched against a destination (§13). */
-const GENERIC_PHOTO_KEYS = new Set(["beach", "mountains", "travel"]);
-
-function unsplashUrl(id: string): string {
-  return `https://images.unsplash.com/${id}?w=900&auto=format&fit=crop&q=80`; // fee-literal-ok: image width URL param, not fee config
-}
-
-/**
- * The hero photo for a destination, or NULL when no curated photo honestly matches. Callers
- * render their typographic block on null — a photo of nowhere is worse than no photo (§13,
- * ledger `2026-09-07-trip-card-honesty`; the generic-travel fallback this replaced was the lie).
- */
-export function getDestinationPhoto(destination: string | undefined | null): string | null {
-  if (!destination) return null;
-  const lower = destination.toLowerCase();
-  for (const [key, id] of Object.entries(DESTINATION_PHOTOS)) {
-    if (GENERIC_PHOTO_KEYS.has(key)) continue;
-    if (lower.includes(key)) return unsplashUrl(id);
-  }
+export function getDestinationPhoto(_destination: string | undefined | null): string | null {
   return null;
 }
 

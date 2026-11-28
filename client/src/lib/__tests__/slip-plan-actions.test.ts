@@ -204,13 +204,13 @@ describe("runBulkRouteToCheckout", () => {
 describe("summarizeBulkRoute (one honest toast)", () => {
   it("all-success: plain added count", () => {
     assert.deepStrictEqual(summarizeBulkRoute({ attempted: 3, succeeded: 3, failed: [] }), {
-      title: "3 items added to checkout",
+      title: "3 items added to cart",
     });
   });
 
   it("singular grammar", () => {
     assert.deepStrictEqual(summarizeBulkRoute({ attempted: 1, succeeded: 1, failed: [] }), {
-      title: "1 item added to checkout",
+      title: "1 item added to cart",
     });
   });
 

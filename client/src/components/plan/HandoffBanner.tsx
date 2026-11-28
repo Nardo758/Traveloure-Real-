@@ -21,6 +21,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { handoffApproveShown, invalidateTripCapabilities, useTripCapabilities } from "@/lib/trip-capabilities";
 import { useState } from "react";
+import { useBookingActionsShown } from "@/lib/signup-mode";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -209,6 +210,7 @@ export function HandoffBanner({ tripId, isOwner, bookedInScope = null }: { tripI
   const { act, busy } = useHandoffAct(tripId);
   const [note, setNote] = useState("");
   const [support, setSupport] = useState<{ clientSecret: string; amountCents: number; stripe: Stripe } | null>(null);
+  const waitlist = !useBookingActionsShown();
   if (!data || !h) return null;
   const line = handoffBannerLine(data);
   const pending = (sData?.suggestions ?? []).filter((s) => s.status === "pending");
@@ -367,7 +369,7 @@ export function HandoffBanner({ tripId, isOwner, bookedInScope = null }: { tripI
         </div>
       ) : null}
 
-      {isOwner && h.status === "approved" && h.onTripSupportOfferedAt && !h.onTripSupportAcceptedAt && data.onTripSupportCents ? (
+      {isOwner && !waitlist && h.status === "approved" && h.onTripSupportOfferedAt && !h.onTripSupportAcceptedAt && data.onTripSupportCents ? (
         <div className="mt-2 space-y-2 text-xs" data-testid="handoff-on-trip-support">
           <p>{h.expertName ?? "Your local"} offers on-trip support for {money(data.onTripSupportCents)} — messages during the trip go straight to them.</p>
           {support ? (

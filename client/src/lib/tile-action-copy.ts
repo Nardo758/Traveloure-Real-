@@ -4,7 +4,7 @@
  * Save / book / hire words are PlanActions' (CAP-2 Phase 3, `lib/plan-actions.ts`); "Add to plan" is retired (Nov 6).
  */
 export const TILE_ACTION_COPY = {
-  getThisTrip: "Get this trip",
+  getThisTrip: "Details",
   viewProfile: "View profile",
   apply: "Apply",
 } as const;

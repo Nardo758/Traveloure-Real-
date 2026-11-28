@@ -45,7 +45,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { useSignInModal } from "@/contexts/SignInModalContext";
-import { CLAIM_PROMPTS, type Daypart } from "@shared/neighborhood-claims";
+import { CLAIM_PROMPTS, MAX_APPLICATION_NEIGHBORHOOD_CLAIMS, type Daypart } from "@shared/neighborhood-claims";
 import { expertSpecializationEnum } from "@shared/schema";
 import { OPERATING_MARKET_DESTINATIONS } from "@shared/operating-markets";
 import { EXPERT_SPECIALIZATION_LABELS, LOCAL_SPECIALTY_OPTIONS } from "@shared/expert-vocabulary";
@@ -55,12 +55,12 @@ import {
   captureCompleteness,
   captureHasContent,
   emptyCapture,
-  toSubmitPayload,
   type CaptureDraft,
 } from "@/components/neighborhood-claims/claim-capture-form";
 import { suggestHandle } from "@shared/handle-suggestion";
 import { HANDLE_MAX_LENGTH } from "@shared/handle";
 import { savePendingHandle } from "@/lib/pending-handle";
+import { offeringNamesById } from "@/lib/expert-application-review";
 import { socialSignInHref, facebookReturnPath, supplySourceTag } from "@/lib/social-sign-in";
 import {
   saveApplicationDraft,
@@ -291,9 +291,16 @@ export default function TravelExpertsPage() {
   // expired session never destroys their work. An already-signed-in user with no
   // draft gets the untouched defaults — no behavior change for them.
   const [savedDraft] = useState(() => loadApplicationDraft<typeof defaultFormData>(DRAFT_KEY));
-  const [formData, setFormData] = useState(() =>
-    savedDraft ? { ...defaultFormData, ...savedDraft.formData } : defaultFormData
-  );
+  const [formData, setFormData] = useState(() => {
+    if (!savedDraft) return defaultFormData;
+    const restored = { ...defaultFormData, ...savedDraft.formData };
+    // DX-3: a draft saved before the cap existed is cut to its first 3 picks.
+    if (Array.isArray(restored.neighborhoodClaims) && restored.neighborhoodClaims.length > MAX_APPLICATION_NEIGHBORHOOD_CLAIMS) {
+      restored.neighborhoodClaims = restored.neighborhoodClaims.slice(0, MAX_APPLICATION_NEIGHBORHOOD_CLAIMS);
+      restored.neighborhoods = restored.neighborhoodClaims.map((c) => c.name);
+    }
+    return restored;
+  });
 
   // Field-knowledge picker source: the public city_neighborhoods catalog (guests fill this form
   // before signing in, so the authenticated options endpoint can't be used here). Filtered by the
@@ -317,12 +324,15 @@ export default function TravelExpertsPage() {
   }, [cityNeighborhoodsData, formData.city]);
   const toggleNeighborhoodClaim = (opt: { id: string; name: string; daypart: Daypart }) => {
     const has = formData.neighborhoodClaims.some((c) => c.neighborhoodId === opt.id);
+    // D1: the cap is 3; a fourth pick does nothing. Unpicking always works.
+    if (!has && formData.neighborhoodClaims.length >= MAX_APPLICATION_NEIGHBORHOOD_CLAIMS) return;
     const nextClaims = has
       ? formData.neighborhoodClaims.filter((c) => c.neighborhoodId !== opt.id)
       : [...formData.neighborhoodClaims, { neighborhoodId: opt.id, name: opt.name, daypart: opt.daypart }];
     setFormData((prev) => ({ ...prev, neighborhoodClaims: nextClaims, neighborhoods: nextClaims.map((c) => c.name) }));
   };
   const firstClaim = formData.neighborhoodClaims[0] ?? null;
+  const atNeighborhoodCap = formData.neighborhoodClaims.length >= MAX_APPLICATION_NEIGHBORHOOD_CLAIMS;
 
   // Ledger `2026-09-05-handles-are-claimed`: the suggestion, computed ONCE (one shared helper,
   // `shared/handle-suggestion.ts`, read by this wizard, the provider wizard and the console
@@ -496,6 +506,8 @@ export default function TravelExpertsPage() {
   const { data: serviceCategories = [] } = useQuery<any[]>({
     queryKey: ["/api/expert-service-categories"],
   });
+  // DX-1: the Review step keeps ids in formData but shows the names the picker already has.
+  const offeringNames = useMemo(() => offeringNamesById(serviceCategories), [serviceCategories]);
 
   const updateFormData = (key: string, value: any) => {
     setFormData((prev) => ({ ...prev, [key]: value }));
@@ -649,39 +661,25 @@ export default function TravelExpertsPage() {
         tiktokLink: formData.tiktokLink,
         youtubeLink: formData.youtubeLink,
         socialFollowers,
+        // DX-3: the picked neighborhoods and the first claim's answers ride the ONE application
+        // request; the server creates draft claims before its no-neighborhoods stamp.
+        ...(isLocalExpert ? {
+          neighborhoodClaims: formData.neighborhoodClaims.map((c) => ({ neighborhoodId: c.neighborhoodId })),
+        } : {}),
+        ...(isLocalExpert && formData.neighborhoodCapture && captureHasContent(formData.neighborhoodCapture)
+          ? { neighborhoodCapture: formData.neighborhoodCapture }
+          : {}),
       };
       const res = await apiRequest("POST", "/api/expert-application", applicationData);
-      // Field-knowledge claims ride the same submit: each picked neighborhood becomes a claim
-      // (= "claimed"); the first one's answers are saved, and sent when complete and consented.
-      // Best-effort — the application is already in; anything that fails here is finished in
-      // the console's Neighborhoods panel.
-      if (isLocalExpert && formData.neighborhoodClaims.length > 0) {
-        try {
-          for (let idx = 0; idx < formData.neighborhoodClaims.length; idx++) {
-            const c = formData.neighborhoodClaims[idx];
-            const created = await apiRequest("POST", "/api/expert/neighborhood-claims", { neighborhoodId: c.neighborhoodId });
-            const body = (await created.json()) as { claim: { id: string } | null };
-            const claimId = body.claim?.id;
-            if (idx === 0 && claimId && formData.neighborhoodCapture && captureHasContent(formData.neighborhoodCapture)) {
-              await apiRequest("PUT", `/api/expert/neighborhood-claims/${claimId}/capture`, { capture: formData.neighborhoodCapture });
-              if (formData.neighborhoodConsent && captureCompleteness(formData.neighborhoodCapture).complete) {
-                await apiRequest("POST", `/api/expert/neighborhood-claims/${claimId}/submit`, { consent: true, capture: toSubmitPayload(formData.neighborhoodCapture) });
-              }
-            }
-          }
-        } catch (e: any) {
-          toast({
-            title: "Application saved — neighborhoods need a second look",
-            description: "We couldn't save every neighborhood answer. You can finish them any time in your console under Neighborhoods.",
-          });
-        }
-      }
       // The body carries `offeringTypeKeyUnrecorded` when the server refused the offering key
       // (an unknown key is clamped to NULL rather than failing the signup, migration-107 FK).
       // Parsed here so onSuccess can say so — a parse failure must never turn a successful
       // submission into an error, so it degrades to "nothing to report".
       try {
-        return (await res.json()) as { offeringTypeKeyUnrecorded?: string | null };
+        return (await res.json()) as {
+          offeringTypeKeyUnrecorded?: string | null;
+          neighborhoodClaims?: { saved: number; failed: number };
+        };
       } catch {
         return {};
       }
@@ -704,18 +702,35 @@ export default function TravelExpertsPage() {
       // §13: a REFUSED offering and a never-chosen one are different facts, and the applicant is
       // the only person who can repair the first. Say it out loud rather than filing a silent NULL.
       const unrecorded = result?.offeringTypeKeyUnrecorded;
-      toast(
-        unrecorded
-          ? {
-              title: "Application submitted — one thing we couldn't record",
-              description:
-                "We couldn't record the offering you picked, so it isn't on your application. Tell us what you offer in your application or reply to our email and we'll add it.",
-            }
-          : {
-              title: "Application submitted!",
-              description: "We'll review your application and follow up by email.",
-            }
-      );
+      const claimsFailed = result?.neighborhoodClaims?.failed ?? 0;
+      const claimFailedBody =
+        "We couldn't save your neighborhood answers. You can add them once your application is approved.";
+      const unrecordedBody =
+        "We couldn't record the offering you picked, so it isn't on your application. Tell us what you offer in your application or reply to our email and we'll add it.";
+      if (claimsFailed > 0) {
+        // DRAFT strings 1–2 (DX-3), pending "Wording approved — Leon"; held in draft until stamped.
+        // TOAST_LIMIT is 1, so when the offering also failed the ONE toast carries both notices
+        // rather than the claims toast replacing the offering notice.
+        toast({
+          title: "Application saved",
+          description: unrecorded ? `${claimFailedBody} ${unrecordedBody}` : claimFailedBody,
+        });
+      } else {
+        toast(
+          unrecorded
+            ? {
+                title: "Application submitted — one thing we couldn't record",
+                description: unrecordedBody,
+              }
+            : {
+                title: "Application submitted!",
+                description: "We'll review your application and follow up by email.",
+              }
+        );
+      }
+      // The pre-DX-3 claim-failure strings, kept until Leon stamps 1–3:
+      // "Application saved — neighborhoods need a second look"
+      // "We couldn't save every neighborhood answer. You can finish them any time in your console under Neighborhoods."
       // /expert-status is auth-only (no role required), so a fresh applicant
       // with no role yet can view it — unlike /dashboard, it acknowledges the
       // application that was just submitted instead of ignoring it.
@@ -1154,12 +1169,22 @@ export default function TravelExpertsPage() {
                       <div className="flex flex-wrap gap-2">
                         {neighborhoodOptions.map((opt) => {
                           const picked = formData.neighborhoodClaims.some((c) => c.neighborhoodId === opt.id);
+                          const blocked = atNeighborhoodCap && !picked;
                           return (
                             <Badge
                               key={opt.id}
                               variant={picked ? "default" : "outline"}
-                              className={cn("cursor-pointer px-3 py-2", picked ? "bg-primary hover:bg-primary/90" : "border-border hover:border-primary")}
-                              onClick={() => toggleNeighborhoodClaim(opt)}
+                              aria-disabled={blocked || undefined}
+                              data-disabled={blocked ? "true" : undefined}
+                              className={cn(
+                                "cursor-pointer px-3 py-2",
+                                picked ? "bg-primary hover:bg-primary/90" : "border-border hover:border-primary",
+                                blocked && "cursor-not-allowed opacity-40 hover:border-border",
+                              )}
+                              onClick={() => {
+                                if (blocked) return;
+                                toggleNeighborhoodClaim(opt);
+                              }}
                               data-testid={`badge-neighborhood-${opt.slug}`}
                             >
                               {opt.name}
@@ -1167,6 +1192,12 @@ export default function TravelExpertsPage() {
                           );
                         })}
                       </div>
+                      {atNeighborhoodCap && (
+                        // DRAFT string 3 (DX-3), pending "Wording approved — Leon".
+                        <p className="mt-2 text-xs text-muted-foreground" data-testid="neighborhood-pick-cap">
+                          You can pick up to 3 neighborhoods.
+                        </p>
+                      )}
                     </>
                   )}
                 </div>
@@ -1799,9 +1830,13 @@ export default function TravelExpertsPage() {
                     <div>
                       <span className="text-muted-foreground text-sm">Services Offered:</span>
                       <div className="flex flex-wrap gap-1 mt-1">
-                        {formData.selectedServices.map((s) => (
-                          <Badge key={s} variant="secondary" className="text-xs">{s}</Badge>
-                        ))}
+                        {formData.selectedServices.map((s) => {
+                          const name = offeringNames.get(s);
+                          // D2: an id with no known name prints nothing; never print the id.
+                          return name ? (
+                            <Badge key={s} variant="secondary" className="text-xs">{name}</Badge>
+                          ) : null;
+                        })}
                       </div>
                     </div>
                     <div className="space-y-3">
@@ -1810,7 +1845,7 @@ export default function TravelExpertsPage() {
                         ans.trim().length > 0 && (
                           <div key={i} className="p-3 bg-gray-50 rounded-lg text-sm">
                             <p className="font-medium text-[#374151] mb-1">Q{i + 1}: {KNOWLEDGE_PROOF_QUESTIONS[i].slice(0, 60)}…</p>
-                            <p className="text-muted-foreground italic">"{ans.trim().slice(0, 120)}{ans.trim().length > 120 ? "…" : ""}"</p>
+                            <p className="text-muted-foreground italic [overflow-wrap:anywhere]">"{ans.trim().slice(0, 120)}{ans.trim().length > 120 ? "…" : ""}"</p>
                           </div>
                         )
                       ))}

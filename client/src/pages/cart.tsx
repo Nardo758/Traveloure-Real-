@@ -26,6 +26,7 @@ import {
   type TravelerFeePreviewDisplay,
 } from "@/lib/traveler-fee-preview";
 import { clearCheckoutKey, readOrMintCheckoutKey } from "@/lib/checkout-idempotency";
+import { EmailVerificationRefusal, isEmailVerificationRefusal } from "@/components/auth/EmailVerificationRefusal";
 import { getTripContext, updateTripContext, switchTripContext, useTripContext, type TripContext } from "@/lib/trip-context";
 import { Link, useLocation, useSearch } from "wouter";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -681,6 +682,7 @@ export default function CartPage() {
   // Stable for this set of cart lines, including across a reload, so a declined card retries
   // the SAME claim instead of minting another payment-pending booking. Cleared only once paid.
   const [checkoutIdempotencyKey, setCheckoutIdempotencyKey] = useState<string | null>(null);
+  const [verificationRefusal, setVerificationRefusal] = useState(false);
   const [optimizationResult, setOptimizationResult] = useState<OptimizationResult | null>(null);
   const [experienceSlug, setExperienceSlug] = useState<string | null>(null);
 
@@ -1116,6 +1118,7 @@ export default function CartPage() {
       return res.json();
     },
     onSuccess: (data: any) => {
+      setVerificationRefusal(false);
       // Merge resolution (FP-4 × Replit TripStrip fix): the snapshot below MUST read the live
       // cart items BEFORE any invalidation empties them (FP-4), so the Replit branch's
       // top-of-function invalidation is dropped; its base-key ['/api/cart'] pattern (so the
@@ -1216,6 +1219,11 @@ export default function CartPage() {
     },
     onError: (error: any) => {
       const msg = String(error?.message ?? "");
+      if (isEmailVerificationRefusal(error)) {
+        setVerificationRefusal(true);
+        setFlowStep("cart");
+        return;
+      }
       if (msg === "No platform items to checkout") {
         toast({ variant: "destructive", title: "No bookable items", description: "External bookings must be completed on provider websites." });
         return;
@@ -1946,7 +1954,7 @@ export default function CartPage() {
           </Button>
           <div className="flex flex-col">
             <h1 className="text-2xl font-bold" data-testid="text-page-title">
-              {flowStep === "cart" && "Your Cart"}
+              {flowStep === "cart" && "Your cart"}
               {flowStep === "optimize" && "Unlock Full Optimization"}
               {flowStep === "itinerary" && "Your Optimized Itinerary"}
               {flowStep === "payment" && "Complete Payment"}
@@ -2578,6 +2586,8 @@ export default function CartPage() {
                         </Button>
                       </div>
                       {(cart?.items?.length || 0) > 0 && (
+                        <>
+                        {verificationRefusal && <EmailVerificationRefusal className="mb-3" />}
                         <div className={`w-full flex flex-col gap-3 ${cartIntent === "buy" ? "order-first" : ""}`}>
                           {cartIntent === "plan" && <Separator />}
                           <Button
@@ -2591,6 +2601,7 @@ export default function CartPage() {
                             {cartIntent === "buy" ? "Checkout" : "Proceed to Payment"}
                           </Button>
                         </div>
+                        </>
                       )}
                     </CardFooter>
                   </Card>
@@ -3275,6 +3286,7 @@ export default function CartPage() {
                       )}
                       {!checkoutPaymentIntent && (cart?.items?.length || 0) > 0 ? (
                         <>
+                        {verificationRefusal && <EmailVerificationRefusal className="mb-3" />}
                         <Button
                           className="w-full bg-primary hover:bg-primary/90"
                           size="lg"

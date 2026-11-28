@@ -281,7 +281,7 @@ export default function VisaHelpPage() {
                   <div className="w-14 h-14 rounded-full bg-[color:var(--earn-coral-bg)] flex items-center justify-center mx-auto">
                     <CheckCircle className="w-8 h-8 text-primary" />
                   </div>
-                  <h3 className="text-[18px] font-semibold" style={HEADING_STYLE}>Added to checkout</h3>
+                  <h3 className="text-[18px] font-semibold" style={HEADING_STYLE}>Added to cart</h3>
                   <p className="text-sm text-muted-foreground">
                     Your details are attached. Pay at checkout to send the request to the expert.
                   </p>

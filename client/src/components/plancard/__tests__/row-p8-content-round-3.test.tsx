@@ -6,7 +6,7 @@
  *   T2 AI_DRAFT_REFUSAL_MESSAGE says "Quick draft" and no "AI"; the client fallback agrees.
  *   T3 Migration 431 is registered, carries no DDL, and every statement matches the OLD text only.
  *   T4 The experience-template seed carries no "Most Popular" / "Popular but Spacious".
- *   T5 ROUND3_AI_CEILING and the never-say baseline equal their pinned counts and sit below 159 / 133.
+ *   T5 ROUND3_AI_CEILING and the never-say baseline equal their pinned counts and sit below 159 / 145 entries and 360 hits.
  *   T6 Off-limits: the cart's fee line is still drawn. (BuildAroundDialog's "ranked by" line was deleted by W22, Nov 7, 2026.)
  *   T7 The new strings pass the AI check and the never-say list; the three server feed-label fallbacks read
  *      "Picked for your days".
@@ -124,9 +124,15 @@ describe("P-8 — content round 3", () => {
     // Lane 5 (K-7, K-8) removed 7 entries and 8 hits: 116 → 109 and 316 → 308.
     // W22 (ledger `2026-11-07-w22-build-around-copy`) deleted BuildAroundDialog's "ranked by" line: 109 → 108, 308 → 307.
     // The local-expert counter's "best results" sentence moved to shared/expert-answer-length.ts, outside this scan: 307 → 306.
-    assert.equal(entries, 108);
-    assert.equal(hits, 306);
-    assert.ok(entries < 133);
+    // DOC-1: the shared/expert-hook.ts baseline entry adds one entry (108 → 109).
+    // S5b (ledger `2026-11-27-s5b-never-say-shared-sweep`; SANCTIONED EDIT, asked for by the lane's brief): the never-say
+    // scan widens from shared/expert-hook.ts to ALL of shared/. 23 new entries and 36 new hits enter the baseline (the
+    // `id`-value rule and the PayPal method-name exemption keep the other 6 out of it): 109 → 132 and 308 → 344.
+    // The ceilings move with the scope: entries < 145, hits < 360.
+    assert.equal(entries, 132);
+    assert.equal(hits, 344);
+    assert.ok(entries < 145);
+    assert.ok(hits < 360);
     const perfect = Object.values(b).filter((by) => "perfect" in by);
     assert.equal(perfect.length, 13, "files with a recorded 'perfect' hit");
     // TEST EDIT (R3-15, ledger `2026-11-05-r3-followups`; sanctioned): migration 440 and the two seed sources drop six
