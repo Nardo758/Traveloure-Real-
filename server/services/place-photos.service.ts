@@ -24,7 +24,6 @@ import {
 import { PLACE_PHOTO_ENDPOINT, googlePhotoLive } from "./place-photos-google";
 import { blockFor, photoBlocks } from "./place-photo-blocks.service";
 import {
-import { photoRowCredited } from "./place-photos-credit";
   WIKIMEDIA_USER_AGENT,
   placePhotosCostCents,
   placePhotosDailyCap,
@@ -32,6 +31,7 @@ import { photoRowCredited } from "./place-photos-credit";
   placePhotosRecheckDays,
   placePhotosWikimediaEnabled,
 } from "../config/place-photos.config";
+import { photoRowCredited } from "./place-photos-credit";
 
 type Fetch = typeof fetch;
 
