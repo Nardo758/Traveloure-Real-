@@ -88,3 +88,34 @@ test("admin verify banner is not clipped by the sidebar", async ({ page }) => {
   }
   console.log(`[admin-banner] 1280 text_x=${d1280.x} button_right=${d1280.buttonRight} 390 text_x=${d390.x} button_right=${d390.buttonRight}${collapsed}`);
 });
+
+test("traveler page banner keeps its centered max-width", async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.route("**/api/auth/user", (route) => route.fulfill({
+    status: 200, contentType: "application/json",
+    body: JSON.stringify({
+      id: "banner-traveler", email: "banner-traveler@example.com", firstName: "Banner", lastName: "Traveler",
+      role: "traveler", emailVerified: null,
+      termsAcceptedAt: new Date().toISOString(), privacyAcceptedAt: new Date().toISOString(),
+    }),
+  }));
+  await page.route("**/api/admin/notifications", (route) => route.fulfill({ status: 200, contentType: "application/json", body: "[]" }));
+  const shot = async (width: number) => {
+    await page.setViewportSize({ width, height: 600 });
+    await page.goto(`${BASE_URL}/dashboard`, { waitUntil: "domcontentloaded" });
+    const banner = page.locator('[data-testid="banner-verify-email"]');
+    await expect(banner).toBeVisible({ timeout: 30_000 });
+    await page.waitForTimeout(500);
+    await blankEmails(page);
+    await page.screenshot({ path: path.join(ROOT, DIR, `traveler-banner-${width}.png`) });
+    const inner = await banner.locator("div").first().boundingBox();
+    expect(inner).not.toBeNull();
+    const expected = width === 390 ? 16 : 64;
+    expect(Math.round(inner!.x)).toBe(expected);
+    expect(inner!.width).toBeLessThanOrEqual(width === 390 ? 358 : 1152);
+    return { x: Math.round(inner!.x), width: Math.round(inner!.width) };
+  };
+  const t1280 = await shot(1280);
+  const t390 = await shot(390);
+  console.log(`[traveler-banner] 1280 inner_x=${t1280.x} width=${t1280.width} 390 inner_x=${t390.x} width=${t390.width}`);
+});

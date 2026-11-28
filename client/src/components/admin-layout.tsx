@@ -33,6 +33,7 @@ export function AdminLayout({ children, title }: AdminLayoutProps) {
         "--admin-banner-left",
         desktop && gap ? `${gap.getBoundingClientRect().width + 24}px` : "16px",
       );
+      root.style.setProperty("--admin-banner-max", "none");
       if (gap && observer) observer.observe(gap);
     };
     update();
@@ -45,6 +46,7 @@ export function AdminLayout({ children, title }: AdminLayoutProps) {
       window.removeEventListener("resize", update);
       observer?.disconnect();
       root.style.removeProperty("--admin-banner-left");
+      root.style.removeProperty("--admin-banner-max");
     };
   }, []);
 
