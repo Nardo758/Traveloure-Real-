@@ -51,3 +51,5 @@ generated/security/evidence-logs/
 .agents/memory/
 
 playwright/d1-captures/
+
+playwright/v31-captures/

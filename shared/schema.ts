@@ -8548,7 +8548,7 @@ export const transportLegs = pgTable("transport_legs", {
   // 'confirmed' (expert-confirmed; the ONLY state traveler surfaces render). NULL = legacy
   // variant leg, grandfathered. DB CHECK (migration 154) allows NULL.
   proposalStatus: varchar("proposal_status", { length: 20 }),
-  // Migration 347 (work plan L1-1). All nullable, no DEFAULT/CHECK/index/FK, no backfill.
+  // Migration 348 (work plan L1-1). All nullable, no DEFAULT/CHECK/index/FK, no backfill.
   // R-ay: the author's tip, plain text <=140 chars (app-enforced); written only by the trip author or a
   // write-status advisor; cloned with the leg; never rewritten by the engine. NULL = no tip.
   authorTip: text("author_tip"),
@@ -12985,6 +12985,11 @@ export const placePhotos = pgTable("place_photos", {
   attribution: text("attribution"),
   checkedAt: timestamp("checked_at"),
   createdAt: timestamp("created_at"),
+  /**
+   * V31 (Leon, Nov 27 2026): the photo's place in its item's gallery - 0 is the cover, NULL is "unordered" and sorts
+   * last. Read `ORDER BY position NULLS LAST, created_at DESC`, at most 8 per item. Migration 348; no item-type column.
+   */
+  position: integer("position"),
 });
 export type PlacePhoto = typeof placePhotos.$inferSelect;
 // Migration 344 (step 5, R-ac): one row per FREE day re-time on the versions board. created_at is set

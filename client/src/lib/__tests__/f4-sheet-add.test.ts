@@ -21,9 +21,9 @@ const sheets = feed.split("<MoreInfoSheet").slice(1).map((chunk) => chunk.slice(
 const of = (type: string) => sheets.filter((s) => s.includes(`cardType="${type}"`));
 
 test("S1 the gem and place sheets are handed the card's own add", () => {
-  assert.equal(of("gem").length, 2);
+  // V31: the gem card opens DetailsView now, so it has no MoreInfoSheet left to hand an add to (0, was 2).
+  assert.equal(of("gem").length, 0);
   assert.equal(of("supply").length, 2);
-  for (const s of of("gem")) assert.ok(s.includes("action={{ ...gemSave, city, onAdd: onAdd ? () => onAdd(gemAddPayload()) : undefined }}"));
   for (const s of of("supply")) assert.ok(s.includes("action={{ ...supplySave, city, onAdd: onAdd ? () => onAdd(supplyAddPayload()) : undefined }}"));
 });
 

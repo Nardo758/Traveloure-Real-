@@ -176,7 +176,8 @@ describe("F1 - card actions from the action engine", () => {
     assert.equal((feed.match(/layout="primary"/g) ?? []).length, 4, "the four compact tiles keep their ONE primary (R755)");
     assert.doesNotMatch(feed, /density="compact"[\s\S]{0,200}<CardActions|<CardActions[^>]*compact/, "no compact tile draws the row");
     const sheets = feed.split("<MoreInfoSheet").slice(1).map((chunk) => chunk.slice(0, chunk.indexOf("/>")));
-    assert.equal(sheets.length, 6);
+    // V31: the gem card now opens DetailsView (its own view), so four sheets remain, not six.
+    assert.equal(sheets.length, 4);
     for (const sheet of sheets) assert.match(sheet, /\bask=\{\{/, "every sheet a tile opens carries the ask");
     for (const [file, src] of [["city-feed-card.tsx", feed], ["discover.tsx", read("client/src/pages/discover.tsx")]] as const) {
       const code = src.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, "");

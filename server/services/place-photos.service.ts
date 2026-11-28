@@ -31,6 +31,7 @@ import {
   placePhotosRecheckDays,
   placePhotosWikimediaEnabled,
 } from "../config/place-photos.config";
+import { photoRowCredited } from "./place-photos-credit";
 
 type Fetch = typeof fetch;
 
@@ -86,7 +87,13 @@ export async function logPlacePhotoUsage(r: { success: boolean; ms: number }): P
 
 export const defaultPhotoDeps: PhotoResolveDeps = {
   async cacheGet(key) {
-    const [row] = await db.select().from(placePhotos).where(eq(placePhotos.placeId, key)).orderBy(sql`${placePhotos.createdAt} DESC NULLS LAST`).limit(1);
+    // V31: cover first (position 0), then the numbered rows, then the unordered ones; at most 8 per item.
+    const [row] = await db
+      .select()
+      .from(placePhotos)
+      .where(eq(placePhotos.placeId, key))
+      .orderBy(sql`${placePhotos.position} ASC NULLS LAST`, sql`${placePhotos.createdAt} DESC NULLS LAST`)
+      .limit(1);
     if (!row) return undefined;
     const fresh = row.checkedAt && Date.now() - row.checkedAt.getTime() < placePhotosRecheckDays() * 86400_000;
     if (!fresh) return undefined;
@@ -126,6 +133,37 @@ export const defaultPhotoDeps: PhotoResolveDeps = {
   },
   wikimediaEnabled: placePhotosWikimediaEnabled,
 };
+
+/** The same order as the cover read, up to V31's cap of 8. One item at a time; no item-type column (Step 0 ruling 3). */
+export const PLACE_PHOTOS_MAX = 8;
+
+
+
+export async function placePhotosFor(
+  key: string,
+  limit: number = PLACE_PHOTOS_MAX,
+): Promise<
+  Array<{ url: string; source: string; licence: string | null; attribution: string | null; checkedAt: Date | null }>
+> {
+  const rows = await db
+    .select()
+    .from(placePhotos)
+    .where(eq(placePhotos.placeId, key))
+    .orderBy(sql`${placePhotos.position} ASC NULLS LAST`, sql`${placePhotos.createdAt} DESC NULLS LAST`)
+    .limit(Math.max(1, Math.min(PLACE_PHOTOS_MAX, limit)));
+  return rows
+    .filter((row) => !!row.urlOrAsset)
+    // D1's rule, tightened by Leon (Nov 27 2026): a credit needs an AUTHOR **and** a LICENCE, so a third-party row
+    // carrying only one of them is dropped rather than rendered as "Photo: Wikimedia Commons".
+    .filter((row) => row.source === "ours" || photoRowCredited(row))
+    .map((row) => ({
+      url: row.urlOrAsset as string,
+      source: row.source,
+      licence: row.licence,
+      attribution: row.attribution,
+      checkedAt: row.checkedAt,
+    }));
+}
 
 export { photoCacheKey };
 
