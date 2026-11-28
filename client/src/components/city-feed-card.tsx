@@ -5,6 +5,7 @@ import { useImpressionTracker } from "@/hooks/use-impression-tracker";
 import { useQuery } from "@tanstack/react-query";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { PlanActions } from "@/components/plan/PlanActions";
+import { PLAN_ACTIONS_COPY } from "@/lib/plan-actions";
 import { DetailsView } from "@/components/details/DetailsView";
 import { useDetailsPhotos } from "@/hooks/use-details-photos";
 import { CardActions } from "@/components/plan/CardActions";
@@ -1105,7 +1106,7 @@ export function CityFeedCardGem({
     ...gemGallery.filter((row) => row.url !== photoUrl),
   ];
   const gemDetailsActions = [
-    { key: "add" as const, label: "Add to plan", onPress: () => onAdd?.(gemAddPayload()) },
+    { key: "add" as const, label: PLAN_ACTIONS_COPY.saveToPlan, onPress: () => onAdd?.(gemAddPayload()) },
     ...(gem.sourceUrl
       ? [{ key: "officialSite" as const, label: "Official site", onPress: () => window.open(String(gem.sourceUrl), "_blank", "noopener") }]
       : []),
@@ -1441,7 +1442,7 @@ export function CityFeedCardGem({
             data-testid={`btn-more-info-gem-${gem.id}`}
             className={cn(buttonVariants({ size: "sm", variant: "outline" }), "h-7 text-xs px-2.5")}
           >
-            More info
+            {PLAN_ACTIONS_COPY.details}
           </button>
             </div>
           </div>
