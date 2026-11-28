@@ -17,6 +17,8 @@ import fs from "node:fs";
 import React from "react";
 import { renderToString } from "react-dom/server";
 import { Router } from "wouter";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { SignInModalProvider } from "../../contexts/SignInModalContext";
 import { EventsStripContent, planAroundSource } from "../landing/events-strip";
 import type { CityEventCard, CityEventsPayload } from "@shared/city-events";
 
@@ -53,10 +55,17 @@ function payload(n: number, over: (i: number) => Partial<CityEventCard> = () => 
 }
 
 function render(p: CityEventsPayload | null): string {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false, enabled: false } } });
+  qc.setQueryData(["/api/public/signup-mode"], { mode: "open" });
+  qc.setQueryData(["/api/auth/user"], null);
   return renderToString(
-    <Router ssrPath="/">
-      <EventsStripContent payload={p} market="kyoto" cityName="Kyoto" onPlanAround={() => {}} />
-    </Router>,
+    <QueryClientProvider client={qc}>
+      <Router ssrPath="/">
+        <SignInModalProvider>
+          <EventsStripContent payload={p} market="kyoto" cityName="Kyoto" onPlanAround={() => {}} />
+        </SignInModalProvider>
+      </Router>
+    </QueryClientProvider>,
   ).replace(/<!--.*?-->/g, "");
 }
 

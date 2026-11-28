@@ -20,6 +20,8 @@ import fs from "node:fs";
 import React from "react";
 import { renderToString } from "react-dom/server";
 import { Router } from "wouter";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { SignInModalProvider } from "../../contexts/SignInModalContext";
 import { EventsStripContent, stripCards, stripEvents } from "../landing/events-strip";
 import { dedupeEvents, eventPickerGroups, whatsOnEvents } from "@/lib/plan-entry";
 import { planTitle, titleWithoutCity } from "@/lib/trip-slip";
@@ -48,8 +50,20 @@ const LIGHT_DUP = card("light-dup", { title: "  autumn light-up ", firstDate: "2
 const LISBON = card("lisbon", { title: "Fado night", city: "Lisbon", marketKey: "lisbon", firstDate: "2026-12-12", startsAt: "2026-12-12T20:00:00.000Z" });
 
 const payload = (events: CityEventCard[]): CityEventsPayload => ({ windowDays: 180, total: events.length, events });
-const render = (p: CityEventsPayload, market: string, cityName: string) =>
-  renderToString(<Router ssrPath="/"><EventsStripContent payload={p} market={market} cityName={cityName} onPlanAround={() => {}} /></Router>).replace(/<!-- -->/g, "");
+const render = (p: CityEventsPayload, market: string, cityName: string) => {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false, enabled: false } } });
+  qc.setQueryData(["/api/public/signup-mode"], { mode: "open" });
+  qc.setQueryData(["/api/auth/user"], null);
+  return renderToString(
+    <QueryClientProvider client={qc}>
+      <Router ssrPath="/">
+        <SignInModalProvider>
+          <EventsStripContent payload={p} market={market} cityName={cityName} onPlanAround={() => {}} />
+        </SignInModalProvider>
+      </Router>
+    </QueryClientProvider>,
+  ).replace(/<!-- -->/g, "");
+};
 
 describe("E-7 What's on", () => {
   it("W1 the strip's event set equals the picker's set", () => {

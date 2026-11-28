@@ -15,6 +15,8 @@ import path from "node:path";
 import React from "react";
 import { renderToString } from "react-dom/server";
 import { Router } from "wouter";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { SignInModalProvider } from "../../contexts/SignInModalContext";
 import { EventDetailBody } from "../../pages/event-detail";
 import { EventsStripContent, planAroundSource } from "../landing/events-strip";
 import { EVENT_ENDED_LINE, type EventPagePayload } from "@shared/event-page";
@@ -62,8 +64,20 @@ function page(over: Partial<EventPagePayload> = {}): EventPagePayload {
   };
 }
 
-const render = (p: EventPagePayload) =>
-  renderToString(<Router ssrPath="/events/fixture-show"><EventDetailBody page={p} onPlanAround={() => {}} /></Router>).replace(/<!-- -->/g, "");
+const render = (p: EventPagePayload) => {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false, enabled: false } } });
+  qc.setQueryData(["/api/public/signup-mode"], { mode: "open" });
+  qc.setQueryData(["/api/auth/user"], null);
+  return renderToString(
+    <QueryClientProvider client={qc}>
+      <Router ssrPath="/events/fixture-show">
+        <SignInModalProvider>
+          <EventDetailBody page={p} onPlanAround={() => {}} />
+        </SignInModalProvider>
+      </Router>
+    </QueryClientProvider>,
+  ).replace(/<!-- -->/g, "");
+};
 
 describe("SH-1 Launch PR 5", () => {
   it("L1 every event row carries a DateBlock and a countdown chip", () => {
@@ -73,7 +87,18 @@ describe("SH-1 Launch PR 5", () => {
     assert.ok(html.includes("APR"), "More row DateBlock");
     // E-7 (sanctioned edit): the strip de-duplicates on (name, city, start), so each card is its own event.
     const cards: CityEventCard[] = [1, 2, 3].map((i) => ({ ...event({ id: `c${i}`, daysUntil: 10 + i, title: `Show ${i}` }) }));
-    const strip = renderToString(<Router ssrPath="/"><EventsStripContent payload={{ windowDays: 180, total: 3, events: cards }} market="kyoto" onPlanAround={() => {}} /></Router>);
+    const stripQc = new QueryClient({ defaultOptions: { queries: { retry: false, enabled: false } } });
+    stripQc.setQueryData(["/api/public/signup-mode"], { mode: "open" });
+    stripQc.setQueryData(["/api/auth/user"], null);
+    const strip = renderToString(
+      <QueryClientProvider client={stripQc}>
+        <Router ssrPath="/">
+          <SignInModalProvider>
+            <EventsStripContent payload={{ windowDays: 180, total: 3, events: cards }} market="kyoto" onPlanAround={() => {}} />
+          </SignInModalProvider>
+        </Router>
+      </QueryClientProvider>,
+    );
     for (const i of [1, 2, 3]) {
       assert.ok(strip.includes(`data-testid="city-event-date-c${i}"`), `strip card ${i} DateBlock`);
       assert.ok(strip.includes(`data-testid="city-event-countdown-c${i}"`), `strip card ${i} countdown`);
