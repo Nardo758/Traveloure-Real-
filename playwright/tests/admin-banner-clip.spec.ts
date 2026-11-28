@@ -52,10 +52,12 @@ test("admin verify banner is not clipped by the sidebar", async ({ page }) => {
     await page.screenshot({ path: path.join(ROOT, dir, `admin-banner-${width}.png`) });
     const text = await banner.locator("span").first().boundingBox();
     const button = await page.locator('[data-testid="button-verify-email-resend"]').boundingBox();
+    const card = await page.locator("main .shadcn-card").first().boundingBox();
     expect(text).not.toBeNull();
     expect(button).not.toBeNull();
+    expect(card).not.toBeNull();
     if (process.env.CAPTURE_DIR !== "before") {
-      if (width >= 1024) expect(text!.x).toBeGreaterThanOrEqual(244);
+      if (width >= 1024) expect(Math.round(text!.x)).toBe(Math.round(card!.x));
       expect(text!.x + text!.width).toBeLessThanOrEqual(width);
       expect(button!.x + button!.width).toBeLessThanOrEqual(width);
     }
@@ -75,12 +77,14 @@ test("admin verify banner is not clipped by the sidebar", async ({ page }) => {
     await page.screenshot({ path: path.join(ROOT, "after", "admin-banner-1280-collapsed.png") });
     const text = await page.locator('[data-testid="banner-verify-email"] span').first().boundingBox();
     const button = await page.locator('[data-testid="button-verify-email-resend"]').boundingBox();
+    const card = await page.locator("main .shadcn-card").first().boundingBox();
     expect(text).not.toBeNull();
     expect(button).not.toBeNull();
-    expect(text!.x).toBeGreaterThanOrEqual(80);
+    expect(card).not.toBeNull();
+    expect(Math.round(text!.x)).toBe(Math.round(card!.x));
     expect(text!.x + text!.width).toBeLessThanOrEqual(1280);
     expect(button!.x + button!.width).toBeLessThanOrEqual(1280);
-    collapsed = ` collapsed_text_x=${Math.round(text!.x)}`;
+    collapsed = ` collapsed_text_x=${Math.round(text!.x)} collapsed_card_x=${Math.round(card!.x)}`;
   }
   console.log(`[admin-banner] 1280 text_x=${d1280.x} button_right=${d1280.buttonRight} 390 text_x=${d390.x} button_right=${d390.buttonRight}${collapsed}`);
 });

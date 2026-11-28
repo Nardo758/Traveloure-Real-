@@ -27,7 +27,7 @@ export function AdminLayout({ children, title }: AdminLayoutProps) {
     let gap: HTMLElement | null = null;
     let observer: ResizeObserver | null = null;
     const update = () => {
-      gap = document.querySelector<HTMLElement>('[data-slot="sidebar-gap"]');
+      gap = document.querySelector<HTMLElement>('[data-slot="sidebar-container"]');
       const desktop = window.matchMedia("(min-width: 1024px)").matches;
       root.style.setProperty(
         "--admin-banner-left",
