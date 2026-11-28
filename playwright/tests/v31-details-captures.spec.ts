@@ -52,25 +52,13 @@ async function stub(page: Page, state: State, ownImage: boolean) {
       payloadCache = await res.json();
     }
     const json = JSON.parse(JSON.stringify(payloadCache));
-    const gem = {
-      id: "v31-gem",
-      placeId: "fixture-place",
-      placeName: "Kiyomizu-dera",
-      city: "Kyoto",
-      neighborhood: "Higashiyama",
-      description: state === "notext" ? "A temple." : LONG_TEXT,
-      imageUrl: ownImage ? IMG : null,
-      imageCredit: ownImage ? { text: "Wikimedia Commons" } : null,
-      sourceUrl: "https://example.org/official",
-      category: "temple",
-      tags: ["temple"],
-    };
     // Take the real first gem the feed already places (it carries the neighbourhood the section needs) and change ONLY
     // what this state is about - the description and the image fields.
     const list = Array.isArray(json?.gems?.data) ? json.gems.data : [];
     const target = list[0];
     if (target) {
-      target.description = state === "notext" ? "A temple." : LONG_TEXT;
+      target.description = state === "notext" ? "" : LONG_TEXT;
+      target.whyLocalsLoveIt = state === "notext" ? null : target.whyLocalsLoveIt;
       if (!ownImage) {
         target.imageUrl = null;
         target.image = null;
@@ -136,8 +124,8 @@ for (const width of WIDTHS) {
         expect(credit).toContain("Wikimedia Commons");
       }
       if (state === "none") await expect(view.getByTestId("details-photo")).toHaveCount(0);
-      if (state === "notext") await expect(view.getByTestId("details-text")).toHaveCount(0);
-      if (state !== "notext" && state !== "none") await expect(view.getByTestId("details-text")).toHaveCount(1);
+      if (state === "notext") await expect(view.getByTestId("details-teaser")).toHaveCount(0);
+      if (state !== "notext") await expect(view.getByTestId("details-teaser")).toHaveCount(1);
       await page.screenshot({ path: path.join(OUT, `gem-details-${name}-${width}.png`), fullPage: false });
       await page.getByTestId("details-close").click();
       await expect(page.getByTestId("details-view")).toHaveCount(0);

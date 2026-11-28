@@ -1918,7 +1918,7 @@ export const MIGRATION_FILES = [
   // columns only, no DEFAULT/CHECK/index/FK. Declared in shared/schema.ts. HELD for the founder's ruling.
   "346_place_photos.sql",
   // V31 — place_photos.position (Leon, Nov 27 2026). Additive: one nullable integer, no backfill.
-  "347_place_photos_position.sql",
+  "348_place_photos_position.sql",
   // 347 — transport_legs authoring columns (work plan L1-1; R-ay/R-az/R-bf). Seven nullable columns,
   // no DEFAULT/CHECK/index/FK, no backfill. Declared in shared/schema.ts. APPROVED Oct 4, 2026.
   "347_transport_leg_authoring.sql",

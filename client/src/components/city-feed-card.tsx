@@ -1452,7 +1452,12 @@ export function CityFeedCardGem({
         onClose={() => setSheetOpen(false)}
         title={gem.placeName}
         placeLine={[gem.city ?? city, gem.neighborhood].filter(Boolean).join(" · ") || null}
-        text={gem.description ?? null}
+        teaser={
+          [gem.description, gem.whyLocalsLoveIt]
+            .filter((v, i, a) => typeof v === "string" && v.trim() && a.indexOf(v) === i)
+            .join("\n\n") || null
+        }
+        curator={gemCuratorFullName(gem) ? { id: gem.id, name: gemCuratorFullName(gem)! } : null}
         photos={gemDetailsPhotos}
         actions={gemDetailsActions}
       />
@@ -1481,7 +1486,12 @@ export function CityFeedCardGem({
         onClose={() => setSheetOpen(false)}
         title={gem.placeName}
         placeLine={[gem.city ?? city, gem.neighborhood].filter(Boolean).join(" · ") || null}
-        text={gem.description ?? null}
+        teaser={
+          [gem.description, gem.whyLocalsLoveIt]
+            .filter((v, i, a) => typeof v === "string" && v.trim() && a.indexOf(v) === i)
+            .join("\n\n") || null
+        }
+        curator={gemCuratorFullName(gem) ? { id: gem.id, name: gemCuratorFullName(gem)! } : null}
         photos={gemDetailsPhotos}
         actions={gemDetailsActions}
       />

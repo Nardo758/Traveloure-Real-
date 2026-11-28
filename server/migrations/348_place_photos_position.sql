@@ -6,6 +6,6 @@
 --
 --   position 0..n-1, 0 = the cover; the reader returns at most 8 per item.
 --
--- SQL HELD FOR LEON: "Migration 347 SQL approved - Leon" must be on the PR before this runs anywhere but a local copy.
+-- SQL HELD FOR LEON: "Migration 348 SQL approved - Leon" must be on the PR before this runs anywhere but a local copy.
 
 ALTER TABLE place_photos ADD COLUMN IF NOT EXISTS position integer;

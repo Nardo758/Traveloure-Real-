@@ -30,11 +30,13 @@ export function DetailsView({
   title,
   placeLine,
   text,
+  teaser,
   photos,
   facts,
   actions,
   author,
   reviewedAt,
+  curator,
   fullPage = false,
 }: {
   open: boolean;
@@ -42,10 +44,14 @@ export function DetailsView({
   title: string;
   placeLine?: string | null;
   text?: string | null;
+  /** Short catalogue copy a tile already carries (a gem's teaser lines). Drawn as-is: the band rule is about descriptions. */
+  teaser?: string | null;
   photos?: readonly DetailsPhoto[] | null;
   facts?: readonly DetailsFact[] | null;
   actions: readonly DetailsAction[];
   author?: { name?: string | null; city?: string | null } | null;
+  /** A resolved curator, drawn as "Curated by {name}" with the card's own test id; absent means no line at all. */
+  curator?: { id: string; name: string } | null;
   reviewedAt?: string | Date | null;
   fullPage?: boolean;
 }) {
@@ -182,6 +188,16 @@ export function DetailsView({
           {byline ? (
             <p className="text-[12px] text-[var(--earn-muted,#6B7280)]" data-testid="details-byline">
               {byline}
+            </p>
+          ) : null}
+          {curator ? (
+            <p className="text-[12px] text-[var(--earn-muted,#6B7280)]" data-testid={`gem-curated-by-${curator.id}`}>
+              Curated by {curator.name}
+            </p>
+          ) : null}
+          {(teaser ?? "").trim() ? (
+            <p className="text-[14px] leading-relaxed" data-testid="details-teaser">
+              {teaser}
             </p>
           ) : null}
           {description !== "none" ? (
