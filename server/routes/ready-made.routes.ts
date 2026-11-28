@@ -35,6 +35,7 @@ import { parsePagination } from "../utils/pagination";
 import { holdWindowDays } from "../config/earnings-hold.config";
 import { getBand } from "../services/commission";
 import { unsplashService } from "../services/unsplash.service";
+import { CONTENT_SOURCE_TARGETS } from "../config/content-source-targets.config";
 import { getStripeSecretKey } from "../utils/stripe-key";
 import { stripePaymentService } from "../services/stripe-payment.service";
 import { createPaymentIntentPreservingKey } from "../services/stripe-intent-key";
@@ -472,33 +473,66 @@ async function loadAuthorListing(id: string, userId: string) {
   return row ?? null;
 }
 
-/** D1 (Leon, Nov 27 2026): a ready-made hero is one of the three credited photo sources the
- *  preview/share surfaces already understand. Unsplash and Pexels serve from their image CDNs;
- *  Wikimedia Commons serves originals from upload.wikimedia.org. */
-const HERO_IMAGE_HOSTS: Readonly<Record<string, "unsplash" | "pexels" | "wikimedia">> = {
-  "images.unsplash.com": "unsplash",
-  "plus.unsplash.com": "unsplash",
-  "images.pexels.com": "pexels",
-  "upload.wikimedia.org": "wikimedia",
-};
+/** D1 photo rule (Leon, Nov 27 2026): stock is never a hero. The only valid present heroes are
+ *  the author's own upload in our object storage, a photo from an official content source with
+ *  its credit, or Wikimedia Commons under CC/public domain with author + licence. */
+const OWN_STORAGE_HOST = "storage.googleapis.com";
+const WIKIMEDIA_HOST = "upload.wikimedia.org";
 
-/** DRAFT string for Leon: replaces the retired picker sentence. */
+function officialSourceHosts(): string[] {
+  const hosts: string[] = [];
+  for (const targets of Object.values(CONTENT_SOURCE_TARGETS)) {
+    for (const target of targets) {
+      try {
+        hosts.push(new URL(target.url).hostname.toLowerCase().replace(/^www\./, ""));
+      } catch {
+        // an invalid target is the registry's problem, not a hero pass
+      }
+    }
+  }
+  return hosts;
+}
+const OFFICIAL_SOURCE_HOSTS = officialSourceHosts();
+
+function hostMatches(host: string, allowed: string): boolean {
+  return host === allowed || host.endsWith(`.${allowed}`);
+}
+
+/** DRAFT string for Leon: the photo rule, in one sentence. */
 export const READY_MADE_HERO_REFUSAL =
-  "Hero image must be an Unsplash, Pexels or Wikimedia Commons image with its photographer credit.";
+  "Use your own photo, an official source's photo with its credit, or a Wikimedia Commons image with its licence.";
 
-export function readyMadeHeroSource(url: string): "unsplash" | "pexels" | "wikimedia" | null {
+export function readyMadeHeroSource(url: string): "own" | "official" | "wikimedia" | null {
   try {
     const u = new URL(url);
-    return u.protocol === "https:" ? HERO_IMAGE_HOSTS[u.hostname] ?? null : null;
+    if (u.protocol !== "https:") return null;
+    const host = u.hostname.toLowerCase();
+    if (host === OWN_STORAGE_HOST) return "own";
+    if (host === WIKIMEDIA_HOST) return "wikimedia";
+    if (OFFICIAL_SOURCE_HOSTS.some((h) => hostMatches(host, h))) return "official";
+    return null;
   } catch {
     return null;
   }
+}
+
+/** Null when the present hero is valid; otherwise the one DRAFT refusal. */
+export function readyMadeHeroRefusal(url: string, meta: any): string | null {
+  const source = readyMadeHeroSource(url);
+  if (!source) return READY_MADE_HERO_REFUSAL;
+  if (source === "own") return null;
+  if (!meta?.photographer || !meta?.profileUrl) return READY_MADE_HERO_REFUSAL;
+  if (source === "wikimedia" && !/^(cc\b|public domain\b)/i.test(String(meta.license ?? "").trim())) {
+    return READY_MADE_HERO_REFUSAL;
+  }
+  return null;
 }
 
 const heroMetaSchema = z.object({
   unsplashId: z.string().trim().min(1).max(120).optional(),
   photographer: z.string().trim().min(1).max(200),
   profileUrl: z.string().trim().url().max(500),
+  license: z.string().trim().max(200).optional(),
   downloadLocation: z.string().trim().url().max(500).optional(),
   description: z.string().trim().max(500).nullable().optional(),
 });
@@ -693,9 +727,8 @@ router.patch("/api/expert/ready-made/:id", isAuthenticated, async (req, res) => 
     // (Unsplash, Pexels, Wikimedia Commons) and carries its photographer credit. A listing with
     // no hero is complete; clearing the hero clears its credit.
     if (patch.heroImageUrl != null) {
-      const source = readyMadeHeroSource(patch.heroImageUrl);
       const meta = patch.heroImageMeta ?? (existing.heroImageMeta as any);
-      if (!source || !meta?.photographer || !meta?.profileUrl || (source === "unsplash" && !meta?.unsplashId)) {
+      if (readyMadeHeroRefusal(patch.heroImageUrl, meta)) {
         return res.status(400).json({ message: READY_MADE_HERO_REFUSAL });
       }
     }
