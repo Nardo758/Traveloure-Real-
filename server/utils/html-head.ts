@@ -19,8 +19,18 @@ export function buildItineraryViewOgTags(input: {
     `Explore this AI-powered itinerary for ${destination}. View day-by-day activities, transport options, and more — shared via Traveloure.`,
   );
   const url = escHtml(shareUrl);
-  // Destination-based travel image (Unsplash source).
-  const ogImage = escHtml(`https://source.unsplash.com/1200x630/?travel,${encodeURIComponent(destination)}`);
+  // S5d (ledger `2026-11-28-photo-rule-a-b-d`): the og:image is the app's OWN cover, not a stock search.
+  // `source.unsplash.com` is a retired Unsplash endpoint, so every shared itinerary carried a broken social
+  // card; the brand asset is ours, needs no credit, and is in the photo rule. The origin comes from the share
+  // link itself, so the tag is absolute wherever the app is served from.
+  const origin = (() => {
+    try {
+      return new URL(shareUrl).origin;
+    } catch {
+      return "";
+    }
+  })();
+  const ogImage = escHtml(`${origin}/og-cover.png`);
   return [
     `<title>${title}</title>`,
     `<meta name="description" content="${description}" />`,

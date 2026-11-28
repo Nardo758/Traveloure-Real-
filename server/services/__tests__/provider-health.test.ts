@@ -1,4 +1,4 @@
-/**
+﻿/**
  * provider-health.service.ts — behavioral proof.
  *
  * Covers: reportProviderResult never throws (even with garbage input); getProviderHealth reflects
@@ -107,15 +107,15 @@ describe("provider-health.service", () => {
   });
 
   it("configured() reflects the real env var, matching the service's own gate", () => {
-    const prevKey = process.env.PEXELS_API_KEY;
+    const prevKey = process.env.SERP_API_KEY;
     try {
-      delete process.env.PEXELS_API_KEY;
-      assert.equal(getProviderHealth().find((e) => e.provider === "pexels")!.configured, false);
-      process.env.PEXELS_API_KEY = "test-key";
-      assert.equal(getProviderHealth().find((e) => e.provider === "pexels")!.configured, true);
+      delete process.env.SERP_API_KEY;
+      assert.equal(getProviderHealth().find((e) => e.provider === "serpapi")!.configured, false);
+      process.env.SERP_API_KEY = "test-key";
+      assert.equal(getProviderHealth().find((e) => e.provider === "serpapi")!.configured, true);
     } finally {
-      if (prevKey === undefined) delete process.env.PEXELS_API_KEY;
-      else process.env.PEXELS_API_KEY = prevKey;
+      if (prevKey === undefined) delete process.env.SERP_API_KEY;
+      else process.env.SERP_API_KEY = prevKey;
     }
   });
 

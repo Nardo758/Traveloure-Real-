@@ -1,4 +1,4 @@
-import { useDebouncedValue, DISCOVER_THEME_DEBOUNCE_MS } from "@/hooks/use-debounced-value";
+﻿import { useDebouncedValue, DISCOVER_THEME_DEBOUNCE_MS } from "@/hooks/use-debounced-value";
 import { SPINE_CHIPS, effectiveSpineFilter, shownSpineChips } from "@/lib/spine-chips";
 import { DISCOVER_HEADLINE_COPY } from "@shared/copy-2026-10-31";
 import { neighbourhoodHomeKey } from "@/lib/wanted-slot-link";
@@ -8,7 +8,7 @@ import { isKyotoCity, KYOTO_CITY_DESCRIPTION } from "@/lib/g02-g06-copy";
 import { SEOHead } from "@/components/seo-head";
 import { SEASONAL_WRITER_LIVE } from "@/lib/season-line";
 import { PRICE_OPTIONS, extractTilePrice, priceMatches } from "@/lib/tile-price";
-import { useRef, useEffect, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
+import { useEffect, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent } from "react";
 import { resolveCoverPhoto, type CoverPhotoCredit } from "@/lib/cover-photo";
 import { useParams, useSearch, useLocation, Link } from "wouter";
 import { OPERATING_MARKETS } from "@shared/operating-markets";
@@ -99,12 +99,6 @@ interface LocationViewPayload {
 }
 
 
-interface CityMediaResponse {
-  hero: any | null;
-  gallery: any[];
-  videos: any[];
-  byAttraction: Record<string, any[]>;
-}
 
 // ─── Teal gradient hero ───────────────────────────────────────────────────────
 
@@ -1525,18 +1519,6 @@ export default function DiscoverLocationPage() {
 
   const heroCountry = country ?? data?.country ?? null;
 
-  // Media — for Unsplash download tracking compliance only (hero no longer uses photo)
-  const { data: mediaData } = useQuery<CityMediaResponse>({
-    queryKey: ["/api/travelpulse/media", city, heroCountry],
-    queryFn: async () => {
-      const res = await fetch(
-        `/api/travelpulse/media/${encodeURIComponent(city)}/${encodeURIComponent(heroCountry ?? "")}`,
-      );
-      if (!res.ok) throw new Error(`Media fetch failed: ${res.status}`);
-      return res.json();
-    },
-    enabled: !!city && !!heroCountry,
-  });
 
   // Experts for this city
   const { data: expertsData } = useQuery<any[]>({
@@ -1556,27 +1538,6 @@ export default function DiscoverLocationPage() {
   // An empty aisle is honest (§13); a tile linking to a route that no longer exists is not.
   // Wiring the surviving `ready_made_trips` store lane into this feed is its own change.
 
-  // Unsplash download tracking (API compliance)
-  const trackedDownloadsRef = useRef<Set<string>>(new Set());
-  useEffect(() => {
-    if (!mediaData) return;
-    const unsplashMedia = [
-      ...(mediaData.hero?.source === "unsplash" && mediaData.hero?.downloadLocationUrl
-        ? [mediaData.hero]
-        : []),
-      ...mediaData.gallery.filter((m) => m.source === "unsplash" && m.downloadLocationUrl),
-    ];
-    unsplashMedia.forEach((media) => {
-      if (media.downloadLocationUrl && !trackedDownloadsRef.current.has(media.downloadLocationUrl)) {
-        trackedDownloadsRef.current.add(media.downloadLocationUrl);
-        fetch("/api/travelpulse/media/track-download", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ downloadLocationUrl: media.downloadLocationUrl }),
-        }).catch(() => {});
-      }
-    });
-  }, [mediaData]);
 
   // ── Derived feed data ───────────────────────────────────────────────────
   const neighborhoods = data?.neighborhoods?.data ?? [];

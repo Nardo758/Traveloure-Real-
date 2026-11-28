@@ -1,4 +1,4 @@
-import { displayCrowdBand, displayTrendScore, type DisplayCrowdBand } from "@shared/trend-display";
+﻿import { displayCrowdBand, displayTrendScore, type DisplayCrowdBand } from "@shared/trend-display";
 import { hideBlockedGemImage, photoBlocks } from "./place-photo-blocks.service";
 import { visibleGemCondition, visibleHappeningNowCondition } from "./gem-visibility";
 import { gemCopyForTraveler } from "@shared/kyoto-gem-copy";
@@ -499,8 +499,6 @@ export class TravelPulseService {
         totalTrendingSpots: 47,
         totalHiddenGems: 23,
         totalAlerts: 1,
-        imageUrl: "https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?w=800",
-        thumbnailUrl: "https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?w=400",
       },
       {
         cityName: "Paris",
@@ -522,8 +520,6 @@ export class TravelPulseService {
         totalTrendingSpots: 38,
         totalHiddenGems: 19,
         totalAlerts: 0,
-        imageUrl: "https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=800",
-        thumbnailUrl: "https://images.unsplash.com/photo-1502602898657-3e91760cbb34?w=400",
       },
       {
         cityName: "Bali",
@@ -545,8 +541,6 @@ export class TravelPulseService {
         totalTrendingSpots: 52,
         totalHiddenGems: 31,
         totalAlerts: 1,
-        imageUrl: "https://images.unsplash.com/photo-1537996194471-e657df975ab4?w=800",
-        thumbnailUrl: "https://images.unsplash.com/photo-1537996194471-e657df975ab4?w=400",
       },
       {
         cityName: "New York",
@@ -568,8 +562,6 @@ export class TravelPulseService {
         totalTrendingSpots: 63,
         totalHiddenGems: 28,
         totalAlerts: 0,
-        imageUrl: "https://images.unsplash.com/photo-1496442226666-8d4d0e62e6e9?w=800",
-        thumbnailUrl: "https://images.unsplash.com/photo-1496442226666-8d4d0e62e6e9?w=400",
       },
       {
         cityName: "Barcelona",
@@ -591,8 +583,6 @@ export class TravelPulseService {
         totalTrendingSpots: 41,
         totalHiddenGems: 25,
         totalAlerts: 0,
-        imageUrl: "https://images.unsplash.com/photo-1583422409516-2895a77efded?w=800",
-        thumbnailUrl: "https://images.unsplash.com/photo-1583422409516-2895a77efded?w=400",
       },
       {
         cityName: "Dubai",
@@ -614,8 +604,6 @@ export class TravelPulseService {
         totalTrendingSpots: 35,
         totalHiddenGems: 12,
         totalAlerts: 0,
-        imageUrl: "https://images.unsplash.com/photo-1512453979798-5ea266f8880c?w=800",
-        thumbnailUrl: "https://images.unsplash.com/photo-1512453979798-5ea266f8880c?w=400",
       },
       {
         cityName: "Lisbon",
@@ -637,8 +625,6 @@ export class TravelPulseService {
         totalTrendingSpots: 29,
         totalHiddenGems: 34,
         totalAlerts: 0,
-        imageUrl: "https://images.unsplash.com/photo-1555881400-74d7acaacd8b?w=800",
-        thumbnailUrl: "https://images.unsplash.com/photo-1555881400-74d7acaacd8b?w=400",
       },
       {
         cityName: "Sydney",
@@ -660,8 +646,6 @@ export class TravelPulseService {
         totalTrendingSpots: 33,
         totalHiddenGems: 18,
         totalAlerts: 0,
-        imageUrl: "https://images.unsplash.com/photo-1506973035872-a4ec16b8e8d9?w=800",
-        thumbnailUrl: "https://images.unsplash.com/photo-1506973035872-a4ec16b8e8d9?w=400",
       },
       {
         cityName: "Bangkok",
@@ -683,8 +667,6 @@ export class TravelPulseService {
         totalTrendingSpots: 44,
         totalHiddenGems: 42,
         totalAlerts: 1,
-        imageUrl: "https://images.unsplash.com/photo-1508009603885-50cf7c579365?w=800",
-        thumbnailUrl: "https://images.unsplash.com/photo-1508009603885-50cf7c579365?w=400",
       },
       {
         cityName: "Marrakech",
@@ -706,8 +688,6 @@ export class TravelPulseService {
         totalTrendingSpots: 26,
         totalHiddenGems: 28,
         totalAlerts: 0,
-        imageUrl: "https://images.unsplash.com/photo-1597212618440-806262de4f6b?w=800",
-        thumbnailUrl: "https://images.unsplash.com/photo-1597212618440-806262de4f6b?w=400",
       },
       {
         cityName: "Rome",
@@ -729,8 +709,6 @@ export class TravelPulseService {
         totalTrendingSpots: 48,
         totalHiddenGems: 21,
         totalAlerts: 0,
-        imageUrl: "https://images.unsplash.com/photo-1552832230-c0197dd311b5?w=800",
-        thumbnailUrl: "https://images.unsplash.com/photo-1552832230-c0197dd311b5?w=400",
       },
       {
         cityName: "Cape Town",
@@ -752,8 +730,6 @@ export class TravelPulseService {
         totalTrendingSpots: 31,
         totalHiddenGems: 26,
         totalAlerts: 0,
-        imageUrl: "https://images.unsplash.com/photo-1580060839134-75a5edca2e99?w=800",
-        thumbnailUrl: "https://images.unsplash.com/photo-1580060839134-75a5edca2e99?w=400",
       },
     ];
 
@@ -819,7 +795,6 @@ export class TravelPulseService {
         whyLocalsLoveIt: "Best vintage clothing and indie music scene in Tokyo",
         bestFor: ["shopping", "nightlife", "music"],
         priceRange: "$$",
-        imageUrl: "https://images.unsplash.com/photo-1528360983277-13d401cdc186?w=600",
       },
       {
         city: "Paris",
@@ -836,7 +811,6 @@ export class TravelPulseService {
         whyLocalsLoveIt: "Best Sunday brunch spots and people-watching",
         bestFor: ["food", "photography", "walks"],
         priceRange: "$$",
-        imageUrl: "https://images.unsplash.com/photo-1550340499-a6c60fc8287c?w=600",
       },
       {
         city: "Bali",
@@ -853,7 +827,6 @@ export class TravelPulseService {
         whyLocalsLoveIt: "What Ubud was 20 years ago, zero crowds",
         bestFor: ["nature", "photography", "peace"],
         priceRange: "$",
-        imageUrl: "https://images.unsplash.com/photo-1555400038-63f5ba517a47?w=600",
       },
       {
         city: "New York",
@@ -870,7 +843,6 @@ export class TravelPulseService {
         whyLocalsLoveIt: "Industrial charm meets foodie heaven",
         bestFor: ["food", "art", "views"],
         priceRange: "$$",
-        imageUrl: "https://images.unsplash.com/photo-1534430480872-3498386e7856?w=600",
       },
     ];
 

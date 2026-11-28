@@ -1,4 +1,4 @@
-/**
+﻿/**
  * provider-health.service.ts — in-memory catalog-provider health registry.
  *
  * Every /api/catalog/* source (a Travelpayouts network, a direct partner API, or a media API) reports
@@ -89,8 +89,6 @@ const STATIC_PROVIDERS: Record<string, StaticEntry> = {
   gettransfer: { label: "GetTransfer", isConfigured: () => !!process.env.TRAVELPAYOUTS_TOKEN },
   // server/services/travelpayouts/tiqets.service.ts: getTravelpayoutsToken()
   tiqets: { label: "Tiqets", isConfigured: () => !!process.env.TRAVELPAYOUTS_TOKEN },
-  // server/services/pexels.service.ts: `process.env.PEXELS_API_KEY`
-  pexels: { label: "Pexels", isConfigured: () => !!process.env.PEXELS_API_KEY },
   // Amadeus: entry removed entirely — the integration was dropped (DECISIONS.md ruling 34,
   // 2026-08-05) and the service code deleted, so nothing can report against it anymore.
   // server/services/serp.service.ts: `process.env.SERP_API_KEY`
