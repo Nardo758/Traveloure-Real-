@@ -562,9 +562,6 @@ export default function LaunchWaitlistPage() {
 
       <section id="join" className="mt-12 scroll-mt-28 rounded-xl border p-6" data-testid="section-waitlist-join">
         <h2 className="text-2xl font-semibold">Join the Kyoto list.</h2>
-        <p className="mt-3 text-muted-foreground">
-          Join the waitlist.
-        </p>
         <TravelerForm key={launchMarket} source={source} refCode={refCode} launchMarket={launchMarket} settings={settings} />
       </section>
 
