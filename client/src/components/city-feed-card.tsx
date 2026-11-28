@@ -5,6 +5,8 @@ import { useImpressionTracker } from "@/hooks/use-impression-tracker";
 import { useQuery } from "@tanstack/react-query";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { PlanActions } from "@/components/plan/PlanActions";
+import { DetailsView } from "@/components/details/DetailsView";
+import { useDetailsPhotos } from "@/hooks/use-details-photos";
 import { CardActions } from "@/components/plan/CardActions";
 import type { AskExpertButtonProps } from "@/components/ask-expert-button";
 import { cardContentItem } from "@/lib/card-actions";
@@ -1096,6 +1098,18 @@ export function CityFeedCardGem({
   }, [photoUrl]);
   // A missing URL or a failed load paints the place name. The heart stores a photo only when one is showing.
   const showGemPhoto = !loading && Boolean(photoUrl) && !imgFailed;
+  // V31: the Details view's gallery - the record's own image first, then the server's ordered rows (cover, max 8).
+  const { photos: gemGallery } = useDetailsPhotos(gem.placeId ?? gem.id);
+  const gemDetailsPhotos = [
+    ...(photoUrl ? [{ url: photoUrl, creditRequired: false }] : []),
+    ...gemGallery.filter((row) => row.url !== photoUrl),
+  ];
+  const gemDetailsActions = [
+    { key: "add" as const, label: "Add to plan", onPress: () => onAdd?.(gemAddPayload()) },
+    ...(gem.sourceUrl
+      ? [{ key: "officialSite" as const, label: "Official site", onPress: () => window.open(String(gem.sourceUrl), "_blank", "noopener") }]
+      : []),
+  ];
   const gemSaveItem = buildSaveItem({ contentType: "gem", contentId: gem.id, name: gem.placeName, image: showGemPhoto ? photoUrl : null, city });
 
   const resolvedBookability: Bookability = bookability ?? resolveBookability(gem);
@@ -1424,7 +1438,15 @@ export function CityFeedCardGem({
             </div>
           </div>
         </div>
-        <MoreInfoSheet open={sheetOpen} onClose={() => setSheetOpen(false)} cardType="gem" data={gem} saveItem={gemSaveItem} action={{ ...gemSave, city, onAdd: onAdd ? () => onAdd(gemAddPayload()) : undefined }} ask={{ city, subject: gem.placeName, direct: gemCurator(gem)?.id ? { expertId: gemCurator(gem)!.id, fallbackName: gemCuratorFullName(gem), fallbackAvatar: gemCurator(gem)?.profileImageUrl ?? null } : null }} />
+      <DetailsView
+        open={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        title={gem.placeName}
+        placeLine={[gem.city ?? city, gem.neighborhood].filter(Boolean).join(" · ") || null}
+        text={gem.description ?? null}
+        photos={gemDetailsPhotos}
+        actions={gemDetailsActions}
+      />
       </>
     );
   }
@@ -1445,7 +1467,15 @@ export function CityFeedCardGem({
         {photoArea}
         {cardBody}
       </div>
-      <MoreInfoSheet open={sheetOpen} onClose={() => setSheetOpen(false)} cardType="gem" data={gem} saveItem={gemSaveItem} action={{ ...gemSave, city, onAdd: onAdd ? () => onAdd(gemAddPayload()) : undefined }} ask={{ city, subject: gem.placeName, direct: gemCurator(gem)?.id ? { expertId: gemCurator(gem)!.id, fallbackName: gemCuratorFullName(gem), fallbackAvatar: gemCurator(gem)?.profileImageUrl ?? null } : null }} />
+      <DetailsView
+        open={sheetOpen}
+        onClose={() => setSheetOpen(false)}
+        title={gem.placeName}
+        placeLine={[gem.city ?? city, gem.neighborhood].filter(Boolean).join(" · ") || null}
+        text={gem.description ?? null}
+        photos={gemDetailsPhotos}
+        actions={gemDetailsActions}
+      />
     </>
   );
 }

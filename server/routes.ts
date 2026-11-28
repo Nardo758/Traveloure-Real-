@@ -5294,7 +5294,21 @@ ${bannedCopyPromptLine()}`;
     }
   });
 
-  // Lightweight place-photo proxy — Unsplash → Pexels. Used by the useGemPhoto hook.
+  // V31: the gallery for ONE place/item — cover first (position 0), at most 8, uncredited rows dropped. Public: these are
+// the same photos the surface it belongs to already shows.
+app.get("/api/place-photos/:key", async (req, res) => {
+  try {
+    const key = String(req.params.key ?? "").slice(0, 200);
+    if (!key) return res.json({ photos: [] });
+    const { placePhotosFor } = await import("./services/place-photos.service");
+    return res.json({ photos: await placePhotosFor(key) });
+  } catch (err: any) {
+    console.error("Error fetching place photos:", err);
+    return res.status(500).json({ message: "Failed to fetch photos" });
+  }
+});
+
+// Lightweight place-photo proxy — Unsplash → Pexels. Used by the useGemPhoto hook.
   // R299: the Google branch is REMOVED. It ran a legacy Text Search and returned a legacy Place
   // Photo URL with the server key inside it — every image load billed "Places Photo" outside the
   // R-aq resolver, and the key was public. `source=google` (a cached client) now answers null, so

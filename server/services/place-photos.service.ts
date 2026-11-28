@@ -139,7 +139,9 @@ export const PLACE_PHOTOS_MAX = 8;
 export async function placePhotosFor(
   key: string,
   limit: number = PLACE_PHOTOS_MAX,
-): Promise<Array<{ url: string; licence: string | null; attribution: string | null; checkedAt: Date | null }>> {
+): Promise<
+  Array<{ url: string; source: string; licence: string | null; attribution: string | null; checkedAt: Date | null }>
+> {
   const rows = await db
     .select()
     .from(placePhotos)
@@ -148,7 +150,15 @@ export async function placePhotosFor(
     .limit(Math.max(1, Math.min(PLACE_PHOTOS_MAX, limit)));
   return rows
     .filter((row) => !!row.urlOrAsset)
-    .map((row) => ({ url: row.urlOrAsset as string, licence: row.licence, attribution: row.attribution, checkedAt: row.checkedAt }));
+    // D1's rule for every row: our own photo needs no credit, a third-party one is not shown without it.
+    .filter((row) => row.source === "ours" || !!row.attribution)
+    .map((row) => ({
+      url: row.urlOrAsset as string,
+      source: row.source,
+      licence: row.licence,
+      attribution: row.attribution,
+      checkedAt: row.checkedAt,
+    }));
 }
 
 export { photoCacheKey };
